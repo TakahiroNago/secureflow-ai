@@ -1,0 +1,89 @@
+# SecureFlow AI — 開発ロードマップ
+
+- 版：v1.1（2026-11-03）
+- 状態：確定（v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+
+---
+
+## 1. 進め方
+
+- Phase 単位で実装し、各 Phase の完了時に以下を報告してレビューを受ける：実装した機能／変更したファイル／実施したテスト／テスト結果／セキュリティ上の確認事項／残っている課題／次の Phase。
+- 各工程（例 1-2）はテストを含めて完了させてから次へ進む。
+- 設計からの逸脱が必要になった場合は、実装前に理由と代替案を提示する。
+
+## 2. Phase 0：開発基盤
+
+| 工程 | 内容 | 完了条件 | テスト方法 |
+|---|---|---|---|
+**前提（D15・D16）：** 開発場所は WSL2 の Linux ファイルシステム（`~/projects/secureflow-ai`）。Docker Desktop の WSL2 連携を使用し、PHP・Composer はコンテナ内でのみ実行する。リポジトリは GitHub `TakahiroNago/secureflow-ai`（Public、MIT License）。各工程は完了条件を満たしてからコミットし、壊れた状態をコミットしない。
+
+| 工程 | 内容 | 完了条件 | テスト方法 |
+|---|---|---|---|
+| 0-1 | Git 初期化、`.gitignore`、`.gitattributes`、`.editorconfig`、`.env.example`、`LICENSE`（MIT）、設計書（v1.1）の登録 | `.env` が追跡対象外。`.env.example` はダミー値のみ。秘密情報スキャンで検出0件 | `git check-ignore`、`git status`、gitleaks（コンテナで実行） |
+| 0-2 | Docker Compose の基盤：`postgres`（初期化スクリプトで owner / app ロール・開発用DB・テスト用DB作成）、`redis`（パスワード必須）、PHP イメージ（Dockerfile）のビルド | postgres・redis が healthy。ホストに DB・Redis ポートが公開されていない。ロール属性・権限が設計どおり。PHP イメージがビルドでき、拡張が揃っている。採用バージョンをタグで固定 | P0-DB-03、P0-NET-01、P0-NET-02、`docker compose ps` |
+| 0-3 | Laravel 雛形（コンテナ内の Composer で作成）、Sanctum、Pest、Larastan、Pint、DB接続2系統（app / migrator）、Redis 設定、`app` / `worker` / `scheduler` / `migrate` / `nginx` サービス、Liveness / Readiness | live・ready が仕様どおり。app ロールで DDL 不可、migrate 経路で成功。Pest・Larastan・Pint 成功 | P0-HC-01、P0-HC-02、P0-DB-01、P0-DB-02 |
+| 0-4 | React 雛形（Vite + TS + Tailwind）、ESLint（`react/no-danger` を error）、Vitest、`frontend` サービス、nginx からの配信 | 画面表示、Vite proxy で live ヘルスチェック取得。Lint・型・テスト・ビルド成功 | P0-FE-01 |
+| 0-5 | GitHub Actions（secret-scan：gitleaks・Trivy／backend・frontend：Lint・型・テスト・ビルド）、GitHub リポジトリ作成と初回 push（push 前に秘密情報・個人情報・不要ファイルを確認） | GitHub 上で CI 成功 | Actions 実行結果、P0-SEC-01 |
+| 0-6 | README（セットアップ・アーキテクチャ概要・**採用バージョン一覧**・ヘルスチェック・マイグレーション手順） | 新しいクローンから README の手順どおりに起動・テストできる | 手順の再現確認 |
+
+**Phase 0 完了条件：** クリーンな状態から README の手順で起動でき、Liveness / Readiness・全Lint・全テスト・CI が成功し、`.env` と秘密情報がリポジトリに含まれず、DB ロールが分離されている。
+
+## 3. Phase 1：基本アプリケーションとAIワークフロー（モックAIのみ：D9）
+
+| 工程 | 内容 | 完了条件 | テスト方法 |
+|---|---|---|---|
+| 1-1 | organizations / organization_settings / users / audit_logs マイグレーション、DB権限・改変拒否トリガー | migrate / rollback 成功。app ロールで audit_logs の UPDATE/DELETE が失敗 | マイグレーションテスト、ST-28（DB部分） |
+| 1-2 | 認証API・ログイン画面・セッション管理・ロック・`user:create` コマンド・Seeder | ログイン/ログアウト可、未認証 401、6回目 429、ロック動作 | Feature、ST-05, 24, 25, 26, 27、Vitest |
+| 1-3 | AuditLogger（ハッシュチェーン含む）・認証イベント記録 | 記録にパスワード等が含まれない。チェーン検証成功 | Unit、ST-28 |
+| 1-4 | ActionCatalog、AiProvider、MockAiProvider、AiGateway（モック）、OutputValidator（スキーマ・許可リスト） | 不正JSON・未知キー・未知操作を拒否、forbidden 判定 | Unit（§4 のモックシナリオ）、ST-07 |
+| 1-5 | workflows / revisions / tasks / approvals / executions マイグレーション、StateMachine、PlanHasher、Policy、組織スコープ | 不正遷移 409、他人データ 404、ハッシュ仕様どおり | Unit（遷移全組合せ、正規化）、Isolation、ST-12, 23, 34 |
+| 1-6 | ai_analysis_requests、AnalyzeWorkflowJob（モック）、ワークフローAPI・画面（入力・分析・表示・編集・保存） | 入力→生成→編集→保存。編集で新リビジョン | Feature、Vitest |
+| 1-7 | ダッシュボード（基本KPI） | 集計値が正しい（ロール別範囲） | Feature（固定データ） |
+
+## 4. Phase 2：セキュリティ制御と監査ログ
+
+| 工程 | 内容 | 完了条件 | テスト方法 |
+|---|---|---|---|
+| 2-1 | Normalizer、PII/Secret 検出器（ルールごとの severity・action 定義）、Masker、マスキング後再検査（fail closed） | コーパスで目標検出率・誤検知・誤停止が目標内。個人情報は mask_continue、認証・秘密情報は block。マスキング失敗で停止 | Unit、コーパス評価、ST-03, 04, 35, 36 |
+| 2-2 | InjectionDetector（ルール・スコアリング） | 4段階判定が仕様どおり | Unit、ST-02, 13, 14, 15 |
+| 2-3 | InputScanner 統合、scan-preview API、全体判定（action から算出。D4・D14）、scans/findings 保存、限界文言 | block 判定で AI 呼び出し0回。severity と action が別フィールドで返る。限界文言が常に返る | Feature、モック呼出回数検証、ST-39 |
+| 2-4 | OutputValidator 拡張（出力マスキング・カナリア・HTML除去・権限照合）、プロンプト構築 | 各モックシナリオで期待どおり | ST-10, 18, 19 |
+| 2-5 | 承認API・承認画面（ハッシュ照合・admin のみ・自己承認禁止・リスク確認・承認者不在表示）、DBトリガー（自己承認禁止・admin 必須）、submit / reopen | 承認後編集で再承認要求、古いハッシュ 409、自己承認拒否、auditor・member の承認拒否、承認可能な admin 不在で実行不可 | ST-06, 09, 16, 17, 20, 21, 37, 38、E2E一部 |
+| 2-6 | ExecutionVerifier、ExecuteWorkflowJob、Simulators、冪等性、停滞回収 | 未承認実行拒否、二重実行なし、障害時 Failed | ST-08, 22, 33、Concurrency |
+| 2-7 | 全イベントの監査記録、検証API・コマンド、監査ログ画面（フィルタ） | 全イベント記録、改ざん検出、auditor 参照可・member 403 | ST-06, 28、Vitest |
+| 2-8 | **（実装前に D11 確認：モデル・API仕様・データ保持・学習利用・送信データ範囲・レート制限等。確認結果をレビューに提出）** OpenAiProvider（Structured Outputs、tools無し、タイムアウト、再試行、利用記録、上限）、有効化ゲート（起動時の設定検証） | フェイクHTTPで全エラー系成功。有効化条件（[security-design.md §6.1](security-design.md)）を満たすまで `AI_PROVIDER=openai` が拒否される。条件達成と承認後に実APIで手動確認1回 | ST-30, 31、ゲートのテスト |
+| 2-9 | 全体レート制限、セキュリティヘッダ・CSP、エラー形式統一、ログの機密情報除去 | ヘッダ付与、エラーに内部情報なし | ST-11, 29, 32 |
+| 2-10 | セキュリティ管理画面（検出一覧・対策状況）、設定画面（APIキー非表示） | キー値が画面・APIに出ない | Feature、Vitest |
+
+## 5. Phase 3：自動セキュリティテスト
+
+| 工程 | 内容 | 完了条件 | テスト方法 |
+|---|---|---|---|
+| 3-1 | セキュリティテストの分離（ST-01〜34、group: security） | 単独実行で全件成功 | CI security ジョブ |
+| 3-2 | 攻撃・正常コーパス整備と評価レポート | レポートを CI で出力 | CI |
+| 3-3 | アプリ内自己診断（Runner・API・画面・ダッシュボード表示） | 画面から実行・結果保存・表示 | Feature、E2E |
+| 3-4 | Playwright E2E（[test-strategy.md §10](test-strategy.md)） | CI で成功 | CI e2e ジョブ |
+| 3-5 | Semgrep（独自ルール：`dangerouslySetInnerHTML`、`DB::raw`、`withoutGlobalScope` 等）、Trivy（fs・イメージ）、composer/npm audit | High 以上の未対応脆弱性なし | CI sast-sca ジョブ |
+| 3-6 | README・設計書の最終化、MVP 完成条件の確認 | 要件10の15項目すべて根拠付きで充足 | チェックリスト |
+
+## 6. 要確認事項（実装前に確認）
+
+| ID | 内容 | 確認時期 |
+|---|---|---|
+| Q-D11 | OpenAI のモデル、API仕様、データ保持、学習利用、送信データ範囲、レート制限等（[security-design.md §6.1](security-design.md)）。確認完了と必要なセキュリティテストの通過まで実接続を有効化しない | Phase 2-8 実装前 |
+
+決定済み：Q-D13（→ D13）、Q-PII（→ D14）。[architecture.md §14](architecture.md) を参照。
+
+## 7. 拡張候補（MVPでは実装しない）
+
+| 候補 | 関連 |
+|---|---|
+| 監査ログハッシュの外部ストレージ退避（S3 Object Lock 等） | 監査ログ完全性（R-03） |
+| PostgreSQL 行レベルセキュリティ（RLS） | データ分離の多層化 |
+| MFA、パスワードリセット | 認証強化 |
+| AIによるインジェクション追加判定（リスク引き上げ専用） | 検出精度 |
+| 氏名・住所等の固有表現検出 | 個人情報検出の限界（R-02） |
+| CI テスト結果のアプリ取り込み | D6 |
+| 保持期間経過データの安全な削除手順 | データ保持 |
+| Phase 4：外部サービス連携（操作カタログ＋専用ハンドラ＋承認必須の形でのみ） | 要件2.2 |
+| Phase 5：AWS デプロイと監視 | 要件2.2 |

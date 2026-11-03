@@ -1,0 +1,294 @@
+# SecureFlow AI — API設計書
+
+- 版：v1.1（2026-11-03）
+- 状態：確定（v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+
+---
+
+## 1. 共通仕様
+
+| 項目 | 仕様 |
+|---|---|
+| ベースパス | `/api/v1` |
+| 形式 | `application/json; charset=utf-8`。それ以外の Content-Type は 415 |
+| 認証 | Laravel Sanctum SPA（同一オリジン Cookie セッション） |
+| CSRF | 事前に `GET /sanctum/csrf-cookie`、状態変更リクエストは `X-XSRF-TOKEN` ヘッダ必須 |
+| 成功レスポンス | `{ "data": ..., "meta": { ... } }` |
+| エラーレスポンス | RFC 9457 Problem Details（下記） |
+| ページング | カーソル方式 `?cursor=...&limit=20`（limit最大100） |
+| 楽観ロック | 編集系は `If-Match: "<revision_no>"` 必須。不一致は 409 `REVISION_CONFLICT` |
+| 冪等性 | 実行APIは `Idempotency-Key` ヘッダ必須（UUID推奨、最大100文字） |
+| 時刻 | ISO 8601（UTC） |
+
+### 1.1 エラー形式
+
+```json
+{
+  "type": "https://secureflow.local/problems/plan-hash-mismatch",
+  "title": "Plan hash mismatch",
+  "status": 409,
+  "code": "PLAN_HASH_MISMATCH",
+  "detail": "承認対象の内容が変更されています。最新の内容を確認してください。",
+  "trace_id": "0193...",
+  "errors": { "field": ["..."] }
+}
+```
+
+スタックトレース・SQL・ファイルパス・入力原文は**決して含めない**。
+
+### 1.2 ステータスコード
+
+| コード | 用途 |
+|---|---|
+| 200 / 201 / 202 | 成功 / 作成 / 非同期受付 |
+| 401 | 未認証・セッション期限切れ |
+| 403 | 認証済みだがロール不足（例：member が監査ログ参照）、自己承認 |
+| 404 | 存在しない、または**別組織・別ユーザーのリソース**（存在の秘匿） |
+| 409 | 状態不整合、リビジョン競合、ハッシュ不一致、二重実行 |
+| 415 | Content-Type 不正 |
+| 422 | バリデーションエラー、入力検査による停止（`INPUT_BLOCKED`） |
+| 429 | レート制限、AI利用上限超過 |
+| 500 / 503 | 内部エラー / AIプロバイダ利用不可（詳細は返さない） |
+
+### 1.3 認可の処理順（全APIで必須）
+
+1. `auth:sanctum` — 未認証は 401
+2. `EnsureUserIsActive` — 無効・ロック中ユーザーはセッション破棄して 401
+3. 組織スコープ — すべてのクエリに `organization_id = 認証ユーザーの組織` を強制（グローバルスコープ）。範囲外は 404
+4. Policy — コントローラの全アクションで `authorize()` を必須化。ユーザー所有・ロールを判定
+5. FormRequest — 入力検証（未知フィールドは無視せず拒否）
+
+**UUIDを知っていることはアクセス権の根拠にならない。** ルートの認可漏れは「全ルートに認証ミドルウェアとPolicyが設定されていること」を検査する自動テストで防ぐ（[test-strategy.md](test-strategy.md)）。
+
+### 1.4 レート制限
+
+| 対象 | 制限 | キー |
+|---|---|---|
+| `POST /auth/login` | 5回/分 | email + IP |
+| `POST /analyses`、`POST /security/scan-preview` | 10回/分 | ユーザー |
+| `POST /security/test-runs` | 3回/時 | 組織 |
+| その他API | 60回/分 | ユーザー（未認証はIP） |
+
+超過時は 429 と `Retry-After` を返し、監査ログ `rate_limit.exceeded` を記録する。
+
+## 2. ロール別アクセス
+
+| リソース | admin | member | auditor |
+|---|---|---|---|
+| 自分のワークフロー作成・編集・提出・実行 | ○ | ○ | × |
+| 組織内の他人のワークフロー参照 | ○（承認のため） | × | ○（参照のみ） |
+| 承認・却下 | ○（**他ユーザーが作成したもののみ**。自分が作成したものは不可） | × | ×（承認権限なし） |
+| セキュリティ検出結果 参照 | ○ | 自分のもののみ | ○ |
+| 検出結果の対策状況更新 | ○ | × | × |
+| セキュリティ自己診断 実行 | ○ | × | × |
+| 自己診断結果 参照 | ○ | ○ | ○ |
+| 監査ログ参照・検証 | ○ | × | ○ |
+| AI利用状況 | 組織全体 | 自分のみ | 組織全体 |
+| 設定変更 | ○ | × | × |
+| 自分のパスワード変更 | ○ | ○ | ○ |
+
+申請者と承認者は必ず別ユーザーである。組織内に作成者以外の有効な admin がいない場合、そのワークフローは承認できず、実行もできない。
+
+## 3. エンドポイント一覧
+
+### 3.1 認証
+
+| メソッド | パス | 権限 | 説明 |
+|---|---|---|---|
+| GET | `/sanctum/csrf-cookie` | 不要 | CSRF Cookie発行 |
+| POST | `/api/v1/auth/login` | 不要 | `{email, password}`。成功時セッションID再生成。失敗理由は常に同一メッセージ |
+| POST | `/api/v1/auth/logout` | 認証 | セッション破棄 |
+| GET | `/api/v1/auth/me` | 認証 | `{id, name, email, role, organization}` |
+| PATCH | `/api/v1/account/password` | 認証 | `{current_password, new_password}`。他セッション破棄 |
+
+### 3.2 ダッシュボード・利用状況
+
+| メソッド | パス | 権限 | 説明 |
+|---|---|---|---|
+| GET | `/api/v1/dashboard/summary` | 認証 | KPI（ワークフロー数、実行済み数、承認待ち数、未対応警告数、期間内検出数）、最近の操作、AI利用、最新自己診断結果。ロールに応じた範囲で集計 |
+| GET | `/api/v1/ai-usage/summary?period=day\|month` | 認証 | 回数・トークン・推定費用・上限に対する割合 |
+
+### 3.3 入力検査・AI分析
+
+| メソッド | パス | 権限 | 説明 |
+|---|---|---|---|
+| POST | `/api/v1/security/scan-preview` | admin, member | AIを呼ばずに検査のみ。マスク済みテキストと検出結果を返す（送信前確認用）。scanは記録、本文は保存しない |
+| POST | `/api/v1/analyses` | admin, member | 分析要求。202 で `analysis_id` を返す。入力検査の全体判定が `block`（認証・秘密情報の検出、インジェクション High/Critical、マスキング失敗）の場合は 422 `INPUT_BLOCKED` |
+| GET | `/api/v1/analyses/{id}` | 本人 | `status`、`workflow_id`、`scan` 要約、`error_code` |
+
+`POST /analyses` リクエスト：
+
+```json
+{ "input": "毎週の売上報告を作成して、重要な変化をまとめてください。" }
+```
+
+レスポンス（202）：
+
+```json
+{
+  "data": {
+    "id": "0193...",
+    "status": "queued",
+    "scan": {
+      "decision": "allow",
+      "max_severity": "medium",
+      "masking_status": "masked",
+      "masked_input": "担当 [EMAIL_REDACTED] 宛の...",
+      "findings": [{ "category": "pii", "rule_id": "PII-EMAIL", "severity": "medium", "action": "mask_continue", "message": "メールアドレスを検出しマスキングしました" }],
+      "limitations_notice": "検出は完全ではなく、氏名・住所など自動検出できない個人情報や秘密情報が含まれている可能性があります。検出されなかった情報が存在しないことは保証されません。"
+    }
+  }
+}
+```
+
+認証・秘密情報を検出した場合のレスポンス（422）：
+
+```json
+{
+  "type": "https://secureflow.local/problems/input-blocked",
+  "title": "Input blocked",
+  "status": 422,
+  "code": "INPUT_BLOCKED",
+  "detail": "認証情報・秘密情報と思われる文字列が含まれているため処理を停止しました。該当箇所を削除して再度入力してください。",
+  "trace_id": "0193...",
+  "scan": {
+    "decision": "block",
+    "block_reason": "SECRET_DETECTED",
+    "max_severity": "critical",
+    "findings": [{ "category": "secret", "rule_id": "SEC-APIKEY", "severity": "critical", "action": "block", "position_start": 12, "position_end": 31, "message": "APIキー形式の文字列を検出しました" }],
+    "limitations_notice": "..."
+  }
+}
+```
+
+- 停止時は `masked_input` を返さない（秘密情報の周辺文脈も返さない）。位置情報のみを返し、画面側は利用者がまだ保持している入力欄の該当箇所を示す。
+- `severity`（重大度）と `action`（処理動作）は常に別フィールドで返す。処理の流れを表すのは `decision` と各 finding の `action` であり、`severity` から判断しない。
+- `limitations_notice` は入力検査・分析・ワークフロー詳細・承認コンテキストのレスポンスで、検出の有無にかかわらず**常に返す**（[security-design.md §4](security-design.md)）。
+
+### 3.4 ワークフロー
+
+| メソッド | パス | 権限 | 説明 |
+|---|---|---|---|
+| GET | `/api/v1/workflows?status=&cursor=` | 認証 | member は自分のもののみ。admin/auditor は組織内 |
+| GET | `/api/v1/workflows/{id}` | 所有者 / admin / auditor | 現在のタスク、current_revision（no, plan_hash, scan）、状態 |
+| PATCH | `/api/v1/workflows/{id}` | 所有者 | タイトル変更（実行計画外のためリビジョンを作らない）。`If-Match` 必須 |
+| PUT | `/api/v1/workflows/{id}/tasks/{taskId}` | 所有者 | タスク編集。新リビジョン作成・再検査・状態を Draft に戻す。`If-Match` 必須 |
+| POST | `/api/v1/workflows/{id}/tasks` | 所有者 | タスク追加（同上） |
+| DELETE | `/api/v1/workflows/{id}/tasks/{taskId}` | 所有者 | タスク削除（同上） |
+| POST | `/api/v1/workflows/{id}/submit` | 所有者 | Draft→Pending。forbidden 操作含む場合 409 `FORBIDDEN_ACTION_PRESENT`、検査 block の場合 409 `SCAN_BLOCKED` |
+| POST | `/api/v1/workflows/{id}/reopen` | 所有者 | Rejected/Failed→Draft（新リビジョン） |
+| GET | `/api/v1/workflows/{id}/history` | 所有者 / admin / auditor | リビジョン・承認・実行の時系列 |
+
+編集可能な項目：`title`, `description`, `action_type`（ActionCatalogの値のみ）, `steps`, `priority`, `target_data`, `impact_summary`。`derived_permissions`・`policy_decision` はクライアントから受け付けない（サーバー導出）。ユーザー編集内容にも入力検査（マスキング・認証情報検出・インジェクション検出）を適用し、全体判定が `block` の場合は編集を保存せず 422 `INPUT_BLOCKED` を返す。
+
+提出（submit）時、組織内に承認可能な admin（作成者以外の有効な admin）がいない場合も提出は受け付けるが、レスポンスに `"approver_available": false` を含め、画面に「承認可能な管理者がいないため、このワークフローは承認・実行できません」と表示する。
+
+### 3.5 承認
+
+| メソッド | パス | 権限 | 説明 |
+|---|---|---|---|
+| GET | `/api/v1/approvals?status=pending` | admin | 承認待ち一覧（自分が作成者のものは `can_approve=false`、理由 `SELF_CREATED` 付き） |
+| GET | `/api/v1/workflows/{id}/approval-context` | admin / 所有者 | 承認画面表示内容（下記）。所有者には参照のみ（`can_approve=false`） |
+| POST | `/api/v1/workflows/{id}/approve` | admin（他ユーザーが作成したもののみ） | 下記 |
+| POST | `/api/v1/workflows/{id}/reject` | admin（他ユーザーが作成したもののみ） | `{revision_no, plan_hash, reason}` |
+
+`cannot_approve_reason` の値：`SELF_CREATED`（自分が作成者）、`ROLE_NOT_ADMIN`（admin 以外）、`INVALID_STATE`（Pending でない）、`FORBIDDEN_ACTION_PRESENT`、`SCAN_BLOCKED`。
+
+`approval-context` には `approver_available`（組織内に作成者以外の有効な admin が存在するか）を含める。
+
+`approval-context` レスポンス（要件4.5の表示6項目）：
+
+```json
+{
+  "data": {
+    "workflow_id": "0193...",
+    "revision_no": 3,
+    "plan_hash": "9f2c...e1",
+    "policy_version": "2026.11.1",
+    "tasks": [{
+      "position": 1,
+      "title": "週次売上レポート下書き作成",
+      "action_type": "report.draft",
+      "ai_feature": "テキスト要約・レポート下書き生成（模擬実行）",
+      "target_data": "週次売上データの説明文（マスク済み）",
+      "derived_permissions": ["ai.text.read", "report.draft.write"],
+      "impact_summary": "下書きを生成するのみ。外部送信なし",
+      "policy_decision": "allowed"
+    }],
+    "security": { "max_severity": "medium", "decision": "warn", "findings": [ ... ], "limitations_notice": "..." },
+    "requires_risk_acknowledgement": true,
+    "created_by": { "id": "0193...", "name": "申請者" },
+    "can_approve": true,
+    "cannot_approve_reason": null,
+    "approver_available": true
+  }
+}
+```
+
+`approve` リクエスト：
+
+```json
+{ "revision_no": 3, "plan_hash": "9f2c...e1", "acknowledged_risks": true, "comment": "確認済み" }
+```
+
+| 失敗条件 | 応答 |
+|---|---|
+| member / auditor による承認・却下 | 403 `APPROVER_ROLE_REQUIRED` |
+| 作成者本人（admin であっても） | 403 `SELF_APPROVAL_FORBIDDEN` |
+| 承認者が無効化・ロック中 | 401（セッション破棄） |
+| 状態が Pending でない | 409 `WORKFLOW_INVALID_STATE` |
+| revision_no / plan_hash 不一致 | 409 `PLAN_HASH_MISMATCH` |
+| 同一リビジョンに決定済み（同時承認） | 409 `ALREADY_DECIDED` |
+| Medium以上で `acknowledged_risks=false` | 422 `RISK_ACK_REQUIRED` |
+
+### 3.6 実行
+
+| メソッド | パス | 権限 | 説明 |
+|---|---|---|---|
+| POST | `/api/v1/workflows/{id}/execute` | 所有者 / admin | `Idempotency-Key` 必須。再検証後 202 `{execution_id}` |
+| GET | `/api/v1/workflows/{id}/executions` | 所有者 / admin / auditor | 実行履歴と模擬実行結果 |
+
+| 失敗条件 | 応答 |
+|---|---|
+| 有効な承認なし（未承認・承認無効化済み） | 409 `APPROVAL_NOT_VALID` |
+| 再計算ハッシュ不一致 | 409 `PLAN_HASH_MISMATCH` |
+| ポリシー再照合で forbidden | 409 `POLICY_VIOLATION` |
+| 既に実行済み・実行中 | 409 `EXECUTION_ALREADY_EXISTS` |
+| 同一 Idempotency-Key・同一内容の再送 | 202（既存 execution を返す） |
+| 同一 Idempotency-Key・別ワークフロー | 422 `IDEMPOTENCY_KEY_REUSED` |
+
+### 3.7 セキュリティ管理
+
+| メソッド | パス | 権限 | 説明 |
+|---|---|---|---|
+| GET | `/api/v1/security/findings?severity=&status=&category=&cursor=` | admin / auditor / member（自分のみ） | 検出一覧 |
+| PATCH | `/api/v1/security/findings/{id}` | admin | `{status, status_note}`。監査ログ記録 |
+| GET | `/api/v1/security/scans/{id}` | 対象リソースの参照権限者 | |
+| POST | `/api/v1/security/test-runs` | admin | 自己診断開始。202 |
+| GET | `/api/v1/security/test-runs` / `/{id}` | 認証 | 結果一覧・詳細 |
+
+### 3.8 監査ログ
+
+| メソッド | パス | 権限 | 説明 |
+|---|---|---|---|
+| GET | `/api/v1/audit-logs?event_type=&actor_user_id=&result=&severity=&from=&to=&cursor=` | admin / auditor | 組織内のみ。更新・削除APIは**存在しない** |
+| POST | `/api/v1/audit-logs/verify` | admin / auditor | ハッシュチェーン検証。`{valid, checked_count, first_broken_id}` |
+
+### 3.9 設定
+
+| メソッド | パス | 権限 | 説明 |
+|---|---|---|---|
+| GET | `/api/v1/settings/ai` | admin | `{provider, model, api_key_configured: true/false, timeout, max_output_tokens}`。**キー値・末尾桁も返さない** |
+| GET / PATCH | `/api/v1/settings/limits` | admin | 月間トークン上限、ユーザー日次上限、最大入力長 |
+| GET | `/api/v1/settings/security` | admin | リスク判定方針・ルールセット版・ポリシー版（参照のみ。D4により固定） |
+
+プロバイダ・モデル・送信先URL・APIキーは環境変数で管理し、APIからは変更できない（D5・SSRF対策）。
+
+### 3.10 ヘルスチェック
+
+| メソッド | パス | 権限 | 説明 |
+|---|---|---|---|
+| GET | `/api/health/live` | 不要 | Liveness。プロセスが応答できれば 200 `{"status":"ok"}`。外部依存は確認しない |
+| GET | `/api/health/ready` | 不要 | Readiness。DB（appロールで `SELECT 1`）と Redis（`PING`）に到達できれば 200 `{"status":"ok"}`、いずれか不可なら 503 `{"status":"unavailable"}` |
+
+どちらもバージョン・ホスト名・接続先・エラー詳細・どの依存が失敗したかを返さない。認証不要のためレート制限（IP単位 60回/分）を適用する。失敗の詳細はアプリケーションログにのみ記録する。
