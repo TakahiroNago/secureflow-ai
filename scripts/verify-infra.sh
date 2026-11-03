@@ -54,6 +54,35 @@ done
 check "app role cannot connect to maintenance db 'postgres'" \
   "! psql_as \"\$DB_USERNAME\" \"\$DB_PASSWORD\" postgres 'SELECT 1'"
 
+if [ -n "$(docker compose ps -q app 2>/dev/null)" ]; then
+  echo "== P0-DB-02: owner credentials are absent from runtime containers =="
+  for s in app worker scheduler; do
+    check "$s has no DB_MIGRATOR_* / POSTGRES_PASSWORD in its environment" \
+      "! docker compose exec -T $s env | grep -qE '^(DB_MIGRATOR_|POSTGRES_PASSWORD=)'"
+  done
+  check "php artisan migrate in the app container fails (no DDL privilege)" \
+    "! docker compose exec -T app php artisan migrate --force"
+
+  echo "== P0-HC-01 / P0-HC-02: health endpoints through nginx =="
+  base=http://127.0.0.1:8080
+  check "live returns exactly {\"status\":\"ok\"}" \
+    "[ \"\$(curl -s $base/api/health/live)\" = '{\"status\":\"ok\"}' ]"
+  check "ready returns exactly {\"status\":\"ok\"}" \
+    "[ \"\$(curl -s $base/api/health/ready)\" = '{\"status\":\"ok\"}' ]"
+  check "no X-Powered-By / version in Server header" \
+    "! curl -s -I $base/api/health/live | grep -qiE '^x-powered-by|^server: nginx/'"
+  check "no CORS header for foreign Origin" \
+    "! curl -s -I -H 'Origin: https://attacker.example' $base/api/health/live | grep -qi '^access-control-allow-origin'"
+  check "nginx container healthcheck endpoint is not reachable from the host" \
+    "[ \"\$(curl -s -o /dev/null -w '%{http_code}' $base/nginx-health)\" = 404 ]"
+  check "framework /up route is not exposed" \
+    "[ \"\$(curl -s -o /dev/null -w '%{http_code}' $base/up)\" = 404 ]"
+  check "dotfiles are not served" \
+    "[ \"\$(curl -s -o /dev/null -w '%{http_code}' $base/.env)\" = 404 ]"
+  check "health endpoints are rate limited by nginx (429 after burst)" \
+    "for i in \$(seq 1 30); do curl -s -o /dev/null -w '%{http_code}\n' $base/api/health/live; done | grep -q 429"
+fi
+
 echo
 echo "Result: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

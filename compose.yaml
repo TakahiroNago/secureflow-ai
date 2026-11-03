@@ -1,12 +1,63 @@
 # SecureFlow AI — local development stack
 # Image versions are pinned; see README "採用バージョン".
-# DB and Redis are attached only to the internal "data" network and are NOT published to the host.
+#
+# Networks:
+#   data : postgres / redis only + PHP services. internal (no host access, no outbound route).
+#   web  : nginx <-> php-fpm. nginx publishes 127.0.0.1:8080 only.
+#
+# DB credentials:
+#   app / worker / scheduler -> application role only (DML)
+#   migrate / test (profile "tools") -> additionally the owner role (DDL)
 name: ${COMPOSE_PROJECT_NAME:-secureflow}
 
 x-hardening: &hardening
   security_opt:
     - no-new-privileges:true
   restart: unless-stopped
+
+x-php-build: &php-build
+  context: .
+  dockerfile: docker/php/Dockerfile
+  target: dev
+  args:
+    UID: ${HOST_UID:-1000}
+    GID: ${HOST_GID:-1000}
+
+# Runtime environment for Laravel. Owner-role credentials are deliberately absent.
+x-laravel-env: &laravel-env
+  APP_NAME: SecureFlowAI
+  APP_ENV: ${APP_ENV:-local}
+  APP_DEBUG: ${APP_DEBUG:-false}
+  APP_KEY: ${APP_KEY:?set APP_KEY in .env}
+  APP_URL: ${APP_URL:-http://localhost:8080}
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DB_CONNECTION: pgsql
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_DATABASE: ${DB_DATABASE:?set DB_DATABASE in .env}
+  DB_USERNAME: ${DB_USERNAME:?set DB_USERNAME in .env}
+  DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+  REDIS_CLIENT: phpredis
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+  SESSION_DRIVER: redis
+  CACHE_STORE: redis
+  QUEUE_CONNECTION: redis
+  AI_PROVIDER: mock
+
+x-php-service: &php-service
+  <<: *hardening
+  image: secureflow-php:dev
+  build: *php-build
+  volumes:
+    - ./backend:/var/www/html
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
 
 services:
   postgres:
@@ -60,10 +111,83 @@ services:
       timeout: 3s
       retries: 20
 
+  app:
+    <<: *php-service
+    environment:
+      <<: *laravel-env
+    networks: [data, web]
+    healthcheck:
+      # Liveness of php-fpm (TCP accept on :9000). HTTP-level checks go through nginx.
+      test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  worker:
+    <<: *php-service
+    environment:
+      <<: *laravel-env
+    command: ["php", "artisan", "queue:work", "redis", "--sleep=3", "--tries=1", "--max-time=3600"]
+    networks: [data]
+
+  scheduler:
+    <<: *php-service
+    environment:
+      <<: *laravel-env
+    command: ["php", "artisan", "schedule:work"]
+    networks: [data]
+
+  nginx:
+    <<: *hardening
+    image: nginx:1.30.6-alpine3.24
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/nginx/snippets:/etc/nginx/snippets:ro
+    networks: [web]
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/nginx-health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # ---- tools (run on demand; not started by `docker compose up`) -------------
+  # Migrations: the ONLY service that receives the owner-role credentials for the dev DB.
+  migrate:
+    <<: *php-service
+    profiles: [tools]
+    restart: "no"
+    environment:
+      <<: *laravel-env
+      DB_MIGRATOR_USERNAME: ${DB_MIGRATOR_USERNAME:?set DB_MIGRATOR_USERNAME in .env}
+      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?set DB_MIGRATOR_PASSWORD in .env}
+    command: ["php", "artisan", "migrate", "--database=pgsql_migrator", "--force"]
+    networks: [data]
+
+  # Test runner: test database only. Schema is built with the owner role,
+  # test queries run with the application role (docs/test-strategy.md).
+  test:
+    <<: *php-service
+    profiles: [tools]
+    restart: "no"
+    environment:
+      <<: *laravel-env
+      APP_ENV: testing
+      DB_DATABASE: ${DB_TEST_DATABASE:?set DB_TEST_DATABASE in .env}
+      DB_MIGRATOR_USERNAME: ${DB_MIGRATOR_USERNAME:?set DB_MIGRATOR_USERNAME in .env}
+      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?set DB_MIGRATOR_PASSWORD in .env}
+    command: ["php", "vendor/bin/pest"]
+    networks: [data]
+
 networks:
-  # internal: no route to the outside world and not reachable from the host
   data:
     internal: true
+  web:
 
 volumes:
   pgdata:
