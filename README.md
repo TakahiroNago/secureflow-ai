@@ -123,9 +123,42 @@ bash scripts/verify-infra.sh
 | http://localhost:8080 | nginx（ビルド済み SPA + API） |
 | http://localhost:5173 | Vite 開発サーバー（ホットリロード。`/api` は nginx へプロキシ） |
 
-公開ポートはどちらも `127.0.0.1` のみにバインドしています。PostgreSQL と Redis はホストに公開していません。
+公開ポートはどちらも `127.0.0.1` のみにバインドしています（既定値。`NGINX_PORT` / `FRONTEND_PORT` で変更可能）。PostgreSQL と Redis はホストに公開していません。
 
 停止：`docker compose down`（データも削除する場合は `docker compose down -v`）
+
+## 複数環境の同時起動
+
+検証用クローンなどを同じマシンで同時に動かす場合は、**起動前に必ず** `.env` を変更してください。
+
+> **変更せずに起動してはいけません。** `.env.example` の既定値（プロジェクト名 `secureflow`）のままだと、別ディレクトリのクローンでも既存環境と同じプロジェクトとして扱われ、既存のコンテナを置き換え、既存のボリュームを再利用します。DB ロールのパスワードはボリュームの初回作成時にのみ設定されるため、新しく生成したパスワードとも一致しません。
+
+| 変数 | 既定値 | 分離されるもの |
+|---|---|---|
+| `COMPOSE_PROJECT_NAME` | `secureflow` | コンテナ・ネットワーク・ボリューム・PHP イメージタグ（`<プロジェクト名>-php:dev`） |
+| `NGINX_PORT` | `8080` | nginx のホストポート（変更時は `APP_URL` も合わせる） |
+| `FRONTEND_PORT` | `5173` | Vite 開発サーバーのホストポート |
+
+セットアップ手順 2 の `init-env.sh` の直後に実行します（プロジェクト名とポートは任意の値に置き換えてください）。
+
+```bash
+sed -i \
+  -e 's/^COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=secureflow-check/' \
+  -e 's/^NGINX_PORT=.*/NGINX_PORT=18080/' \
+  -e 's/^FRONTEND_PORT=.*/FRONTEND_PORT=15173/' \
+  -e 's|^APP_URL=.*|APP_URL=http://localhost:18080|' \
+  .env
+
+# 確認：PHP イメージが <プロジェクト名>-php:dev になっていること
+docker compose config --images
+```
+
+以降の手順は同じです。`scripts/verify-infra.sh` も同じ変数を参照し、その環境だけを検査します。
+
+- `docker compose` は、その環境のディレクトリで実行してください（プロジェクトは `.env` で決まります）。
+- コンテナは `restart: unless-stopped` のため、**停止せずに残すと Docker Desktop の次回起動時に再び起動します。** 検証後は `docker compose down` を実行してください。
+- `docker compose down -v` は実行したディレクトリのプロジェクトのボリュームを削除します。実行前に `.env` の `COMPOSE_PROJECT_NAME` を確認してください。
+- キャッシュを使わずに PHP イメージをビルドする場合：`docker compose build --no-cache --pull app`
 
 ## ヘルスチェック
 
@@ -201,7 +234,7 @@ docker compose run --rm --no-deps frontend npm audit
 | `scripts/*.sh: Permission denied` | Windows 側のエディタで編集すると実行権限が外れることがある。`bash scripts/xxx.sh` で実行するか `chmod +x scripts/*.sh` |
 | `.env` の値を作り直したい | `docker compose down -v` で DB ボリュームを削除してから `.env` を削除し、`scripts/init-env.sh` を再実行（DB ロールのパスワードは初回起動時にのみ設定されるため） |
 | `docker` コマンドが WSL で見つからない | Docker Desktop の WSL integration で Ubuntu を有効にする |
-| 再起動時に `error mounting ".../docker-desktop-bind-mounts/..." ... no such file or directory` | Docker Desktop（WSL2）の bind mount 参照が古くなった状態。`docker compose up -d --force-recreate` でコンテナを作り直す（データは名前付きボリュームに残る） |
+| Docker Desktop 再起動後に nginx が終了コード 127 で停止（`error mounting ".../docker-desktop-bind-mounts/..."`、`not a directory` または `no such file or directory`）／ API が 404 `File not found.` を返す／ `Could not open input file: artisan` | Docker Desktop（WSL2）の bind mount が起動直後に解決できず、マウント先が空になった状態。`app` は `healthy` のままなので、`docker compose exec app ls public` で確認する。該当サービスだけを `docker compose up -d --no-deps --force-recreate <サービス名>` で作り直す（データは名前付きボリュームに残る） |
 
 ## ライセンス
 

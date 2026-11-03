@@ -4,7 +4,15 @@
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
+
+# Resolve these the way Compose does (shell > .env > default) so that every check below
+# targets this project and its ports, never another copy running on the same machine.
+shell_project=${COMPOSE_PROJECT_NAME-}; shell_nginx_port=${NGINX_PORT-}; shell_frontend_port=${FRONTEND_PORT-}
 set -a; . ./.env; set +a
+export COMPOSE_PROJECT_NAME="${shell_project:-${COMPOSE_PROJECT_NAME:-secureflow}}"
+export NGINX_PORT="${shell_nginx_port:-${NGINX_PORT:-8080}}"
+export FRONTEND_PORT="${shell_frontend_port:-${FRONTEND_PORT:-5173}}"
+echo "Target: project=$COMPOSE_PROJECT_NAME nginx=127.0.0.1:$NGINX_PORT frontend=127.0.0.1:$FRONTEND_PORT"
 
 pass=0; fail=0
 ok()   { echo "  [PASS] $1"; pass=$((pass+1)); }
@@ -64,7 +72,9 @@ if [ -n "$(docker compose ps -q app 2>/dev/null)" ]; then
     "! docker compose exec -T app php artisan migrate --force"
 
   echo "== P0-HC-01 / P0-HC-02: health endpoints through nginx =="
-  base=http://127.0.0.1:8080
+  base=http://127.0.0.1:$NGINX_PORT
+  check "this project's nginx is published on 127.0.0.1:$NGINX_PORT" \
+    "[ \"\$(docker compose port nginx 80)\" = 127.0.0.1:$NGINX_PORT ]"
   check "live returns exactly {\"status\":\"ok\"}" \
     "[ \"\$(curl -s $base/api/health/live)\" = '{\"status\":\"ok\"}' ]"
   check "ready returns exactly {\"status\":\"ok\"}" \
@@ -86,14 +96,16 @@ fi
 
 if [ -n "$(docker compose ps -q frontend 2>/dev/null)" ]; then
   echo "== P0-FE-01: frontend delivery =="
+  check "this project's Vite dev server is published on 127.0.0.1:$FRONTEND_PORT" \
+    "[ \"\$(docker compose port frontend 5173)\" = 127.0.0.1:$FRONTEND_PORT ]"
   check "nginx serves the built SPA at /" \
-    "curl -s http://127.0.0.1:8080/ | grep -q '<title>SecureFlow AI</title>'"
+    "curl -s http://127.0.0.1:$NGINX_PORT/ | grep -q '<title>SecureFlow AI</title>'"
   check "SPA fallback: unknown client route returns index.html" \
-    "curl -s http://127.0.0.1:8080/some/client/route | grep -q '<div id=\"root\">'"
+    "curl -s http://127.0.0.1:$NGINX_PORT/some/client/route | grep -q '<div id=\"root\">'"
   check "SPA responses carry the CSP header" \
-    "curl -s -I http://127.0.0.1:8080/ | grep -qi \"^content-security-policy: default-src 'self'\""
+    "curl -s -I http://127.0.0.1:$NGINX_PORT/ | grep -qi \"^content-security-policy: default-src 'self'\""
   check "Vite dev server proxies /api to nginx (same-origin)" \
-    "[ \"\$(curl -s http://127.0.0.1:5173/api/health/live)\" = '{\"status\":\"ok\"}' ]"
+    "[ \"\$(curl -s http://127.0.0.1:$FRONTEND_PORT/api/health/live)\" = '{\"status\":\"ok\"}' ]"
 fi
 
 echo
