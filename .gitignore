@@ -1,0 +1,39 @@
+# ---- Secrets / local environment (never commit) ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+
+# ---- Dependencies / build output ----
+node_modules/
+vendor/
+dist/
+build/
+coverage/
+.phpunit.cache/
+.phpunit.result.cache
+playwright-report/
+test-results/
+blob-report/
+
+# ---- Logs / runtime ----
+*.log
+npm-debug.log*
+.pnpm-debug.log*
+
+# ---- Editor / OS ----
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+*:Zone.Identifier
+
+# ---- Local tool settings ----
+.claude/settings.local.json

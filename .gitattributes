@@ -1,0 +1,18 @@
+# Normalize all text files to LF in the repository and working tree
+* text=auto eol=lf
+
+*.sh    text eol=lf
+*.php   text eol=lf diff=php
+*.md    text eol=lf diff=markdown
+*.sql   text eol=lf
+
+# Binary files
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.woff  binary
+*.woff2 binary
+*.pdf   binary
