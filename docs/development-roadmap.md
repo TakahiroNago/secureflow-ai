@@ -22,7 +22,7 @@
 | 0-1 | Git 初期化、`.gitignore`、`.gitattributes`、`.editorconfig`、`.env.example`、`LICENSE`（MIT）、設計書（v1.1）の登録 | `.env` が追跡対象外。`.env.example` はダミー値のみ。秘密情報スキャンで検出0件 | `git check-ignore`、`git status`、gitleaks（コンテナで実行） |
 | 0-2 | Docker Compose の基盤：`postgres`（初期化スクリプトで owner / app ロール・開発用DB・テスト用DB作成）、`redis`（パスワード必須）、PHP イメージ（Dockerfile）のビルド | postgres・redis が healthy。ホストに DB・Redis ポートが公開されていない。ロール属性・権限が設計どおり。PHP イメージがビルドでき、拡張が揃っている。採用バージョンをタグで固定 | P0-DB-03、P0-NET-01、P0-NET-02、`docker compose ps` |
 | 0-3 | Laravel 雛形（コンテナ内の Composer で作成）、Sanctum、Pest、Larastan、Pint、DB接続2系統（app / migrator）、Redis 設定、`app` / `worker` / `scheduler` / `migrate` / `nginx` サービス、Liveness / Readiness | live・ready が仕様どおり。app ロールで DDL 不可、migrate 経路で成功。Pest・Larastan・Pint 成功 | P0-HC-01、P0-HC-02、P0-DB-01、P0-DB-02 |
-| 0-4 | React 雛形（Vite + TS + Tailwind）、ESLint（`react/no-danger` を error）、Vitest、`frontend` サービス、nginx からの配信 | 画面表示、Vite proxy で live ヘルスチェック取得。Lint・型・テスト・ビルド成功 | P0-FE-01 |
+| 0-4 | React 雛形（Vite + TS + Tailwind）、ESLint（`no-restricted-syntax` で `dangerouslySetInnerHTML`・`innerHTML` 等を error）、Vitest、`frontend` サービス、nginx からの配信 | 画面表示、Vite proxy で live ヘルスチェック取得。Lint・型・テスト・ビルド成功 | P0-FE-01 |
 | 0-5 | GitHub Actions（secret-scan：gitleaks・Trivy／backend・frontend：Lint・型・テスト・ビルド）、GitHub リポジトリ作成と初回 push（push 前に秘密情報・個人情報・不要ファイルを確認） | GitHub 上で CI 成功 | Actions 実行結果、P0-SEC-01 |
 | 0-6 | README（セットアップ・アーキテクチャ概要・**採用バージョン一覧**・ヘルスチェック・マイグレーション手順） | 新しいクローンから README の手順どおりに起動・テストできる | 手順の再現確認 |
 

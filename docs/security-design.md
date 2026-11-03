@@ -298,7 +298,7 @@ AI出力スキーマ（概要）：
 ## 14. XSS対策
 
 1. **AI出力・ユーザー入力由来の文字列は React のテキスト描画（`{value}`）のみで表示する。**
-2. **HTMLとして描画する機能は原則禁止**：`dangerouslySetInnerHTML`、`innerHTML`、Markdown→HTML 変換、`eval`/`new Function` を使用しない。ESLint（`react/no-danger` 等）と Semgrep でエラー化する。例外が必要になった場合は設計レビューを必須とする。
+2. **HTMLとして描画する機能は原則禁止**：`dangerouslySetInnerHTML`、`innerHTML`、Markdown→HTML 変換、`eval`/`new Function` を使用しない。ESLint（`no-restricted-syntax` による `dangerouslySetInnerHTML`・`innerHTML`/`outerHTML`・`insertAdjacentHTML`・`document.write` の禁止、`no-eval`・`no-new-func`）と Semgrep でエラー化する。ESLint ルール自体の有効性もテストで検証する（P0-FE-01）。例外が必要になった場合は設計レビューを必須とする。
 3. URL の自動リンク化をしない。`href` に動的値を使う場合は `https:` のみ許可。
 4. サーバー側の HTML 除去は**多層防御の補助**であり、これに依存しない。
 5. CSP：`default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`（Vite 開発時のみ緩和）。

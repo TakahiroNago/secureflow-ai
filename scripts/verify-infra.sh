@@ -73,14 +73,27 @@ if [ -n "$(docker compose ps -q app 2>/dev/null)" ]; then
     "! curl -s -I $base/api/health/live | grep -qiE '^x-powered-by|^server: nginx/'"
   check "no CORS header for foreign Origin" \
     "! curl -s -I -H 'Origin: https://attacker.example' $base/api/health/live | grep -qi '^access-control-allow-origin'"
+  # With the SPA fallback these paths return index.html (or 404 before 0-4), never the real endpoint.
   check "nginx container healthcheck endpoint is not reachable from the host" \
-    "[ \"\$(curl -s -o /dev/null -w '%{http_code}' $base/nginx-health)\" = 404 ]"
-  check "framework /up route is not exposed" \
-    "[ \"\$(curl -s -o /dev/null -w '%{http_code}' $base/up)\" = 404 ]"
+    "b=\$(curl -s $base/nginx-health); [ \"\$b\" != 'ok' ] && ! echo \"\$b\" | grep -qx ok"
+  check "framework /up route is not exposed (not handled by Laravel)" \
+    "! curl -s $base/up | grep -qiE 'application up|laravel'"
   check "dotfiles are not served" \
     "[ \"\$(curl -s -o /dev/null -w '%{http_code}' $base/.env)\" = 404 ]"
   check "health endpoints are rate limited by nginx (429 after burst)" \
     "for i in \$(seq 1 30); do curl -s -o /dev/null -w '%{http_code}\n' $base/api/health/live; done | grep -q 429"
+fi
+
+if [ -n "$(docker compose ps -q frontend 2>/dev/null)" ]; then
+  echo "== P0-FE-01: frontend delivery =="
+  check "nginx serves the built SPA at /" \
+    "curl -s http://127.0.0.1:8080/ | grep -q '<title>SecureFlow AI</title>'"
+  check "SPA fallback: unknown client route returns index.html" \
+    "curl -s http://127.0.0.1:8080/some/client/route | grep -q '<div id=\"root\">'"
+  check "SPA responses carry the CSP header" \
+    "curl -s -I http://127.0.0.1:8080/ | grep -qi \"^content-security-policy: default-src 'self'\""
+  check "Vite dev server proxies /api to nginx (same-origin)" \
+    "[ \"\$(curl -s http://127.0.0.1:5173/api/health/live)\" = '{\"status\":\"ok\"}' ]"
 fi
 
 echo
