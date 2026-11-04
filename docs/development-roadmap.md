@@ -30,9 +30,9 @@
 
 | 工程 | 内容 | 完了条件 | テスト方法 |
 |---|---|---|---|
-| 1-1 | organizations / organization_settings / users / audit_logs マイグレーション、DB権限・改変拒否トリガー、テスト用DBのガードと破壊的コマンドの制限（[database-design.md §4.5・§4.6](database-design.md)）、`tests/Security` の `Pest.php`・`phpunit.xml` への登録 | migrate / rollback 成功。app ロールで audit_logs の UPDATE/DELETE が失敗し、`id` 指定の INSERT と `nextval()` が拒否される。テスト用DB以外で破壊的操作を実行できない | マイグレーションテスト、ST-28（DB部分）、[test-strategy.md §13](test-strategy.md) |
+| 1-1 | organizations / organization_settings / users / audit_logs マイグレーション（チェーン用の列は工程1-3で追加）、DB権限・改変拒否トリガー、テスト用DBのガードと破壊的コマンドの制限（[database-design.md §4.5・§4.6](database-design.md)）、`tests/Security` の `Pest.php`・`phpunit.xml` への登録 | migrate / rollback 成功。app ロールで audit_logs の UPDATE/DELETE が失敗し、`id` 指定の INSERT と `nextval()` が拒否される。テスト用DB以外で破壊的操作を実行できない | マイグレーションテスト、ST-28（DB部分）、[test-strategy.md §13](test-strategy.md) |
 | 1-2 | 認証API・ログイン画面・セッション管理・ロック・`user:create` コマンド・Seeder、Argon2id の設定、`User` モデルと Factory の設計どおりの修正（`HasUuids` を含む） | ログイン/ログアウト可、未認証 401、6回目 429、ロック動作 | Feature、ST-05, 24, 25, 26, 27、Vitest |
-| 1-3 | AuditLogger（組織単位のチェーンヘッドとロックによるハッシュチェーン）・認証イベント記録 | 記録にパスワード等が含まれない。チェーン検証成功 | Unit、ST-28 |
+| 1-3 | AuditLogger（組織単位のチェーンヘッドとロックによるハッシュチェーン。`audit_logs` のチェーン用の列・制約・インデックス・権限を一体として設計）・認証イベント記録 | 記録にパスワード等が含まれない。チェーン検証成功 | Unit、ST-28 |
 | 1-4 | ActionCatalog、AiProvider、MockAiProvider、AiGateway（モック）、OutputValidator（スキーマ・許可リスト） | 不正JSON・未知キー・未知操作を拒否、forbidden 判定 | Unit（§4 のモックシナリオ）、ST-07 |
 | 1-5 | workflows / revisions / tasks / approvals / executions マイグレーション、StateMachine、PlanHasher、Policy、組織スコープ | 不正遷移 409、他人データ 404、ハッシュ仕様どおり | Unit（遷移全組合せ、正規化）、Isolation、ST-12, 23, 34 |
 | 1-6 | ai_analysis_requests、`failed_jobs`（テーブルと権限）、AnalyzeWorkflowJob（モック）、ワークフローAPI・画面（入力・分析・表示・編集・保存） | 入力→生成→編集→保存。編集で新リビジョン | Feature、Vitest |

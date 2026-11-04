@@ -1,7 +1,7 @@
 # SecureFlow AI — データベース設計書
 
-- 版：v1.3（2026-11-04）
-- 状態：確定（v1.3：工程1-1 の設計レビューを反映。v1.2：列挙列の NOT NULL 方針を明記。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.4（2026-11-04）
+- 状態：確定（v1.4：テスト専用 owner ロールとコマンド制限を追加。v1.3：工程1-1 の設計レビューを反映。v1.2：列挙列の NOT NULL 方針を明記。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - DBMS：PostgreSQL 18.6（インフラ要件。`compose.yaml` でタグを固定する）
 
 ---
@@ -248,7 +248,7 @@ security_test_runs 1─* security_test_results
 
 **`id` とチェーン順序は別物：** IDENTITY の `id` は採番順であり、トランザクションのコミット順序を保証しない（先に採番した行が後からコミットされることがある）。**`id` の順序をハッシュチェーンの順序として扱わない。**
 
-**チェーンの直列化：** チェーンは組織単位とし、順序は組織単位のチェーンヘッドとロックで管理する。書き込みはトランザクション内で該当チェーンのヘッドをロックし、ヘッドのハッシュを `prev_hash` として書き込み、ヘッドを更新する。チェーンヘッドの構造、`organization_id` が NULL のイベントの扱い、検証方法は工程1-3の設計で確定する。
+**チェーンの直列化：** チェーンは組織単位とし、順序は組織単位のチェーンヘッドとロックで管理する。書き込みはトランザクション内で該当チェーンのヘッドをロックし、ヘッドのハッシュを `prev_hash` として書き込み、ヘッドを更新する。チェーンヘッドの構造、`organization_id` が NULL のイベントの扱い、ロック方法、検証方法は工程1-3の設計で確定する。チェーン用の列（`chain_id` など）は工程1-1では追加せず、工程1-3で列・制約・インデックス・権限を一体として設計する。
 
 **トランザクションとの関係：** 状態変更の成功イベントは業務処理と同一トランザクションで記録する（業務がロールバックされればログも残らない＝事実と一致）。認可拒否・検証失敗・例外などの失敗イベントは業務トランザクションの外で記録する（ロールバックで消えないように）。
 
@@ -287,7 +287,8 @@ security_test_runs 1─* security_test_results
 | ロール | 用途 | 権限 | 認証情報を持つコンテナ |
 |---|---|---|---|
 | `postgres` | スーパーユーザー。コンテナ初回起動時の初期化スクリプト（ロール・DB作成）のみで使用 | 全権限 | `postgres` |
-| `secureflow_owner` | DB・スキーマ所有・マイグレーション専用（`DB_MIGRATOR_*`）。スーパーユーザーではない（`NOSUPERUSER NOCREATEDB NOCREATEROLE`） | DDL | `migrate`、`test`（テスト用DBのスキーマ初期化のみ。§4.6） |
+| `secureflow_owner` | 開発用DB・スキーマ所有・マイグレーション専用（`DB_MIGRATOR_*`）。スーパーユーザーではない（`NOSUPERUSER NOCREATEDB NOCREATEROLE`）。テスト用DBには接続できない | DDL | `migrate` のみ |
+| `secureflow_test_owner` | テスト用DB・スキーマ所有。スキーマ初期化とマイグレーション専用（`DB_TEST_MIGRATOR_*`）。`NOSUPERUSER NOCREATEDB NOCREATEROLE`。**開発用DBには接続できない** | テスト用DBの DDL のみ | `test` のみ |
 | `secureflow_app` | アプリ実行時（`DB_*`）。`NOSUPERUSER NOCREATEDB NOCREATEROLE` | 下表のみ。**スキーマへの CREATE 権限なし** | `app` / `worker` / `scheduler` |
 
 ### 4.1 初期化（Phase 0）
@@ -298,6 +299,9 @@ security_test_runs 1─* security_test_results
 2. データベース `secureflow` を owner 所有で作成（テスト用 `secureflow_test` も同様）
 3. `REVOKE ALL ON DATABASE ... FROM PUBLIC`、`GRANT CONNECT ... TO secureflow_app`
 4. `public` スキーマ：所有者を owner に変更、`REVOKE ALL ON SCHEMA public FROM PUBLIC`（`CREATE` だけでなく `USAGE` も PUBLIC から外す）、`GRANT USAGE ON SCHEMA public TO secureflow_app`
+5. テスト用DBの所有者を `secureflow_test_owner` に変更する（`02-test-owner.sh`）。開発用の owner からテスト用DBへの接続権限、テスト用の owner から開発用DBへの接続権限は与えない
+
+**既存ボリュームへの追加：** 初期化スクリプトは初回起動時にしか動かないため、`scripts/add-test-owner.sh` で同じスクリプトを実行中のコンテナに流す（冪等）。ボリュームは破棄しない。`REASSIGN OWNED` は開発用DBの所有者まで変更するため使わない。
 
 **既定権限（DEFAULT PRIVILEGES）は付与しない。** 各マイグレーションで、テーブルごとに必要な権限だけを明示的に `GRANT` する（付与漏れは app からのアクセス失敗＝fail closed になり、テストで検出される）。`migrations` テーブルへの権限は app に与えない。
 
@@ -315,9 +319,9 @@ security_test_runs 1─* security_test_results
 ### 4.3 マイグレーションの実行経路
 
 - マイグレーションは**専用の `migrate` サービス**（Compose の `tools` プロファイル）でのみ実行する：`docker compose run --rm migrate`（内部で `php artisan migrate --database=pgsql_migrator --force`）。
-- `pgsql_migrator` 接続の認証情報（`DB_MIGRATOR_*`）は `migrate` と `test` のサービスにのみ渡す。`app` コンテナで `php artisan migrate` を実行しても app ロールに DDL 権限がないため失敗する。
-- `test` サービスは `DB_DATABASE` をテスト用DBに固定し、owner 接続を **テスト用DBのスキーマ初期化とマイグレーションにのみ** 使う。テスト本体のクエリは app ロールの接続で行い、権限不足を見逃さない（[test-strategy.md](test-strategy.md)）。
-- **制限：** owner ロールは開発用DBとテスト用DBで共通のため、この制限はDB権限ではなく接続設定と §4.6 のガードで担保している。
+- `pgsql_migrator` 接続の認証情報は、`migrate` サービスには `secureflow_owner`、`test` サービスには `secureflow_test_owner` を渡す。`test` サービスに開発用の owner の認証情報は渡さない。`app` コンテナで `php artisan migrate` を実行しても app ロールに DDL 権限がないため失敗する。
+- `test` サービスは owner 接続を **テスト用DBのスキーマ初期化とマイグレーションにのみ** 使う。テスト本体のクエリは app ロールの接続で行い、権限不足を見逃さない（[test-strategy.md](test-strategy.md)）。
+- テスト用の owner は開発用DBに接続できないため、この分離はDB権限で担保される。
 
 ### 4.4 Phase 0 時点のスキーマ
 
@@ -330,8 +334,15 @@ Phase 0 では業務テーブルを作成しない（Laravel 雛形の既定マ�
 | `migrate` | 可 | 可（`migrate` サービス） | 可（`migrate` サービス） |
 | `migrate:rollback` | 可 | **管理された手順でのみ可** | 不可 |
 | `migrate:fresh`、`migrate:refresh`、`migrate:reset`、`db:wipe` | 可 | 不可 | 不可 |
+| `key:generate`、`queue:clear`、`queue:flush` | 可 | 可 | 不可 |
+| `db:seed`、`schema:dump` | 可 | **管理された手順でのみ可** | 不可 |
+| `cache:clear` | 可 | 可 | 可 |
 
-Laravel 13.39.0 の `DB::prohibitDestructiveCommands()` は上記4コマンドに加えて `migrate:rollback` も禁止するため使用しない。4コマンドは各コマンドクラスの `prohibit()` で個別に禁止し、`migrate:rollback` は本番相当でのみ禁止する。
+「本番相当」は `APP_ENV` が `local`・`testing` のいずれでもない環境（未知の値を含む）とする。
+
+Laravel 13.39.0 の `DB::prohibitDestructiveCommands()` は `migrate:fresh`・`migrate:refresh`・`migrate:reset`・`db:wipe` に加えて `migrate:rollback` も禁止するため使用しない（実機で確認済み）。各コマンドクラスの `prohibit()` で個別に制御する。
+
+**`db:seed`・`schema:dump` の手順：** 実行前に `.env` の `COMPOSE_PROJECT_NAME` で対象を確認する。`db:seed` は `--class` で Seeder を指定する。`schema:dump` は `migrate` サービスで実行し、マイグレーションファイルを削除する `--prune` は使わない。
 
 **開発用DBの rollback の手順：**
 
@@ -350,7 +361,7 @@ Laravel 13.39.0 の `DB::prohibitDestructiveCommands()` は上記4コマンド�
 |---|---|
 | 環境 | `APP_ENV` が完全一致で `testing` |
 | 設定 | 両接続のDB名が完全一致で `secureflow_test`（接頭辞・接尾辞で判定しない）、`DB_URL` が空、ホストとポートが想定どおり（`postgres:5432`） |
-| 実接続 | `current_database()` が `secureflow_test`、接続ユーザーが想定ロール、スーパーユーザーでない、owner が NOCREATEDB |
+| 実接続 | `current_database()` が `secureflow_test`、接続ユーザーが想定ロール（`secureflow_test_owner` / `secureflow_app`）、スーパーユーザーでない、owner が NOCREATEDB、owner が開発用DBへの接続権限を持たない |
 
 - コマンドの禁止（§4.5）の解除も、`APP_ENV` だけでは行わず、設定の条件をすべて満たす場合に限る。これにより、`APP_ENV=testing` を指定しても開発用DBには実行できない。
 - **DB自体の作成・削除は PostgreSQL の初期化スクリプトに限定する。** owner は NOCREATEDB のため、テストやアプリからは実行できない。テストが行うのは、テスト用DB内のスキーマのリセットのみ。

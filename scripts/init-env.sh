@@ -18,6 +18,7 @@ set_kv() { sed -i "s|^$1=.*|$1=$2|" .env; }
 set_kv POSTGRES_PASSWORD    "$(rand)"
 set_kv DB_PASSWORD          "$(rand)"
 set_kv DB_MIGRATOR_PASSWORD "$(rand)"
+set_kv DB_TEST_MIGRATOR_PASSWORD "$(rand)"
 set_kv REDIS_PASSWORD       "$(rand)"
 set_kv APP_KEY              "base64:$(openssl rand -base64 32)"
 set_kv HOST_UID             "$(id -u)"

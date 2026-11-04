@@ -81,7 +81,7 @@
 | `frontend` | 開発時のVite dev server（本番相当ではビルド成果物をnginxが配信） | `127.0.0.1:5173` | — |
 
 - 公開するポートは `127.0.0.1` にバインドし、LANへ公開しない。DB・Redis はホストに公開せず、Compose 内部ネットワークからのみ到達できる（調査が必要な場合は `docker compose exec postgres psql` を使う）。
-- **owner ロールの認証情報は `migrate` サービスと、テスト用DBのスキーマ初期化を行う `test` サービスにのみ渡す**（[database-design.md §4.3・§4.6](database-design.md)）。`app` / `worker` / `scheduler` のコンテナには owner のパスワードが存在しないため、通常のLaravel実行経路からDDLは実行できない（`php artisan migrate` を app コンテナで実行しても権限不足で失敗する＝fail closed）。
+- **owner ロールの認証情報は `migrate` サービスにのみ渡す。** テスト用DBのスキーマ初期化を行う `test` サービスには、開発用DBに接続できないテスト専用の owner（`secureflow_test_owner`）のみを渡す（[database-design.md §4.3・§4.6](database-design.md)）。`app` / `worker` / `scheduler` のコンテナには owner のパスワードが存在しないため、通常のLaravel実行経路からDDLは実行できない（`php artisan migrate` を app コンテナで実行しても権限不足で失敗する＝fail closed）。
 - コンテナイメージは実際に採用したバージョンのタグで固定し、README に記載する。
 
 ### 4.1 開発環境

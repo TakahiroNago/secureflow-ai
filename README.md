@@ -41,7 +41,7 @@ migrate（owner ロール：マイグレーション専用・都度実行）
 backend/    Laravel API（app/, config/, routes/, tests/）
 frontend/   React + TypeScript + Vite + Tailwind CSS
 docker/     nginx / php / postgres の設定と初期化スクリプト
-scripts/    init-env.sh（.env 生成）、verify-infra.sh（基盤検証）、check-published-ports.sh（公開ポート検査）、test-*.sh（検査の負のテスト）
+scripts/    init-env.sh（.env 生成）、add-test-owner.sh（既存環境の更新）、verify-infra.sh（基盤検証）、check-published-ports.sh（公開ポート検査）、test-*.sh（検査の負のテスト）
 docs/       要件定義・設計書
 .github/    GitHub Actions（CI）
 ```
@@ -176,17 +176,19 @@ docker compose config --images
 | ロール | 用途 | 認証情報を受け取るサービス |
 |---|---|---|
 | `postgres` | 初回起動時のロール・DB 作成のみ | `postgres` |
-| `secureflow_owner` | スキーマ所有・マイグレーション（DDL） | `migrate`、`test` のみ |
-| `secureflow_app` | アプリ実行時（DML のみ、CREATE 権限なし） | `app`、`worker`、`scheduler` |
+| `secureflow_owner` | 開発用 DB のスキーマ所有・マイグレーション（DDL）。テスト用 DB には接続不可 | `migrate` のみ |
+| `secureflow_test_owner` | テスト用 DB のスキーマ所有・初期化（DDL）。開発用 DB には接続不可 | `test` のみ |
+| `secureflow_app` | アプリ実行時（DML のみ、CREATE 権限なし） | `app`、`worker`、`scheduler`、`test` |
 
 - マイグレーション：`docker compose run --rm migrate`（`php artisan migrate --database=pgsql_migrator`）
+- **既存の環境を更新する場合：** `bash scripts/add-test-owner.sh` を 1 回実行します（`.env` に設定を追加し、実行中の `postgres` にロールを作成します。ボリュームは破棄せず、再実行しても安全です）。`compose.yaml` の変更により、次回の通常の `docker compose up` で `postgres` コンテナが再作成されます（データは名前付きボリュームに残ります）。
 - `app` コンテナで `php artisan migrate` を実行しても権限不足で失敗します（意図した動作）。
 - テーブルごとの権限は各マイグレーションで明示的に付与します（既定権限は付与しない）。
 
 ## テストと静的解析
 
 ```bash
-# バックエンド（テスト用 DB secureflow_test。スキーマは owner、テストは app ロール）
+# バックエンド（テスト用 DB secureflow_test。スキーマは secureflow_test_owner、テストは app ロール）
 docker compose run --rm test                                   # Pest
 docker compose run --rm --no-deps test php vendor/bin/pint --test
 docker compose run --rm --no-deps test php vendor/bin/phpstan analyse --memory-limit=1G

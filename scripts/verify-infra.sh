@@ -45,34 +45,53 @@ check "unauthenticated PING is rejected (NOAUTH)" \
 check "authenticated PING succeeds" \
   "docker compose exec -T -e REDISCLI_AUTH=\"\$REDIS_PASSWORD\" redis redis-cli ping | grep -q PONG"
 
+: "${DB_TEST_MIGRATOR_USERNAME:=secureflow_test_owner}" "${DB_TEST_MIGRATOR_PASSWORD:=}" # older .env
+
 echo "== P0-DB-03: role attributes =="
-for r in "$DB_MIGRATOR_USERNAME" "$DB_USERNAME"; do
+for r in "$DB_MIGRATOR_USERNAME" "$DB_TEST_MIGRATOR_USERNAME" "$DB_USERNAME"; do
   attrs=$(psql_su postgres "SELECT concat(rolsuper::int, rolcreatedb::int, rolcreaterole::int, rolreplication::int, rolbypassrls::int) FROM pg_roles WHERE rolname='$r'")
   if [ "$attrs" = "00000" ]; then ok "$r is NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"; else ng "$r attributes=$attrs"; fi
 done
 
 for db in "$DB_DATABASE" "$DB_TEST_DATABASE"; do
   echo "== database: $db =="
+  if [ "$db" = "$DB_TEST_DATABASE" ]; then
+    expected_owner=$DB_TEST_MIGRATOR_USERNAME; expected_password=$DB_TEST_MIGRATOR_PASSWORD
+  else
+    expected_owner=$DB_MIGRATOR_USERNAME; expected_password=$DB_MIGRATOR_PASSWORD
+  fi
   owner=$(psql_su postgres "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname='$db'")
-  [ "$owner" = "$DB_MIGRATOR_USERNAME" ] && ok "$db owned by $DB_MIGRATOR_USERNAME" || ng "$db owner=$owner"
+  [ "$owner" = "$expected_owner" ] && ok "$db owned by $expected_owner" || ng "$db owner=$owner"
   schema_owner=$(psql_su "$db" "SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname='public'")
-  [ "$schema_owner" = "$DB_MIGRATOR_USERNAME" ] && ok "schema public owned by $DB_MIGRATOR_USERNAME" || ng "schema owner=$schema_owner"
+  [ "$schema_owner" = "$expected_owner" ] && ok "schema public owned by $expected_owner" || ng "schema owner=$schema_owner"
   check "PUBLIC has no CREATE on schema public" \
     "[ \"\$(psql_su $db \"SELECT has_schema_privilege('public','public','CREATE')\")\" = f ]"
   check "app role can connect" "psql_as \"\$DB_USERNAME\" \"\$DB_PASSWORD\" $db 'SELECT 1'"
   check "P0-DB-01(db): app role cannot CREATE TABLE" \
     "! psql_as \"\$DB_USERNAME\" \"\$DB_PASSWORD\" $db 'CREATE TABLE p0_probe(x int)'"
-  check "owner role can CREATE/DROP TABLE" \
-    "psql_as \"\$DB_MIGRATOR_USERNAME\" \"\$DB_MIGRATOR_PASSWORD\" $db 'CREATE TABLE p0_probe(x int); DROP TABLE p0_probe'"
+  check "$expected_owner can CREATE/DROP TABLE" \
+    "psql_as \"\$expected_owner\" \"\$expected_password\" $db 'CREATE TABLE p0_probe(x int); DROP TABLE p0_probe'"
 done
 check "app role cannot connect to maintenance db 'postgres'" \
   "! psql_as \"\$DB_USERNAME\" \"\$DB_PASSWORD\" postgres 'SELECT 1'"
 
+echo "== P0-DB-04: development and test owners are separated =="
+check "test owner cannot connect to the development database" \
+  "o=\$(psql_as \"\$DB_TEST_MIGRATOR_USERNAME\" \"\$DB_TEST_MIGRATOR_PASSWORD\" \"\$DB_DATABASE\" 'SELECT 1' 2>&1); [ \$? -ne 0 ] && grep -qi 'permission denied' <<< \"\$o\""
+check "test owner cannot connect to maintenance db 'postgres'" \
+  "o=\$(psql_as \"\$DB_TEST_MIGRATOR_USERNAME\" \"\$DB_TEST_MIGRATOR_PASSWORD\" postgres 'SELECT 1' 2>&1); [ \$? -ne 0 ] && grep -qi 'permission denied' <<< \"\$o\""
+check "development owner cannot connect to the test database" \
+  "o=\$(psql_as \"\$DB_MIGRATOR_USERNAME\" \"\$DB_MIGRATOR_PASSWORD\" \"\$DB_TEST_DATABASE\" 'SELECT 1' 2>&1); [ \$? -ne 0 ] && grep -qi 'permission denied' <<< \"\$o\""
+check "test service receives only the test owner credentials" \
+  "[ \"\$(docker compose run --rm --no-deps -T test sh -c 'echo \"\$DB_MIGRATOR_USERNAME:\$DB_MIGRATOR_PASSWORD\"' 2>/dev/null)\" = \"\$DB_TEST_MIGRATOR_USERNAME:\$DB_TEST_MIGRATOR_PASSWORD\" ]"
+check "migrate service receives only the development owner credentials" \
+  "[ \"\$(docker compose run --rm --no-deps -T migrate sh -c 'echo \"\$DB_MIGRATOR_USERNAME:\$DB_MIGRATOR_PASSWORD:\${DB_TEST_MIGRATOR_PASSWORD:-none}\"' 2>/dev/null)\" = \"\$DB_MIGRATOR_USERNAME:\$DB_MIGRATOR_PASSWORD:none\" ]"
+
 if [ -n "$(docker compose ps -q app 2>/dev/null)" ]; then
   echo "== P0-DB-02: owner credentials are absent from runtime containers =="
   for s in app worker scheduler; do
-    check "$s has no DB_MIGRATOR_* / POSTGRES_PASSWORD in its environment" \
-      "! docker compose exec -T $s env | grep -qE '^(DB_MIGRATOR_|POSTGRES_PASSWORD=)'"
+    check "$s has no owner credentials / POSTGRES_PASSWORD in its environment" \
+      "! docker compose exec -T $s env | grep -qE '^(DB_MIGRATOR_|DB_TEST_MIGRATOR_|POSTGRES_PASSWORD=)'"
   done
   check "php artisan migrate in the app container fails because of the DB privilege" \
     "! migrate_output=\$(docker compose exec -T app php artisan migrate --force 2>&1) && grep -qi 'permission denied' <<< \"\$migrate_output\""

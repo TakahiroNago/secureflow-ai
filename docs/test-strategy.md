@@ -168,7 +168,8 @@ Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・�
 | P0-HC-04 | `worker` / `scheduler` コンテナの healthcheck | Laravel ソースの存在、`artisan --version` の成功、`queue:work` / `schedule:work` の実プロセス（PID 1）を確認する。処理するジョブがないだけでは unhealthy にならない | `test-worker-healthcheck.sh`（負のテスト） |
 | P0-DB-01 | app ロールで DDL（`CREATE TABLE`） | 権限エラーで失敗 | Pest（app 接続） |
 | P0-DB-02 | owner ロールでのマイグレーション経路 | `migrate` サービスで `migrate` が成功。`app` / `worker` / `scheduler` には `DB_MIGRATOR_*` が存在しない。`app` での `migrate` は権限エラーで失敗する | `docker compose run --rm migrate`、`verify-infra.sh` |
-| P0-DB-03 | ロール属性 | owner・app とも NOSUPERUSER / NOCREATEDB / NOCREATEROLE。PUBLIC に public スキーマの CREATE 権限なし | psql での確認SQL |
+| P0-DB-03 | ロール属性 | owner・テスト用 owner・app とも NOSUPERUSER / NOCREATEDB / NOCREATEROLE。PUBLIC に public スキーマの CREATE 権限なし | psql での確認SQL |
+| P0-DB-04 | owner の分離 | テスト用 owner は開発用DB・`postgres` に接続できない。開発用 owner はテスト用DBに接続できない。`test` / `migrate` は各自の owner の認証情報のみを受け取る | `verify-infra.sh` |
 | P0-NET-01 | ポート公開 | `docker inspect` の設定値と実際のバインドが許可リスト（nginx・frontend のみ）と一致し、公開先は 127.0.0.1 のみ。`0.0.0.0`、IPv6（`::`）、アドレスなし、想定外のポート、host ネットワーク、publish-all を失敗にする。評価できない場合も失敗にする | `check-published-ports.sh`、`test-published-ports.sh`（負のテスト） |
 | P0-NET-02 | Redis 認証 | パスワードなし接続が `NOAUTH` で拒否される | `redis-cli` |
 | P0-SEC-01 | リポジトリの秘密情報 | gitleaks・Trivy secret で検出0件。`.env` が追跡対象外 | CI、`git check-ignore` |
@@ -178,7 +179,7 @@ Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・�
 
 ## 13. 工程1-1 のDBテスト
 
-テスト本体は `secureflow_app` ロールで実行する。owner 接続はスキーマの初期化とマイグレーションに限定する（[database-design.md §4.6](database-design.md)）。
+テスト本体は `secureflow_app` ロールで実行する。`secureflow_test_owner` の接続はスキーマの初期化とマイグレーションに限定する（[database-design.md §4.6](database-design.md)）。
 
 | ID | テスト | 期待結果 |
 |---|---|---|
@@ -188,4 +189,4 @@ Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・�
 | ST-28（DB部分） | `audit_logs` の改変 | app の UPDATE / DELETE / TRUNCATE は権限エラー。owner でも、行がある状態の UPDATE / DELETE / TRUNCATE はトリガーで拒否される |
 | DB-CON-01 | 制約 | NOT NULL の列挙列への NULL、不正な列挙値、大文字小文字違いのメール重複、範囲外の設定値が拒否される。ID を省略した生SQLの INSERT が拒否される |
 | DB-GUARD-01 | テスト用DBのガード | [database-design.md §4.6](database-design.md) の各条件について、1つでも満たさない場合に中断する |
-| DB-GUARD-02 | 破壊的コマンドの制限 | `APP_ENV=testing` を指定した場合を含め、テスト用DB以外では `migrate:fresh`・`migrate:refresh`・`migrate:reset`・`db:wipe` が拒否され、データが残る。開発用DBの `migrate:rollback --step` は実行できる。本番相当の `migrate:rollback` は拒否される |
+| DB-GUARD-02 | 破壊的コマンドの制限 | `APP_ENV=testing` を指定した場合を含め、テスト用DB以外では `migrate:fresh`・`migrate:refresh`・`migrate:reset`・`db:wipe` が拒否され、データが残る。開発用DBの `migrate:rollback --step` は実行できる。本番相当では `migrate:rollback`・`key:generate`・`queue:clear`・`queue:flush`・`db:seed`・`schema:dump` が拒否され、`cache:clear` は拒否されない |
