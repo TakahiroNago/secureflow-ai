@@ -1,7 +1,7 @@
 # SecureFlow AI — アーキテクチャ設計書
 
-- 版：v1.2（2026-11-04）
-- 状態：確定（v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.3（2026-11-04）
+- 状態：確定（v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - 関連：[database-design.md](database-design.md) / [api-design.md](api-design.md) / [security-design.md](security-design.md) / [threat-model.md](threat-model.md) / [test-strategy.md](test-strategy.md) / [development-roadmap.md](development-roadmap.md)
 
 ---
@@ -240,13 +240,17 @@ Draft ──submit──▶ Pending ──approve──▶ Approved ──execut
 | `APP_ENV` / `APP_DEBUG` / `APP_KEY` | Laravel標準 | `APP_DEBUG=false`（開発時のみtrue） |
 | `DB_*` | 実行用ロール（`secureflow_app`）。app / worker / scheduler に渡す | — |
 | `DB_MIGRATOR_*` | マイグレーション用ロール（`secureflow_owner`）。**`migrate` サービスにのみ渡す** | — |
+| `DB_TEST_USERNAME` / `DB_TEST_PASSWORD` | テスト本体を実行するロール（`secureflow_test_app`）。**`test` サービスに `DB_USERNAME` / `DB_PASSWORD` として渡す**。`postgres` はロール作成にのみ使う | `secureflow_test_app` / 生成値 |
+| `DB_TEST_MIGRATOR_USERNAME` / `DB_TEST_MIGRATOR_PASSWORD` | テスト用DBの owner（`secureflow_test_owner`）。**`test` サービスに `DB_MIGRATOR_*` として渡す**。`postgres` はロール作成にのみ使う | `secureflow_test_owner` / 生成値 |
+| `COMPOSE_PROJECT_NAME` / `NGINX_PORT` / `FRONTEND_PORT` | 複数環境の分離 | `secureflow` / `8080` / `5173` |
 | `REDIS_PASSWORD` | Redis認証 | 必須 |
 | `AI_PROVIDER` | `mock` / `openai` | `mock` |
 | `OPENAI_API_KEY` | APIキー（画面からは設定不可・表示不可） | 空 |
 | `OPENAI_MODEL` | 使用モデル名（Phase 2実装前に確定） | 空 |
 | `OPENAI_BASE_URL` | 送信先（固定値。画面から変更不可） | `https://api.openai.com/v1` |
 | `AI_TIMEOUT_SECONDS` / `AI_MAX_OUTPUT_TOKENS` | 呼び出し制限 | 30 / 2000 |
-| `SESSION_IDLE_MINUTES` / `SESSION_ABSOLUTE_HOURS` | セッション期限 | 30 / 12 |
+| `SESSION_IDLE_MINUTES` / `SESSION_ABSOLUTE_HOURS` | セッション期限。`SESSION_IDLE_MINUTES` は `config/session.php` の `lifetime` に対応付ける（Laravel 標準の `SESSION_LIFETIME` は使わない）。`SESSION_ABSOLUTE_HOURS` は絶対期限のミドルウェアが参照する | 30 / 12 |
+| `SANCTUM_STATEFUL_DOMAINS` | SPA認証を許可する `ホスト:ポート`（カンマ区切り、ワイルドカードなし）。開発環境では Compose が `localhost:${NGINX_PORT}`、`127.0.0.1:${NGINX_PORT}`、`localhost:${FRONTEND_PORT}`、`127.0.0.1:${FRONTEND_PORT}` を設定する | 上記 |
 
 `AI_PROVIDER=openai` は、Phase 2 でマスキング・出力検証が完成し、必要なセキュリティテスト（[test-strategy.md §5](test-strategy.md) の ST-02〜04, 07, 10, 13〜19, 30, 31, 35〜37）を通過し、D11 の確認が完了するまで受け付けない（起動時の設定検証でエラー）。それまで OpenAiProvider はコード上も登録しない。
 
@@ -283,7 +287,7 @@ Draft ──submit──▶ Pending ──approve──▶ Approved ──execut
 | D5 | OpenAI APIキーは環境変数のみで管理 | 2026-11-03 |
 | D6 | アプリ内セキュリティ自己診断を実装。CIテストはGitHub Actionsで別途実行 | 2026-11-03 |
 | D7 | マスキング後の文章のみ保存。原文は保存しない | 2026-11-03 |
-| D8 | ユーザーは管理コマンド・Seederで作成。公開サインアップなし | 2026-11-03 |
+| D8 | ユーザーは管理コマンドで作成。Seeder はログイン可能な固定ユーザーを生成しない（D18）。公開サインアップなし | 2026-11-03（2026-11-04 更新） |
 | D9 | Phase 1 はモックAIのみ | 2026-11-03 |
 | D10 | Redis を導入 | 2026-11-03 |
 | D11 | OpenAIモデル名は環境変数。Phase 2-8 の直前に、モデル・API仕様・データ保持・学習利用・送信データ範囲・レート制限等を確認する。マスキング・出力検証が完成し必要なセキュリティテストを通過するまで実接続を有効化しない | 2026-11-03 |
@@ -292,3 +296,6 @@ Draft ──submit──▶ Pending ──approve──▶ Approved ──execut
 | D14（Q-PII） | 個人情報（メール・電話・カード・マイナンバー等）はマスキング後に続行可。認証・秘密情報（APIキー・トークン・パスワード・秘密鍵/PEM等）は原則停止。severity と action を分離。マスキング失敗時は fail closed。検出限界を画面・APIで明示し、検出漏れがないことを保証しない | 2026-11-03 |
 | D15 | 開発場所は WSL2 の Linux ファイルシステム。PHP・Composer はコンテナ内のみ。DBロールは owner / app に分離しマイグレーションは専用経路。DB・Redis ポートは非公開。ヘルスチェックは Liveness / Readiness を分離 | 2026-11-03 |
 | D16 | リポジトリは GitHub `TakahiroNago/secureflow-ai`（Public、MIT License） | 2026-11-03 |
+| D17 | ログイン失敗は 401 `AUTH_FAILED` に統一。アカウントロック中も既存セッションと承認・実行は維持し（条件は `is_active = true` のみ）、`is_active=false` は既存セッションも即時無効化。パスワード変更では他のセッションを無効化し、現在のセッションは維持 | 2026-11-04 |
+| D18 | ログインユーザーの作成は `user:create` に一本化する。初期データ投入は組織や初期設定などに限定し、ログイン可能な固定ユーザーを生成しない。公開リポジトリに既知の認証情報を残さないため | 2026-11-04 |
+| D19 | 漏洩パスワード辞書は SecLists の個別ファイルから作成して同梱し、実行時に外部へ問い合わせない（出典・更新方針は [security-design.md §12.1](security-design.md)） | 2026-11-04 |

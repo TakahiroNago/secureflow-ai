@@ -1,7 +1,7 @@
 # SecureFlow AI — テスト戦略
 
-- 版：v1.2（2026-11-04）
-- 状態：確定（v1.2：工程1-1 の設計レビューと検査の修正を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.3（2026-11-04）
+- 状態：確定（v1.3：工程1-2 の認証テストを追加。v1.2：工程1-1 の設計レビューと検査の修正を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -191,3 +191,25 @@ Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・�
 | DB-CON-01 | 制約 | NOT NULL の列挙列への NULL、不正な列挙値、大文字小文字違いのメール重複、範囲外の設定値が拒否される。ID を省略した生SQLの INSERT が拒否される |
 | DB-GUARD-01 | テスト用DBのガード | [database-design.md §4.6](database-design.md) の各条件について、1つでも満たさない場合に中断する |
 | DB-GUARD-02 | 破壊的コマンドの制限 | `APP_ENV=testing` を指定した場合を含め、テスト用DB以外では `migrate:fresh`・`migrate:refresh`・`migrate:reset`・`db:wipe` が拒否され、データが残る。開発用DBの `migrate:rollback --step` は実行できる。本番相当では `migrate:rollback`・`key:generate`・`queue:clear`・`queue:flush`・`db:seed`・`schema:dump` が拒否され、`cache:clear` は拒否されない |
+
+## 14. 工程1-2 の認証テスト
+
+§5 の ST-05、ST-24〜27 に加えて、以下を確認する。
+
+| ID | テスト | 期待結果 |
+|---|---|---|
+| AUTH-ERR-01 | ログイン失敗の応答 | 存在しないメールアドレス、パスワード不一致、`is_active=false`、ロック中で、ステータス・`code`・`detail` が同一の 401 `AUTH_FAILED`。すべての場合でハッシュ検証が実行される |
+| AUTH-LOCK-01 | ロック | 連続5回の失敗でロックされ、正しいパスワードでも 401。15分後に解除。並行した失敗でも回数を取りこぼさない。成功で回数がリセットされる |
+| AUTH-LOCK-02 | ロックと既存セッション（T-33） | ロック中も既存セッションは有効なまま（工程1-2） |
+| AUTH-LOCK-03 | ロックと承認・実行（T-33） | ロック中の admin は承認でき、ロック中の所有者は実行できる。`is_active=false` では拒否される。承認可能な admin の判定にロック中の admin を含める（API が実装される工程2-5・2-6で実施） |
+| AUTH-RATE-01 | レート制限 | 6回目は 429 と `Retry-After`。`X-Forwarded-For` の詐称で回避できない |
+| AUTH-SES-01 | 無効化 | `is_active=false` にすると、既存セッションの次のリクエストが 401 になり、セッションが破棄される |
+| AUTH-SES-02 | セッションの期限 | 無操作30分で失効。操作を続けても絶対12時間で失効 |
+| AUTH-SES-03 | ログアウト | セッションが破棄され、同じ Cookie では 401。CSRF トークンが再生成される |
+| AUTH-CSRF-01 | ステートフルドメイン | 許可された `ホスト:ポート` からのみ Cookie 認証が有効。許可外のオリジンでは認証されない |
+| AUTH-PW-01 | パスワード変更 | 他のセッションは無効になり、現在のセッションは有効なまま。`password_changed_at` が更新される |
+| AUTH-PW-02 | パスワード変更の拒否 | 現在のパスワード不一致は 422 `CURRENT_PASSWORD_INVALID` で、ロックの失敗回数に数えない。12文字未満、上限超過、辞書に一致（大文字小文字を問わない）、現在と同じは 422 |
+| AUTH-PW-03 | 辞書の完全性 | 同梱ファイルの SHA-256 が [security-design.md §12.1](security-design.md) と一致する。実行時に外部へ通信しない |
+| AUTH-HASH-01 | ハッシュ | 保存値が Argon2id。応答・ログにパスワードとハッシュが含まれない |
+| AUTH-CMD-01 | `user:create` | パスワードは対話入力のみ（引数なし）。ポリシー違反を拒否。出力にパスワードを含まない |
+| AUTH-SEED-01 | Seeder | 実行後もログイン可能なユーザーが増えない。投入されるのは組織や初期設定のみ |

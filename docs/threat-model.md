@@ -1,7 +1,7 @@
 # SecureFlow AI — 脅威モデル
 
-- 版：v1.1（2026-11-03）
-- 状態：確定（v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.2（2026-11-04）
+- 状態：確定（v1.2：アカウントロックによるDoSを追加。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - 手法：STRIDE ＋ OWASP Top 10 for LLM Applications 2025
 
 ---
@@ -86,6 +86,7 @@ MVP（Phase 1〜3）：React SPA、Laravel API、Queue Worker、PostgreSQL、Red
 | T-30 | I | DB・Redis への直接接続 | U1 | ホストにポートを公開しない、Redis パスワード必須 | P0-NET-01 |
 | T-31 | I | 公開リポジトリへの秘密情報・個人情報・不要ファイルの混入 | — | `.gitignore`、push 前確認、CI の gitleaks（全履歴）・Trivy secret スキャン | CI-SECRET |
 | T-32 | I | ヘルスチェック経由の内部情報（バージョン・接続先・エラー）漏洩 | U1 | Liveness/Readiness とも `status` のみ返却、詳細はログのみ | P0-HC-01, P0-HC-02 |
+| T-33 | D | アカウントロックの悪用（第三者が失敗を繰り返し、対象者のログインを妨害） | U1 | レート制限、ロックは15分で解除、既存セッションと承認・実行は維持、監査ログ（`auth.locked`・`auth.login_failed`）で検知 | AUTH-LOCK-02, AUTH-LOCK-03 |
 
 （ST-xx は [test-strategy.md §5](test-strategy.md) のセキュリティテストケース、P0-xx は同 §12 の Phase 0 基盤テスト）
 
@@ -116,3 +117,5 @@ MVP（Phase 1〜3）：React SPA、Laravel API、Queue Worker、PostgreSQL、Red
 | R-06 | ローカル開発環境の HTTP 運用（Secure Cookie 不可） | ローカル限定・127.0.0.1バインド。公開環境では HTTPS 必須 |
 | R-07 | 検出できない形式の認証・秘密情報（独自形式のキー、分割された値等）はマスキング・停止されずに送信されうる | 検出漏れがないことは保証しない。画面・APIで明示。ルールを継続的に追加 |
 | R-08 | 組織に admin が1名しかいない場合、その admin が作成したワークフローは実行できない | 職務分掌を優先した仕様として受容（D13）。運用上は admin を2名以上置く |
+| R-09 | メールアドレスを知る第三者は、対象者の新規ログインを15分間止め、繰り返すことができる（T-33） | 総当たり対策とのトレードオフとして受容。影響は新規ログインに限定され、既存セッションと承認・実行は維持される。監査ログの `auth.locked`・`auth.login_failed`（工程1-3）で検知する |
+| R-10 | ロック中でも、既に侵害された既存セッションは失効しない（ロックは侵害対応の手段ではないため） | `is_active = false` とパスワード変更で失効できる。侵害の兆候に応じた失効の仕組みは将来追加できるようにする（[security-design.md §12](security-design.md)） |

@@ -1,7 +1,7 @@
 # SecureFlow AI — API設計書
 
-- 版：v1.1（2026-11-03）
-- 状態：確定（v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.2（2026-11-04）
+- 状態：確定（v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -41,11 +41,12 @@
 | コード | 用途 |
 |---|---|
 | 200 / 201 / 202 | 成功 / 作成 / 非同期受付 |
-| 401 | 未認証・セッション期限切れ |
+| 401 | 未認証・セッション期限切れ・無効化されたユーザー、ログイン失敗（`AUTH_FAILED`。§3.1.1） |
 | 403 | 認証済みだがロール不足（例：member が監査ログ参照）、自己承認 |
 | 404 | 存在しない、または**別組織・別ユーザーのリソース**（存在の秘匿） |
 | 409 | 状態不整合、リビジョン競合、ハッシュ不一致、二重実行 |
 | 415 | Content-Type 不正 |
+| 419 | CSRF トークンの不一致・期限切れ（`CSRF_TOKEN_MISMATCH`） |
 | 422 | バリデーションエラー、入力検査による停止（`INPUT_BLOCKED`） |
 | 429 | レート制限、AI利用上限超過 |
 | 500 / 503 | 内部エラー / AIプロバイダ利用不可（詳細は返さない） |
@@ -53,7 +54,7 @@
 ### 1.3 認可の処理順（全APIで必須）
 
 1. `auth:sanctum` — 未認証は 401
-2. `EnsureUserIsActive` — 無効・ロック中ユーザーはセッション破棄して 401
+2. `EnsureUserIsActive` — `is_active=false` のユーザーは、既存セッションも即時に破棄して 401。**アカウントロック中でも既存セッションは維持する**（ロックは新規ログインのみを止める。[security-design.md §12](security-design.md)）
 3. 組織スコープ — すべてのクエリに `organization_id = 認証ユーザーの組織` を強制（グローバルスコープ）。範囲外は 404
 4. Policy — コントローラの全アクションで `authorize()` を必須化。ユーザー所有・ロールを判定
 5. FormRequest — 入力検証（未知フィールドは無視せず拒否）
@@ -65,6 +66,7 @@
 | 対象 | 制限 | キー |
 |---|---|---|
 | `POST /auth/login` | 5回/分 | email + IP |
+| `PATCH /account/password` | 5回/分 | ユーザー |
 | `POST /analyses`、`POST /security/scan-preview` | 10回/分 | ユーザー |
 | `POST /security/test-runs` | 3回/時 | 組織 |
 | その他API | 60回/分 | ユーザー（未認証はIP） |
@@ -87,7 +89,7 @@
 | 設定変更 | ○ | × | × |
 | 自分のパスワード変更 | ○ | ○ | ○ |
 
-申請者と承認者は必ず別ユーザーである。組織内に作成者以外の有効な admin がいない場合、そのワークフローは承認できず、実行もできない。
+申請者と承認者は必ず別ユーザーである。組織内に作成者以外の有効な admin がいない場合、そのワークフローは承認できず、実行もできない。本書の「有効」は `is_active = true` を指し、`locked_until` によるロック中のユーザーを含む（ロックは新規ログインのみを止める）。
 
 ## 3. エンドポイント一覧
 
@@ -96,10 +98,42 @@
 | メソッド | パス | 権限 | 説明 |
 |---|---|---|---|
 | GET | `/sanctum/csrf-cookie` | 不要 | CSRF Cookie発行 |
-| POST | `/api/v1/auth/login` | 不要 | `{email, password}`。成功時セッションID再生成。失敗理由は常に同一メッセージ |
+| POST | `/api/v1/auth/login` | 不要 | `{email, password}`。成功時セッションID再生成。失敗は常に 401 `AUTH_FAILED`（§3.1.1） |
 | POST | `/api/v1/auth/logout` | 認証 | セッション破棄 |
 | GET | `/api/v1/auth/me` | 認証 | `{id, name, email, role, organization}` |
-| PATCH | `/api/v1/account/password` | 認証 | `{current_password, new_password}`。他セッション破棄 |
+| PATCH | `/api/v1/account/password` | 認証 | `{current_password, new_password}`。他のセッションを無効化し、現在のセッションは維持（§3.1.2） |
+
+#### 3.1.1 ログインの応答
+
+| 状況 | 応答 |
+|---|---|
+| 成功 | 200 `{ "data": { id, name, email, role, organization } }`。セッションIDを再生成 |
+| 存在しないメールアドレス、パスワード不一致、`is_active=false`、アカウントロック中 | **すべて同じ** 401 `AUTH_FAILED`。どの理由かを応答から区別できないようにする |
+| 形式の不正（必須項目なし、メール形式でない、長さの上限超過、未知のフィールド） | 422（アカウントの状態に関わらず同じ） |
+| CSRF トークンなし・不一致 | 419 `CSRF_TOKEN_MISMATCH` |
+| レート制限超過 | 429 と `Retry-After` |
+
+```json
+{
+  "type": "https://secureflow.local/problems/auth-failed",
+  "title": "Authentication failed",
+  "status": 401,
+  "code": "AUTH_FAILED",
+  "detail": "メールアドレスまたはパスワードが正しくありません。",
+  "trace_id": "0193..."
+}
+```
+
+処理時間も区別できないよう、存在しないメールアドレス、無効、ロック中の場合もパスワードハッシュの検証を実行する。エラー形式は RFC 9457（§1.1）に従う。認証エラーの形式は工程1-2で実装し、全エラーの統一は工程2-9で行う。
+
+#### 3.1.2 パスワード変更
+
+| 状況 | 応答 |
+|---|---|
+| 成功 | 200 `{ "data": { "password_changed_at": "..." } }`。他のセッションを無効化し、**現在のセッションは維持**する（セッションIDは再生成） |
+| 現在のパスワードが不一致 | 422 `CURRENT_PASSWORD_INVALID`。アカウントロックの失敗回数には数えない（レート制限で抑止） |
+| 新しいパスワードがポリシー違反（12文字未満、長さの上限超過、漏洩パスワード辞書に一致、現在のパスワードと同じ） | 422 `errors.new_password` |
+| 未認証 / CSRF トークンなし / レート制限超過 | 401 / 419 / 429 |
 
 ### 3.2 ダッシュボード・利用状況
 
@@ -235,7 +269,7 @@
 |---|---|
 | member / auditor による承認・却下 | 403 `APPROVER_ROLE_REQUIRED` |
 | 作成者本人（admin であっても） | 403 `SELF_APPROVAL_FORBIDDEN` |
-| 承認者が無効化・ロック中 | 401（セッション破棄） |
+| 承認者が無効化（`is_active=false`） | 401（セッション破棄）。処理中に無効化された場合は 403 |
 | 状態が Pending でない | 409 `WORKFLOW_INVALID_STATE` |
 | revision_no / plan_hash 不一致 | 409 `PLAN_HASH_MISMATCH` |
 | 同一リビジョンに決定済み（同時承認） | 409 `ALREADY_DECIDED` |
@@ -250,6 +284,7 @@
 
 | 失敗条件 | 応答 |
 |---|---|
+| 実行者が無効化（`is_active=false`） | 401（セッション破棄）。処理中に無効化された場合は 403 |
 | 有効な承認なし（未承認・承認無効化済み） | 409 `APPROVAL_NOT_VALID` |
 | 再計算ハッシュ不一致 | 409 `PLAN_HASH_MISMATCH` |
 | ポリシー再照合で forbidden | 409 `POLICY_VIOLATION` |

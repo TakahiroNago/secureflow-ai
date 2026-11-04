@@ -1,7 +1,7 @@
 # SecureFlow AI — 開発ロードマップ
 
-- 版：v1.2（2026-11-04）
-- 状態：確定（v1.2：工程1-1 の設計レビューを反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.3（2026-11-04）
+- 状態：確定（v1.3：工程1-2 の範囲を反映。v1.2：工程1-1 の設計レビューを反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -31,7 +31,7 @@
 | 工程 | 内容 | 完了条件 | テスト方法 |
 |---|---|---|---|
 | 1-1 | organizations / organization_settings / users / audit_logs マイグレーション（チェーン用の列は工程1-3で追加）、DB権限・改変拒否トリガー、テスト用DBのガードと破壊的コマンドの制限（[database-design.md §4.5・§4.6](database-design.md)）、`tests/Security` の `Pest.php`・`phpunit.xml` への登録 | migrate / rollback 成功。app ロールで audit_logs の UPDATE/DELETE が失敗し、`id` 指定の INSERT と `nextval()` が拒否される。テスト用DB以外で破壊的操作を実行できない | マイグレーションテスト、ST-28（DB部分）、[test-strategy.md §13](test-strategy.md) |
-| 1-2 | 認証API・ログイン画面・セッション管理・ロック・`user:create` コマンド・Seeder、Argon2id の設定、`User` モデルと Factory の設計どおりの修正（`HasUuids` を含む） | ログイン/ログアウト可、未認証 401、6回目 429、ロック動作 | Feature、ST-05, 24, 25, 26, 27、Vitest |
+| 1-2 | 認証API（`PATCH /account/password` を含む）・ログイン画面・セッション管理・ロック・`user:create` コマンド・Seeder（組織や初期設定のみ。ログイン可能な固定ユーザーは生成しない）、Argon2id の設定、漏洩パスワード辞書、`User` モデルと Factory の設計どおりの修正（`HasUuids` を含む）。認証イベントの監査記録は工程1-3 | ログイン/ログアウト可、未認証 401、失敗は 401 `AUTH_FAILED`、6回目 429、ロック動作（既存セッションは維持）、`is_active=false` で即時無効化、パスワード変更で他のセッションのみ無効化 | Feature、ST-05, 24, 25, 26, 27、[test-strategy.md §14](test-strategy.md)、Vitest |
 | 1-3 | AuditLogger（組織単位のチェーンヘッドとロックによるハッシュチェーン。`audit_logs` のチェーン用の列・制約・インデックス・権限を一体として設計）・認証イベント記録 | 記録にパスワード等が含まれない。チェーン検証成功 | Unit、ST-28 |
 | 1-4 | ActionCatalog、AiProvider、MockAiProvider、AiGateway（モック）、OutputValidator（スキーマ・許可リスト） | 不正JSON・未知キー・未知操作を拒否、forbidden 判定 | Unit（§4 のモックシナリオ）、ST-07 |
 | 1-5 | workflows / revisions / tasks / approvals / executions マイグレーション、StateMachine、PlanHasher、Policy、組織スコープ | 不正遷移 409、他人データ 404、ハッシュ仕様どおり | Unit（遷移全組合せ、正規化）、Isolation、ST-12, 23, 34 |
@@ -46,8 +46,8 @@
 | 2-2 | InjectionDetector（ルール・スコアリング） | 4段階判定が仕様どおり | Unit、ST-02, 13, 14, 15 |
 | 2-3 | InputScanner 統合、scan-preview API、全体判定（action から算出。D4・D14）、scans/findings 保存、限界文言 | block 判定で AI 呼び出し0回。severity と action が別フィールドで返る。限界文言が常に返る | Feature、モック呼出回数検証、ST-39 |
 | 2-4 | OutputValidator 拡張（出力マスキング・カナリア・HTML除去・権限照合）、プロンプト構築 | 各モックシナリオで期待どおり | ST-10, 18, 19 |
-| 2-5 | 承認API・承認画面（ハッシュ照合・admin のみ・自己承認禁止・リスク確認・承認者不在表示）、DBトリガー（自己承認禁止・admin 必須）、submit / reopen | 承認後編集で再承認要求、古いハッシュ 409、自己承認拒否、auditor・member の承認拒否、承認可能な admin 不在で実行不可 | ST-06, 09, 16, 17, 20, 21, 37, 38、E2E一部 |
-| 2-6 | ExecutionVerifier、ExecuteWorkflowJob、Simulators、冪等性、停滞回収 | 未承認実行拒否、二重実行なし、障害時 Failed | ST-08, 22, 33、Concurrency |
+| 2-5 | 承認API・承認画面（ハッシュ照合・admin のみ・自己承認禁止・リスク確認・承認者不在表示）、DBトリガー（自己承認禁止・admin 必須）、submit / reopen | 承認後編集で再承認要求、古いハッシュ 409、自己承認拒否、auditor・member の承認拒否、承認可能な admin 不在で実行不可 | ST-06, 09, 16, 17, 20, 21, 37, 38、AUTH-LOCK-03、E2E一部 |
+| 2-6 | ExecutionVerifier、ExecuteWorkflowJob、Simulators、冪等性、停滞回収 | 未承認実行拒否、二重実行なし、障害時 Failed | ST-08, 22, 33、AUTH-LOCK-03、Concurrency |
 | 2-7 | 全イベントの監査記録、検証API・コマンド、監査ログ画面（フィルタ） | 全イベント記録、改ざん検出、auditor 参照可・member 403 | ST-06, 28、Vitest |
 | 2-8 | **（実装前に D11 確認：モデル・API仕様・データ保持・学習利用・送信データ範囲・レート制限等。確認結果をレビューに提出）** OpenAiProvider（Structured Outputs、tools無し、タイムアウト、再試行、利用記録、上限）、有効化ゲート（起動時の設定検証） | フェイクHTTPで全エラー系成功。有効化条件（[security-design.md §6.1](security-design.md)）を満たすまで `AI_PROVIDER=openai` が拒否される。条件達成と承認後に実APIで手動確認1回 | ST-30, 31、ゲートのテスト |
 | 2-9 | 全体レート制限、セキュリティヘッダ・CSP、エラー形式統一、ログの機密情報除去 | ヘッダ付与、エラーに内部情報なし | ST-11, 29, 32 |
