@@ -1,7 +1,7 @@
 # SecureFlow AI — API設計書
 
-- 版：v1.2（2026-11-04）
-- 状態：確定（v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.3（2026-11-04）
+- 状態：確定（v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -49,7 +49,7 @@
 | 419 | CSRF トークンの不一致・期限切れ（`CSRF_TOKEN_MISMATCH`） |
 | 422 | バリデーションエラー、入力検査による停止（`INPUT_BLOCKED`） |
 | 429 | レート制限、AI利用上限超過 |
-| 500 / 503 | 内部エラー / AIプロバイダ利用不可（詳細は返さない） |
+| 500 / 503 | 内部エラー（`INTERNAL_ERROR`） / AIプロバイダ利用不可、DB・監査・Redis を利用できない、認証情報を検証できない障害（`SERVICE_UNAVAILABLE`。[security-design.md §16.5.1](security-design.md)。詳細は返さない。**障害を `AUTH_FAILED` として返し続けない**） |
 
 ### 1.3 認可の処理順（全APIで必須）
 
@@ -66,12 +66,15 @@
 | 対象 | 制限 | キー |
 |---|---|---|
 | `POST /auth/login` | 5回/分 | email + IP |
+| `POST /auth/login` | 30回/分（工程1-3で追加。**実測に基づかない暫定値。** `AUDIT_LOGIN_IP_LIMIT_PER_MINUTE` で変更でき、負荷試験で見直す）。**現構成では利用者単位でなく全利用者の合計の上限である** | IP（IPv6 は `/64`） |
 | `PATCH /account/password` | 5回/分 | ユーザー |
 | `POST /analyses`、`POST /security/scan-preview` | 10回/分 | ユーザー |
 | `POST /security/test-runs` | 3回/時 | 組織 |
 | その他API | 60回/分 | ユーザー（未認証はIP） |
 
-超過時は 429 と `Retry-After` を返し、監査ログ `rate_limit.exceeded` を記録する。
+超過時は 429 と `Retry-After` を返し、監査ログ `rate_limit.exceeded` を記録する（工程2-7。未認証の超過は大量発生しうるため、キーごとに集約して記録する）。
+
+IP 単位の制限は、NAT 配下など同じ送信元 IP を共有する利用者全員に合算される。**信頼できるリバースプロキシと接続元 IP の取得方法を確定するまで、公開環境へ移行しない。**影響と送信元 IP の前提は [security-design.md §16.5.4](security-design.md) を参照する。
 
 ## 2. ロール別アクセス
 
@@ -108,10 +111,32 @@
 | 状況 | 応答 |
 |---|---|
 | 成功 | 200 `{ "data": { id, name, email, role, organization } }`。セッションIDを再生成 |
-| 存在しないメールアドレス、パスワード不一致、`is_active=false`、アカウントロック中 | **すべて同じ** 401 `AUTH_FAILED`。どの理由かを応答から区別できないようにする |
+| 存在しないメールアドレス、パスワード不一致、`is_active=false`、アカウントロック中（**必要な監査ログを記録できた場合**） | **すべて同じ** 401 `AUTH_FAILED`。どの理由かを応答から区別できないようにする |
 | 形式の不正（必須項目なし、メール形式でない、長さの上限超過、未知のフィールド） | 422（アカウントの状態に関わらず同じ） |
 | CSRF トークンなし・不一致、許可されていないオリジン（`SANCTUM_STATEFUL_DOMAINS` にない、オリジンなし） | 419 `CSRF_TOKEN_MISMATCH` |
 | レート制限超過 | 429 と `Retry-After` |
+| 監査の事前確認に失敗 | **認証情報の正否に関わらず** 503 `SERVICE_UNAVAILABLE` と `Retry-After`。ユーザーの検索とパスワードの検証を行わない |
+| DB のエラーで認証情報を検証できない | 503 `SERVICE_UNAVAILABLE` と `Retry-After` |
+| その他の内部障害 | 500 `INTERNAL_ERROR` |
+| 認証の判定の後に必要な監査ログを追記できない（**認証の成否を問わない**） | 503 `SERVICE_UNAVAILABLE` と `Retry-After`。**成功と失敗で `trace_id` 以外の差を設けない。** 認証が成功していてもセッションを開始しない。失敗回数とロックは維持する（[security-design.md §16.5.1](security-design.md)） |
+| Redis の停止・接続失敗・タイムアウト（**Origin なしの要求を含む**） | RFC 9457 形式の 503 `SERVICE_UNAVAILABLE` と `Retry-After`。**認証処理を継続しない**（fail closed）。レート制限を無効化して認証を続けることはない。**正常時の Origin と CSRF の検証の扱いは変更しない**（[security-design.md §16.5.1](security-design.md)） |
+
+ログアウトは、監査記録に失敗してもセッションを破棄して 204 を返す。Redis が利用できない場合はセッションを破棄できないため 503 を返す（ログアウトは完了していない）。
+
+```json
+{
+  "type": "https://secureflow.local/problems/service-unavailable",
+  "title": "Service unavailable",
+  "status": 503,
+  "code": "SERVICE_UNAVAILABLE",
+  "detail": "現在サービスを利用できません。しばらく待ってから再度お試しください。",
+  "trace_id": "0193..."
+}
+```
+
+**`PATCH /account/password` の 503 の案内：** この API の 503 は、原因とコミットの前後に関わらず、すべて同じ `detail` とする：「パスワード変更の結果を確認できませんでした。変更が確定している可能性があります。できるだけ早く、同じ内容・同じ冪等性キーで再試行してください。」（コミット後の失敗にだけ案内を出すと、現在のパスワードの正否を判別できるため）。クライアントは新しい `Idempotency-Key` を発行せず、同じキーで再試行する。
+
+それ以外の API では、監査の利用不可と Redis の障害で、同じ形式と文言を使い、`Retry-After` を設定する。原因はサーバー側のログでのみ区別する。セッションを確認できない認証済み API も同じ 503 とする（fail closed）。Redis に依存しない `GET /api/health/live` は止めない。`GET /api/health/ready` は Redis の状態を反映して 503 `{"status":"unavailable"}` を返す（§3.10）。経路ごとの動作は [security-design.md §16.5.1](security-design.md) に定める。
 
 ```json
 {
@@ -128,10 +153,19 @@
 
 #### 3.1.2 パスワード変更
 
+`Idempotency-Key`（UUID）ヘッダを必須とする（工程1-3で追加）。ない場合は 422。サーバーは平文で保存しない。有効期限は確定から15分（暫定値。[security-design.md §16.5.5](security-design.md)）。
+
 | 状況 | 応答 |
 |---|---|
-| 成功 | 200 `{ "data": { "password_changed_at": "..." } }`。他のセッションを無効化し、**現在のセッションは維持**する（セッションIDは再生成） |
-| 現在のパスワードが不一致 | 422 `CURRENT_PASSWORD_INVALID`。アカウントロックの失敗回数には数えない（レート制限で抑止） |
+| 成功 | 200 `{ "data": { "password_changed_at": "..." } }`。他のセッションを無効化し、**現在のセッションは維持**する（セッションIDは再生成）。コミット後に必須のセッションの保存に失敗した場合は下記の 503（[security-design.md §16.5.5](security-design.md)） |
+| **DB のコミット後に必須のセッションの保存に失敗** | 503 `SERVICE_UNAVAILABLE` と `Retry-After`。**変更は取り消さない。** 保存されていないセッションIDの Cookie を返さない。同じキー・同じ内容で再試行する |
+| 同じ `Idempotency-Key`・同じ内容の再試行（確定済み、期限内、`current_password` と `new_password` の両方が一致） | 再実行せず、同じ `password_changed_at` で 200。監査ログを追加しない。**セッションが利用できなければ 401 で、再ログインの後に再試行する** |
+| 同じ `Idempotency-Key` で内容が異なる（`current_password` のみの違いを含む） | 409 `IDEMPOTENCY_KEY_CONFLICT`。変更しない |
+| Redis の停止などで、コミットの前に処理できない | 503 `SERVICE_UNAVAILABLE` と `Retry-After`。パスワードは変更されない。同じキーで再試行できる |
+| 監査の事前確認に失敗 | **現在のパスワードの正否に関わらず** 503 `SERVICE_UNAVAILABLE` と `Retry-After`。パスワードの検証と変更を行わない |
+| 判定の後に必要な監査ログを追記できない（**現在のパスワードの正否を問わない**） | 503 `SERVICE_UNAVAILABLE` と `Retry-After`。変更をロールバックし、他のセッションも有効なまま。原因はサーバー側の重大ログで区別する（[security-design.md §16.5.1](security-design.md)） |
+| DB のエラー、行ロック待ちの超過 | 503 `SERVICE_UNAVAILABLE` と `Retry-After`。同じキーで再試行できる |
+| 現在のパスワードが不一致（`auth.password_change_failed` を記録できた場合） | 422 `CURRENT_PASSWORD_INVALID`。アカウントロックの失敗回数には数えない（レート制限で抑止） |
 | 新しいパスワードがポリシー違反（12文字未満、長さの上限超過、漏洩パスワード辞書に一致、現在のパスワードと同じ） | 422 `errors.new_password` |
 | 未認証 / CSRF トークンなし / レート制限超過 | 401 / 419 / 429 |
 
@@ -307,7 +341,7 @@
 | メソッド | パス | 権限 | 説明 |
 |---|---|---|---|
 | GET | `/api/v1/audit-logs?event_type=&actor_user_id=&result=&severity=&from=&to=&cursor=` | admin / auditor | 組織内のみ。更新・削除APIは**存在しない** |
-| POST | `/api/v1/audit-logs/verify` | admin / auditor | ハッシュチェーン検証。`{valid, checked_count, first_broken_id}` |
+| POST | `/api/v1/audit-logs/verify` | admin / auditor | 工程2-7で実装。**認証ユーザーの組織のチェーンのみ**検証する。`{valid, checked_count, first_broken_seq, reason_code}`（`id` はチェーン順序ではないため返さない）。`chain_id` を入力として受け取らず、システムチェーンは検証・参照できない |
 
 ### 3.9 設定
 
@@ -325,5 +359,7 @@
 |---|---|---|---|
 | GET | `/api/health/live` | 不要 | Liveness。プロセスが応答できれば 200 `{"status":"ok"}`。外部依存は確認しない |
 | GET | `/api/health/ready` | 不要 | Readiness。DB（appロールで `SELECT 1`）と Redis（`PING`）に到達できれば 200 `{"status":"ok"}`、いずれか不可なら 503 `{"status":"unavailable"}` |
+
+**応答形式：** 通常の API エラーは RFC 9457 形式（§1.1）とする。**ヘルスチェックは監視用のため、工程0で確定したこの形式を維持する。** readiness の 503 に内部情報、接続文字列、例外メッセージを含めない。監視側は HTTP ステータスコードと `status` で判定する。Audit unavailable の間、設定・権限の不備では readiness は 200 のままのため、監査の障害は別の信号で監視する。ストレージの障害の疑い（`storage_scope=db_suspected`）の間は readiness も 503 とする。**liveness は 200 を維持する。readiness の 503 を理由にコンテナを自動で再起動しない**（[security-design.md §16.5.1・§16.5.3](security-design.md)）。
 
 どちらもバージョン・ホスト名・接続先・エラー詳細・どの依存が失敗したかを返さない。認証不要のためレート制限（IP単位 60回/分）を適用する。失敗の詳細はアプリケーションログにのみ記録する。

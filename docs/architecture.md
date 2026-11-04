@@ -1,7 +1,7 @@
 # SecureFlow AI — アーキテクチャ設計書
 
-- 版：v1.3（2026-11-04）
-- 状態：確定（v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.4（2026-11-04）
+- 状態：確定（v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - 関連：[database-design.md](database-design.md) / [api-design.md](api-design.md) / [security-design.md](security-design.md) / [threat-model.md](threat-model.md) / [test-strategy.md](test-strategy.md) / [development-roadmap.md](development-roadmap.md)
 
 ---
@@ -51,7 +51,7 @@
 │ Ai        : AiGateway（上限・タイムアウト・利用記録）→ AiProvider        │
 │               ├ MockAiProvider（開発・テスト・CI・自己診断）            │
 │               └ OpenAiProvider（Phase 2〜、Structured Outputs、tools無し）│
-│ Audit     : AuditLogger（追記専用・ハッシュチェーン）                    │
+│ Audit     : AuditLogger → audit_append()（DB関数）、AuditChainVerifier  │
 │ SelfTest  : SecuritySelfTestRunner                                      │
 └──────┬─────────────────────┬────────────────────────┬──────────────────┘
        │                     │                        │ 送信先は環境変数で固定（SSRF対策）
@@ -83,6 +83,7 @@
 - 公開するポートは `127.0.0.1` にバインドし、LANへ公開しない。DB・Redis はホストに公開せず、Compose 内部ネットワークからのみ到達できる（調査が必要な場合は `docker compose exec postgres psql` を使う）。
 - **owner ロールの認証情報は `migrate` サービスにのみ渡す。** `test` サービスには、開発用DBに接続できないテスト専用のロール（`secureflow_test_owner`・`secureflow_test_app`）のみを渡す（[database-design.md §4.3・§4.6](database-design.md)）。`app` / `worker` / `scheduler` のコンテナには owner のパスワードが存在しないため、通常のLaravel実行経路からDDLは実行できない（`php artisan migrate` を app コンテナで実行しても権限不足で失敗する＝fail closed）。
 - コンテナイメージは実際に採用したバージョンのタグで固定し、README に記載する。
+- **`worker` の定期的な再起動は想定された動作である。** `queue:work --max-time=3600` で約1時間ごとに終了し、`restart: unless-stopped` で再起動する。起動時間が他のサービスより短いことを、異常な再起動と混同しない。
 
 ### 4.1 開発環境
 
@@ -97,7 +98,7 @@
 | `GET /api/health/live` | Liveness | PHPプロセスが応答できるか（外部依存を確認しない） | 200 `{"status":"ok"}` |
 | `GET /api/health/ready` | Readiness | DB（appロールで `SELECT 1`）と Redis（`PING`）に到達できるか | 200 `{"status":"ok"}` ／ 503 `{"status":"unavailable"}` |
 
-応答にはバージョン・ホスト名・接続先・エラー詳細を含めない。失敗の詳細はアプリケーションログにのみ記録する。Docker の healthcheck は nginx・app・worker・scheduler が liveness（DB・Redis に接続しない）、起動順序の制御には postgres・redis 自身の healthcheck を使う。app はソースの存在、php-fpm の応答、Laravel の起動を確認する。worker・scheduler はソースの存在、Laravel の起動、`queue:work` / `schedule:work` の実プロセスを確認し、処理するジョブがないだけでは unhealthy にしない。
+応答にはバージョン・ホスト名・接続先・接続文字列・エラー詳細・例外メッセージを含めない。通常の API エラーは RFC 9457 形式だが、ヘルスチェックはこの形式を維持し、監視側は HTTP ステータスコードと `status` で判定する。**liveness と readiness を混同しない：** readiness はトラフィックの制御のみ、liveness は再起動の判断のみに使い、readiness の 503 を理由にコンテナを自動で再起動しない。readiness は DB と Redis の到達性に加えて、ストレージの障害の疑い（`storage_scope=db_suspected`）でも 503 とする（[security-design.md §16.5.1](security-design.md)）。失敗の詳細はアプリケーションログにのみ記録する。Docker の healthcheck は nginx・app・worker・scheduler が liveness（DB・Redis に接続しない）、起動順序の制御には postgres・redis 自身の healthcheck を使う。app はソースの存在、php-fpm の応答、Laravel の起動を確認する。worker・scheduler はソースの存在、Laravel の起動、`queue:work` / `schedule:work` の実プロセスを確認し、処理するジョブがないだけでは unhealthy にしない。
 
 ## 5. ディレクトリ構成
 
@@ -117,10 +118,10 @@
 │  │  │  ├─ Output/     (OutputValidator, AiTaskSchema)
 │  │  │  └─ Policy/     (ActionCatalog, PermissionPolicy)
 │  │  ├─ Ai/            (Contracts/AiProvider, Providers/*, AiGateway, PromptBuilder, UsageLimiter)
-│  │  ├─ Audit/         (AuditLogger, AuditEventType, HashChain)
+│  │  ├─ Audit/         (AuditLogger, AuditEventType, AuditCanonicalizer, AuditChainVerifier)
 │  │  ├─ SelfTest/      (SecuritySelfTestRunner, Cases/*)
 │  │  ├─ Jobs/
-│  │  └─ Console/Commands/ (user:create, executions:reap-stale, audit:verify)
+│  │  └─ Console/Commands/ (user:create, executions:reap-stale, audit:verify, audit:head, audit:status)
 │  ├─ database/migrations/  seeders/
 │  ├─ resources/security/   (injection-rules, 攻撃コーパス)
 │  └─ tests/ Unit/ Feature/ Security/ Isolation/
@@ -251,6 +252,19 @@ Draft ──submit──▶ Pending ──approve──▶ Approved ──execut
 | `AI_TIMEOUT_SECONDS` / `AI_MAX_OUTPUT_TOKENS` | 呼び出し制限 | 30 / 2000 |
 | `SESSION_IDLE_MINUTES` / `SESSION_ABSOLUTE_HOURS` | セッション期限。`SESSION_IDLE_MINUTES` は `config/session.php` の `lifetime` に対応付ける（Laravel 標準の `SESSION_LIFETIME` は使わない）。`SESSION_ABSOLUTE_HOURS` は絶対期限のミドルウェアが参照する | 30 / 12 |
 | `SANCTUM_STATEFUL_DOMAINS` | SPA認証を許可する `ホスト:ポート`（カンマ区切り、ワイルドカードなし）。開発環境では Compose が `localhost:${NGINX_PORT}`、`127.0.0.1:${NGINX_PORT}`、`localhost:${FRONTEND_PORT}`、`127.0.0.1:${FRONTEND_PORT}` を設定する | 上記 |
+| `AUDIT_LOGIN_IP_LIMIT_PER_MINUTE` | `POST /auth/login` の IP 単位の制限（工程1-3。**実測に基づかない暫定値**。[security-design.md §16.5.4](security-design.md)） | 30 |
+| `AUDIT_SYSTEM_CHAIN_LIMIT_PER_MINUTE` | システムチェーンへの匿名イベントの全体上限（工程1-3。**実測に基づかない暫定値**） | 600 |
+| `DB_UNAVAILABLE_TTL_SECONDS` | DB unavailable の有効期間。経過後の要求から実際の DB 接続で再確認する（工程1-3。暫定値。[security-design.md §16.5.1](security-design.md)） | 30 |
+| `AUDIT_RECHECK_INTERVAL_SECONDS` | Audit unavailable の回復を実際の追記で確認する間隔（工程1-3。暫定値） | 30 |
+| `DB_CONNECT_TIMEOUT_SECONDS` | DB の接続のタイムアウト（`PDO::ATTR_TIMEOUT`。工程1-3。暫定値） | 2 |
+| `DB_STATEMENT_TIMEOUT_MS` / `DB_LOCK_TIMEOUT_MS` / `DB_IDLE_IN_TX_TIMEOUT_MS` | app の接続の `server_options`（工程1-3。暫定値。`lock_timeout` は `statement_timeout` より短くする。[security-design.md §16.5.6](security-design.md)） | 5000 / 3000 / 30000 |
+| `AUDIT_PREFLIGHT_TIMEOUT_MS` | 監査の事前確認の `statement_timeout`（工程1-3。暫定値） | 1000 |
+| `DB_KEEPALIVES_IDLE` / `DB_KEEPALIVES_INTERVAL` / `DB_KEEPALIVES_COUNT` / `DB_TCP_USER_TIMEOUT_MS` | TCP のネットワーク断の検出（工程1-3。暫定値） | 5 / 2 / 3 / 5000 |
+| `PASSWORD_CHANGE_REPLAY_MINUTES` | パスワード変更の `Idempotency-Key` で再試行を受け付ける期間（工程1-3。暫定値。[security-design.md §16.5.5](security-design.md)） | 15 |
+| `AUDIT_PROBE_MIN_INTERVAL_SECONDS` | 確認プローブのコンテナ内の最小間隔（工程1-3。暫定値。[security-design.md §16.5.1](security-design.md)） | 5 |
+| `PASSWORD_PENDING_REDIS_TIMEOUT_MS` / `PASSWORD_PENDING_REDIS_READ_TIMEOUT_MS` / `PASSWORD_PENDING_TTL_MARGIN_SECONDS` | パスワード変更の保留の指紋の書き込みの全体の期限（条件付きで確定。単調増加時計で判定し、超過は成功扱いにせずロールバックする）、読み取りのタイムアウト、キーの有効期限の余裕（工程1-3。[security-design.md §16.5.5](security-design.md)） | 1000 / 900 / 300 |
+| `LOG_AGGREGATION_INTERVAL_SECONDS` | 障害中のログの集約の間隔（工程1-3。暫定値。[security-design.md §16.5.7](security-design.md)） | 60 |
+| `REDIS_TIMEOUT` / `REDIS_READ_TIMEOUT` / `REDIS_MAX_RETRIES` | Redis の接続・読み取りのタイムアウトと再試行。障害中の待ち時間を決める（暫定値。AUDIT-LOAD-01 で確認） | 2 / 2 / 3 |
 
 `AI_PROVIDER=openai` は、Phase 2 でマスキング・出力検証が完成し、必要なセキュリティテスト（[test-strategy.md §5](test-strategy.md) の ST-02〜04, 07, 10, 13〜19, 30, 31, 35〜37）を通過し、D11 の確認が完了するまで受け付けない（起動時の設定検証でエラー）。それまで OpenAiProvider はコード上も登録しない。
 
@@ -299,3 +313,16 @@ Draft ──submit──▶ Pending ──approve──▶ Approved ──execut
 | D17 | ログイン失敗は 401 `AUTH_FAILED` に統一。アカウントロック中も既存セッションと承認・実行は維持し（条件は `is_active = true` のみ）、`is_active=false` は既存セッションも即時無効化。パスワード変更では他のセッションを無効化し、現在のセッションは維持 | 2026-11-04 |
 | D18 | ログインユーザーの作成は `user:create` に一本化する。初期データ投入は組織や初期設定などに限定し、ログイン可能な固定ユーザーを生成しない。公開リポジトリに既知の認証情報を残さないため | 2026-11-04 |
 | D19 | 漏洩パスワード辞書は SecLists の個別ファイルから作成して同梱し、実行時に外部へ問い合わせない（出典・更新方針は [security-design.md §12.1](security-design.md)） | 2026-11-04 |
+| D20 | 監査ログの追記は SECURITY DEFINER の DB 関数 `audit_append()` のみで行い、app ロールは監査テーブルに SELECT と関数の EXECUTE のみを持つ。チェーン順序は `chain_seq` で管理し、`audit_logs.id` を使わない。開発用DBの `audit_logs_id_seq` は現状（次の `id` は 6）を維持する（[database-design.md §3.12](database-design.md)） | 2026-11-04 |
+| D21 | 組織に属さないイベントは NIL UUID のシステムチェーンに記録する。NIL UUID は組織 ID に使えず、システムチェーンは組織の利用者から参照できない。未知のメールアドレスは記録しない | 2026-11-04 |
+| D22 | 検証は PHP の検証器と `audit:verify` で独立に行い、API は工程2-7 とする。検証に失敗してもサービスを自動停止せず、自動修復しない。`audit:head` の外部保管は MVP では手動とする | 2026-11-04 |
+| D23 | 必要な監査ログの追記に失敗した場合、認証の成否を問わず 503 とする。`auth.login` と `auth.password_changed` は業務処理もコミットしない。`auth.login_failed` と `auth.locked` は失敗回数とロックを維持する。`auth.logout` は認証の判定を含まないため、セッションの無効化を優先して 204 とする（[security-design.md §16.5](security-design.md)） | 2026-11-04 |
+| D24 | 認証情報を検証できない障害と不一致を区別し、障害を `AUTH_FAILED` として返さない。成功と失敗で監査の失敗の応答に差を設けず、パスワードの正否を判別させない。パスワード変更の不一致にも必須の監査イベント `auth.password_change_failed` を設ける。事前確認で利用できなければ全要求を 503 で拒否する（[security-design.md §16.5.1](security-design.md)） | 2026-11-04 |
+| D25 | 匿名イベントの上限は実測に基づかない暫定値として環境変数で設定し、未記録の発生は DB とチェーンに依存しない重大ログで検知し、`audit.events_suppressed` を補助とする。工程1-3の検知は重大ログと終了コードのみとし、通知・メトリクス基盤と `audit:verify` の日次の自動検証は後続工程の候補とする | 2026-11-04 |
+| D26 | DB unavailable、Audit unavailable、Redis unavailable を分ける。DB unavailable は確認プローブの `08006` のみで判定する。Audit unavailable は `53100` と設定・権限・スキーマの不備（`42501`、`42883`、`42P01`、`25006`）のみとする。`53100` は DB 全体の書き込みに影響する可能性があるものとして扱い（`storage_scope=db_suspected`）、DB 全体の正常と誤認しない。回復は `audit.availability_checked` の実際の追記で確認する（`outage_id` 単位で最大1件。同一の物理的な障害の単位ではない）。記録済みの判定は DB 関数が診断情報の制約名と行を確認して返す専用の SQLSTATE `SF001` と、PHP の再確認で行い、文字列を解析しない。`55P03`、`57014`、`22023`、未分類のエラーは個別の操作の失敗として扱い、連続回数で全体の状態にしない。`failure_class` で区別する。判定は `PDOException` の `errorInfo[0]` で行い、`getCode()` と Laravel の接続断の判定を使わない。文字列は原因の分類にのみ使う（[security-design.md §16.5.1](security-design.md)） | 2026-11-04 |
+| D27 | Redis の停止・接続失敗・タイムアウト時は、Redis に依存する経路を fail closed とし、認証を継続せず RFC 9457 形式の 503 と `Retry-After` を返す。レート制限を無効化して認証を続けない。Redis の状態を記憶せず、要求ごとの接続で復旧を判断する。liveness は止めず、readiness は Redis の状態を反映する。通常の API エラーは RFC 9457 形式とし、readiness のみ工程0の形式を維持する（[security-design.md §16.5.1](security-design.md)） | 2026-11-04 |
+| D28 | パスワード変更は DB のコミットを唯一の確定点とし、コミットされた変更は確定として扱う。コミット後に必須のセッションの保存に失敗した場合は、変更を取り消さず 503 を返し、同じキー・同じ内容の再試行を DB の4条件で判定して、再実行せず 200 とする（案 B）。他のセッションの無効化は既存の指紋と DB のハッシュの比較で成立させ、セッションバージョンを追加しない。現在のセッションは、コミット前に保留の指紋を Redis に保存して維持する。再試行は `Idempotency-Key` の HMAC と変更前の Argon2id ハッシュを `users` に保存して防ぎ、要求全体の同一性を判定する（要求指紋の HMAC と専用テーブルとの比較の結果。保留の指紋だけでは認証を許可しない。変更の成否と完了済みのキーの識別は DB の `users` のみで判定し、Redis の情報を根拠にしない）（[security-design.md §16.5.5](security-design.md)） | 2026-11-04 |
+| D29 | DB のタイムアウトは、接続、`statement_timeout`、`lock_timeout`、`idle_in_transaction_session_timeout`、TCP keepalive、`tcp_user_timeout` の層に分ける。php-fpm の `request_terminate_timeout` は DB 側のタイムアウトの代替でなく、候補とする。TCP の設定は実際の接続への適用を実装時に確認する。値は暫定値として負荷試験で調整する（[security-design.md §16.5.6](security-design.md)） | 2026-11-04 |
+| D30 | 障害中のログは Redis に依存しないローカルの状態で、発生・継続・復旧に集約する。MVP の集約はコンテナの中に限定し、コンテナ間で共有しない（[security-design.md §16.5.7](security-design.md)） | 2026-11-04 |
+| D31 | `permanent_config` の Audit unavailable の間は readiness を 200 とする。`storage_scope=db_suspected` の間は readiness を 503、liveness を 200 とし、readiness の 503 で自動再起動しない。監査の障害は `audit.unavailable` のゲージ、状態の変化のログ、`audit:status` で検知し、ログの基盤とアラートの接続を公開環境の前提条件とする（[security-design.md §16.5.1・§16.5.3](security-design.md)） | 2026-11-04 |
+| D32 | 行ロックの中の Redis の書き込みは、生のクライアント（`command()` の禁止）、`max_retries=0`、`read_timeout=0.9秒`、ロックの前の `PING` と同一接続の再利用、単調増加時計による全体の期限（1秒）を条件とする。超過は成功扱いにせずロールバックして 503 とする。DB を正とする。WAL 領域の枯渇は `server_panic` として DB unavailable の経路で扱う（[security-design.md §16.5.1・§16.5.5](security-design.md)） | 2026-11-04 |
