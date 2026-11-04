@@ -364,6 +364,7 @@ Laravel 13.39.0 の `DB::prohibitDestructiveCommands()` は `migrate:fresh`・`m
 | 実接続 | `current_database()` が `secureflow_test`、接続ユーザーが想定ロール（`secureflow_test_owner` / `secureflow_app`）、スーパーユーザーでない、owner が NOCREATEDB、owner が開発用DBへの接続権限を持たない |
 
 - コマンドの禁止（§4.5）の解除も、`APP_ENV` だけでは行わず、設定の条件をすべて満たす場合に限る。これにより、`APP_ENV=testing` を指定しても開発用DBには実行できない。
+- コマンドラインから実行された場合も、`CommandStarting` イベントで実接続の条件を確認し、`--database` がテスト用 owner の接続以外なら中断する。Laravel は `APP_ENV=testing` ではこのイベントを既定で発火しないため、明示的に有効にする。
 - **DB自体の作成・削除は PostgreSQL の初期化スクリプトに限定する。** owner は NOCREATEDB のため、テストやアプリからは実行できない。テストが行うのは、テスト用DB内のスキーマのリセットのみ。
 - テスト本体は `secureflow_app` ロールで実行する。owner 接続はスキーマの初期化とマイグレーションに限定する。
 - `db:wipe` は関数と拡張を削除しないことを確認済みのため、マイグレーションでは `CREATE OR REPLACE FUNCTION` と `CREATE EXTENSION IF NOT EXISTS` を使う。

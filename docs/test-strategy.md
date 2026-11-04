@@ -186,6 +186,7 @@ Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・�
 | DB-MIG-01 | マイグレーション | up → rollback → 再 up が成功し、rollback 後にテーブルと関数が残らない |
 | DB-PRIV-01 | テーブル権限 | 4テーブルの権限が [database-design.md §4.2](database-design.md) と過不足なく一致する。app から `migrations` にアクセスできない |
 | DB-PRIV-02 | `audit_logs` の INSERT | app の通常の INSERT は成功。`nextval()` と、任意の `id` を指定した INSERT（`OVERRIDING SYSTEM VALUE` を含む）は拒否される |
+| DB-ROLE-01 | ロール | テスト本体は app ロール、DDL はテスト用 owner で実行される。テスト用 owner は開発用DB・`postgres` に接続できず、DB・ロールを作成・削除できない。`migrate` 系コマンドの後も既定の接続が app のまま |
 | ST-28（DB部分） | `audit_logs` の改変 | app の UPDATE / DELETE / TRUNCATE は権限エラー。owner でも、行がある状態の UPDATE / DELETE / TRUNCATE はトリガーで拒否される |
 | DB-CON-01 | 制約 | NOT NULL の列挙列への NULL、不正な列挙値、大文字小文字違いのメール重複、範囲外の設定値が拒否される。ID を省略した生SQLの INSERT が拒否される |
 | DB-GUARD-01 | テスト用DBのガード | [database-design.md §4.6](database-design.md) の各条件について、1つでも満たさない場合に中断する |

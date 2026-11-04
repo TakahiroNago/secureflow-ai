@@ -184,6 +184,7 @@ docker compose config --images
 - **既存の環境を更新する場合：** `bash scripts/add-test-owner.sh` を 1 回実行します（`.env` に設定を追加し、実行中の `postgres` にロールを作成します。ボリュームは破棄せず、再実行しても安全です）。`compose.yaml` の変更により、次回の通常の `docker compose up` で `postgres` コンテナが再作成されます（データは名前付きボリュームに残ります）。
 - `app` コンテナで `php artisan migrate` を実行しても権限不足で失敗します（意図した動作）。
 - テーブルごとの権限は各マイグレーションで明示的に付与します（既定権限は付与しない）。
+- `migrate:fresh`・`migrate:refresh`・`migrate:reset`・`db:wipe` はテスト用 DB でのみ実行できます。`migrate:rollback`・`db:seed`・`schema:dump` の手順は [database-design.md §4.5](docs/database-design.md) を参照してください。
 
 ## テストと静的解析
 
