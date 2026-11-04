@@ -213,3 +213,4 @@ Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・�
 | AUTH-HASH-01 | ハッシュ | 保存値が Argon2id。応答・ログにパスワードとハッシュが含まれない |
 | AUTH-CMD-01 | `user:create` | パスワードは対話入力のみ（引数なし）。ポリシー違反を拒否。出力にパスワードを含まない |
 | AUTH-SEED-01 | Seeder | 実行後もログイン可能なユーザーが増えない。投入されるのは組織や初期設定のみ |
+| AUTH-E2E-01 | 実際の HTTP での通し確認（`scripts/test-auth-flow.sh`） | nginx と Vite proxy を経由し、Redis のセッション、CSRF、Argon2id、ロック、レート制限、ログへの非出力を確認する。ユーザーを作成するため、既定のプロジェクトでは実行を拒否し、使い捨ての環境と CI でのみ実行する |

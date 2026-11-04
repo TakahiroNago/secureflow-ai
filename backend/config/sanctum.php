@@ -2,7 +2,6 @@
 
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
-use Laravel\Sanctum\Http\Middleware\AuthenticateSession;
 use Laravel\Sanctum\Sanctum;
 
 return [
@@ -18,12 +17,12 @@ return [
     |
     */
 
-    'stateful' => explode(',', (string) env('SANCTUM_STATEFUL_DOMAINS', sprintf(
-        '%s%s',
-        'localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1',
-        Sanctum::currentApplicationUrlWithPort(),
-        // Sanctum::currentRequestHost(),
-    ))),
+    // Explicit host:port pairs, never wildcards (docs/security-design.md §12). Compose sets the
+    // variable; without it, only the host and port of APP_URL are allowed.
+    'stateful' => array_values(array_filter(explode(',', (string) env(
+        'SANCTUM_STATEFUL_DOMAINS',
+        ltrim(Sanctum::currentApplicationUrlWithPort(), ','),
+    )))),
 
     /*
     |--------------------------------------------------------------------------
@@ -79,7 +78,9 @@ return [
     */
 
     'middleware' => [
-        'authenticate_session' => AuthenticateSession::class,
+        // Not used: it stores the password hash in the session, and only protects sessions that
+        // have already passed through it. EnsureSessionIsCurrent replaces it.
+        'authenticate_session' => null,
         'encrypt_cookies' => EncryptCookies::class,
         'validate_csrf_token' => ValidateCsrfToken::class,
     ],

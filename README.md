@@ -6,7 +6,7 @@ AI業務自動化・セキュリティ管理プラットフォーム（AI Automa
 
 AI が業務内容を分析・提案し、セキュリティレイヤーが処理内容と権限を検証し、重要な操作は人間の承認を経て実行する Web アプリケーションです。
 
-**現在の状態：Phase 0（開発基盤）完了時点。** 業務機能（認証・AIワークフロー・承認・監査ログ等）は Phase 1 以降で実装します。計画は [docs/development-roadmap.md](docs/development-roadmap.md) を参照してください。
+**現在の状態：Phase 1 実装中（工程1-2 認証まで）。** AIワークフロー・承認・監査ログ等は以降の工程で実装します。計画は [docs/development-roadmap.md](docs/development-roadmap.md) を参照してください。
 
 ---
 
@@ -41,7 +41,7 @@ migrate（owner ロール：マイグレーション専用・都度実行）
 backend/    Laravel API（app/, config/, routes/, tests/）
 frontend/   React + TypeScript + Vite + Tailwind CSS
 docker/     nginx / php / postgres の設定と初期化スクリプト
-scripts/    init-env.sh（.env 生成）、add-test-roles.sh（既存環境の更新）、verify-infra.sh（基盤検証）、check-published-ports.sh（公開ポート検査）、test-*.sh（検査の負のテスト）
+scripts/    init-env.sh（.env 生成）、add-test-roles.sh（既存環境の更新）、verify-infra.sh（基盤検証）、check-published-ports.sh（公開ポート検査）、test-*.sh（検査の負のテストと認証の通し確認）、build-password-list.sh（漏洩パスワード辞書の再作成）
 docs/       要件定義・設計書
 .github/    GitHub Actions（CI）
 ```
@@ -70,6 +70,7 @@ Phase 0 時点で実際に採用し、固定しているバージョンです。
 | | Tailwind CSS | 4.3.4 | 同上 |
 | | ESLint / typescript-eslint | 10.14.0 / 8.72.1 | 同上 |
 | | Vitest / jsdom / Testing Library | 5.1.0 / 30.1.3 / 16.3.3 | 同上 |
+| | React Router / TanStack Query / zod | 8.5.1 / 5.105.3 / 4.6.7 | 同上 |
 | CI | actions/checkout | v7.0.1（SHA 固定） | `.github/workflows/ci.yml` |
 | | gitleaks | 8.30.1（digest 固定） | 同上 |
 | | Trivy | 0.76.1（digest 固定） | 同上 |
@@ -160,6 +161,20 @@ docker compose config --images
 - `docker compose down -v` は実行したディレクトリのプロジェクトのボリュームを削除します。実行前に `.env` の `COMPOSE_PROJECT_NAME` を確認してください。
 - キャッシュを使わずに PHP イメージをビルドする場合：`docker compose build --no-cache --pull app`
 
+## ユーザーの作成
+
+公開サインアップはなく、Seeder もログイン可能なユーザーを作成しません（組織と初期設定のみ）。
+
+```bash
+docker compose exec app php artisan db:seed --force      # 初回のみ：Default Organization と初期設定
+docker compose exec app php artisan user:create \
+  --organization='Default Organization' --name='管理者' --email=admin@example.com --role=admin
+```
+
+パスワードは対話入力のみです（12 文字以上、広く使われているパスワードは不可）。コマンドの引数では受け取りません。
+
+SPA の Cookie 認証を許可するオリジンは `SANCTUM_STATEFUL_DOMAINS` で指定します（Compose が `NGINX_PORT` と `FRONTEND_PORT` から設定します）。
+
 ## ヘルスチェック
 
 | エンドポイント | 種別 | 正常 | 異常 |
@@ -208,6 +223,10 @@ bash scripts/verify-infra.sh
 bash scripts/test-published-ports.sh    # 0.0.0.0・IPv6・想定外ポートの公開を検出できること
 bash scripts/test-app-healthcheck.sh    # 空の bind mount 等を unhealthy と判定できること
 bash scripts/test-worker-healthcheck.sh # worker / scheduler のソース・プロセス異常を判定できること
+
+# 認証の通し確認（実際の HTTP、Redis のセッション）。ユーザーを作成するため、既定のプロジェクトでは
+# 実行を拒否します。複数環境の手順で作った使い捨ての環境でマイグレーション後に実行してください
+bash scripts/test-auth-flow.sh
 ```
 
 `test` サービスは外部に出られない内部ネットワーク上で動くため、`composer audit` / `npm audit` はネットワークに出られるコンテナで実行します：
@@ -226,7 +245,7 @@ docker compose run --rm --no-deps frontend npm audit
 | secret-scan | gitleaks（Git 履歴全体）、Trivy（作業ツリーの秘密情報） |
 | backend | PostgreSQL / Redis 起動、基盤検証、Pint、Larastan、Pest、composer audit |
 | frontend | ESLint、型チェック、Vitest、ビルド、npm audit |
-| stack | 全サービス起動、マイグレーション、`verify-infra.sh`、公開ポート検査と healthcheck の負のテスト |
+| stack | 全サービス起動、マイグレーション、`verify-infra.sh`、認証の通し確認、公開ポート検査と healthcheck の負のテスト |
 
 ワークフローの権限は `contents: read` のみ。CI の `.env` は実行ごとに使い捨ての値を生成し、実際の AI API キーは使用しません。
 

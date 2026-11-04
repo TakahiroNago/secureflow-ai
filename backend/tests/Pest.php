@@ -1,10 +1,14 @@
 <?php
 
+use App\Models\User;
 use App\Support\Database\TestDatabaseGuard;
+use Database\Factories\UserFactory;
 use Illuminate\Database\Connection;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
+use Tests\Support\SpaClient;
 use Tests\TestCase;
 
 /*
@@ -14,6 +18,32 @@ use Tests\TestCase;
 
 pest()->extend(TestCase::class)->in('Feature');
 pest()->extend(TestCase::class)->group('security')->in('Security');
+
+/**
+ * A browser. Laravel skips the CSRF check while the environment is "testing", so this switches to
+ * "local" for the test: the real check has to run. The configuration was already loaded as testing.
+ */
+function spa(TestCase $test, ?string $origin = 'http://localhost:8080', string $ip = '203.0.113.10'): SpaClient
+{
+    app()['env'] = 'local';
+
+    return new SpaClient($test, $origin, $ip);
+}
+
+function spaLogin(SpaClient $client, string $email, string $password = UserFactory::TEST_PASSWORD): TestResponse
+{
+    $client->csrf();
+
+    return $client->send('POST', '/api/v1/auth/login', ['email' => $email, 'password' => $password]);
+}
+
+function loggedIn(TestCase $test, User $user, string $password = UserFactory::TEST_PASSWORD, string $ip = '203.0.113.10'): SpaClient
+{
+    $client = spa($test, ip: $ip);
+    spaLogin($client, $user->email, $password)->assertOk();
+
+    return $client;
+}
 
 /** The application role: what the running application can do. */
 function appDb(): Connection

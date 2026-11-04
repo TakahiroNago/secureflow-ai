@@ -99,7 +99,7 @@
 |---|---|---|---|
 | GET | `/sanctum/csrf-cookie` | 不要 | CSRF Cookie発行 |
 | POST | `/api/v1/auth/login` | 不要 | `{email, password}`。成功時セッションID再生成。失敗は常に 401 `AUTH_FAILED`（§3.1.1） |
-| POST | `/api/v1/auth/logout` | 認証 | セッション破棄 |
+| POST | `/api/v1/auth/logout` | 認証 | セッションを破棄し、CSRF トークンを再生成。204 |
 | GET | `/api/v1/auth/me` | 認証 | `{id, name, email, role, organization}` |
 | PATCH | `/api/v1/account/password` | 認証 | `{current_password, new_password}`。他のセッションを無効化し、現在のセッションは維持（§3.1.2） |
 
@@ -110,7 +110,7 @@
 | 成功 | 200 `{ "data": { id, name, email, role, organization } }`。セッションIDを再生成 |
 | 存在しないメールアドレス、パスワード不一致、`is_active=false`、アカウントロック中 | **すべて同じ** 401 `AUTH_FAILED`。どの理由かを応答から区別できないようにする |
 | 形式の不正（必須項目なし、メール形式でない、長さの上限超過、未知のフィールド） | 422（アカウントの状態に関わらず同じ） |
-| CSRF トークンなし・不一致 | 419 `CSRF_TOKEN_MISMATCH` |
+| CSRF トークンなし・不一致、許可されていないオリジン（`SANCTUM_STATEFUL_DOMAINS` にない、オリジンなし） | 419 `CSRF_TOKEN_MISMATCH` |
 | レート制限超過 | 429 と `Retry-After` |
 
 ```json
@@ -124,7 +124,7 @@
 }
 ```
 
-処理時間も区別できないよう、存在しないメールアドレス、無効、ロック中の場合もパスワードハッシュの検証を実行する。エラー形式は RFC 9457（§1.1）に従う。認証エラーの形式は工程1-2で実装し、全エラーの統一は工程2-9で行う。
+処理時間も区別できないよう、存在しないメールアドレス、無効、ロック中の場合もパスワードハッシュの検証を実行する。エラー形式は RFC 9457（§1.1）に従い、`Content-Type` は `application/problem+json` とする。認証エラー（401、419、422、429、415）の形式は工程1-2で実装し、全エラーの統一は工程2-9で行う。Cookie セッション専用のため Bearer トークンは受け付けない（未認証の 401）。
 
 #### 3.1.2 パスワード変更
 

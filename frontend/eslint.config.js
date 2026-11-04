@@ -31,7 +31,13 @@ const xssRestrictedSyntax = [
     selector: "MemberExpression[object.name='document'][property.name=/^(write|writeln)$/]",
     message: 'document.write is prohibited.',
   },
+  {
+    selector: "MemberExpression[property.name=/^(localStorage|sessionStorage)$/]",
+    message: 'Browser storage is prohibited: credentials stay in the HttpOnly session cookie (docs/architecture.md §6).',
+  },
 ]
+
+const storageMessage = 'Browser storage is prohibited: credentials stay in the HttpOnly session cookie (docs/architecture.md §6).'
 
 export default tseslint.config(
   { ignores: ['dist', 'coverage', 'node_modules'] },
@@ -48,6 +54,11 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       'no-restricted-syntax': ['error', ...xssRestrictedSyntax],
+      'no-restricted-globals': [
+        'error',
+        { name: 'localStorage', message: storageMessage },
+        { name: 'sessionStorage', message: storageMessage },
+      ],
       'no-eval': 'error',
       'no-implied-eval': 'error',
       'no-new-func': 'error',

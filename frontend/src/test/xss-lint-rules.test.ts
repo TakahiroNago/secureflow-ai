@@ -10,7 +10,9 @@ const eslint = new ESLint({ cwd: process.cwd() })
 
 async function lint(code: string, file = 'src/__lint_probe__.tsx') {
   const [result] = await eslint.lintText(code, { filePath: file })
-  return (result?.messages ?? []).filter((m) => m.ruleId === 'no-restricted-syntax' || m.ruleId === 'no-eval')
+  return (result?.messages ?? []).filter(
+    (m) => m.ruleId === 'no-restricted-syntax' || m.ruleId === 'no-eval' || m.ruleId === 'no-restricted-globals',
+  )
 }
 
 describe('XSS lint rules', () => {
@@ -32,6 +34,17 @@ describe('XSS lint rules', () => {
       'src/__lint_probe__.ts',
     )
     expect(messages.map((m) => m.ruleId)).toEqual(expect.arrayContaining(['no-restricted-syntax', 'no-eval']))
+  })
+
+  it.each([
+    "localStorage.setItem('token', 'x')",
+    "sessionStorage.setItem('token', 'x')",
+    "window.localStorage.setItem('token', 'x')",
+    "window.sessionStorage.getItem('token')",
+    "globalThis.localStorage.getItem('token')",
+  ])('rejects browser storage: %s', async (statement) => {
+    const messages = await lint(`export function f() { ${statement} }\n`, 'src/__lint_probe__.ts')
+    expect(messages.map((m) => m.message).join('\n')).toContain('Browser storage is prohibited')
   })
 
   it('allows plain text rendering', async () => {

@@ -2,18 +2,22 @@
 
 namespace Database\Factories;
 
+use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 
 /**
+ * For tests only. Seeders must not use this: no fixed login-capable user may exist outside tests.
+ *
  * @extends Factory<User>
  */
 class UserFactory extends Factory
 {
+    public const TEST_PASSWORD = 'correct horse battery staple';
+
     /**
-     * The current password being used by the factory.
+     * The hash is computed once per run.
      */
     protected static ?string $password;
 
@@ -25,21 +29,31 @@ class UserFactory extends Factory
     public function definition(): array
     {
         return [
+            'organization_id' => Organization::factory(),
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
-            'email_verified_at' => now(),
-            'password' => static::$password ??= Hash::make('password'),
-            'remember_token' => Str::random(10),
+            'password' => static::$password ??= Hash::make(self::TEST_PASSWORD),
+            'role' => 'member',
         ];
     }
 
-    /**
-     * Indicate that the model's email address should be unverified.
-     */
-    public function unverified(): static
+    public function admin(): static
     {
-        return $this->state(fn (array $attributes) => [
-            'email_verified_at' => null,
-        ]);
+        return $this->state(['role' => 'admin']);
+    }
+
+    public function auditor(): static
+    {
+        return $this->state(['role' => 'auditor']);
+    }
+
+    public function inactive(): static
+    {
+        return $this->state(['is_active' => false]);
+    }
+
+    public function locked(): static
+    {
+        return $this->state(fn () => ['locked_until' => now()->addMinutes(15)]);
     }
 }

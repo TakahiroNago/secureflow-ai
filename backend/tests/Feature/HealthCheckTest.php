@@ -49,6 +49,18 @@ it('P0-HC-01: liveness does not depend on database or redis', function () {
         ->assertExactJson(['status' => 'ok']);
 });
 
+it('P0-HC-01: liveness does not need a session, even when a browser calls it', function () {
+    // A request from the frontend gets the session middleware on other routes, and sessions live in Redis.
+    config(['session.driver' => 'redis']);
+    breakDatabase();
+    breakRedis();
+
+    $this->getJson('/api/health/live', ['Referer' => 'http://localhost:8080/', 'Origin' => 'http://localhost:8080'])
+        ->assertOk()
+        ->assertExactJson(['status' => 'ok'])
+        ->assertCookieMissing(config('session.cookie'));
+});
+
 it('P0-HC-02: readiness returns ok when database and redis are reachable', function () {
     $this->getJson('/api/health/ready')
         ->assertOk()

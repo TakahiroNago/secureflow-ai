@@ -32,7 +32,11 @@ return [
     |
     */
 
-    'lifetime' => (int) env('SESSION_LIFETIME', 120),
+    // Idle timeout (docs/security-design.md §12). SESSION_LIFETIME is deliberately not read.
+    'lifetime' => (int) env('SESSION_IDLE_MINUTES', 30),
+
+    // Absolute timeout, enforced by EnsureSessionIsCurrent. Laravel has no built-in equivalent.
+    'absolute_hours' => (int) env('SESSION_ABSOLUTE_HOURS', 12),
 
     'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
 
@@ -169,7 +173,7 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    'secure' => env('SESSION_SECURE_COOKIE', str_starts_with((string) env('APP_URL', ''), 'https://')),
 
     /*
     |--------------------------------------------------------------------------

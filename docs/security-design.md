@@ -309,7 +309,7 @@ AI出力スキーマ（概要）：
 | 元ファイル | Git blob `e5e73232c8f4f53edfe9c0fd699f415da8a336e3`、SHA-256 `424a3e03a17df0a2bc2b3ca749d81b04e79d59cb7aeec8876a5a3f308d0caf51`、1,000,000行 |
 | SecLists（リポジトリ全体）のライセンス | MIT（`LICENSE`、Git blob `fbd3be5da1b5c7363ab6d581e4cc6a22a8893683`、Copyright (c) 2018 Daniel Miessler）。**収録された個別データの権利を定めるものとしては扱わない** |
 | 採用データセット（個別）の出典とライセンス | Mark Burnett「Ten Million Passwords」（2015年）。作者が「releasing to the public domain」と明記（[Web Archive](https://web.archive.org/web/20150211131735/https://xato.net/passwords/ten-million-passwords/)）。同サイトのフッターにはサイト全体の表記として CC BY-SA 3.0 があるが、データセットは本文で個別にパブリックドメインと明記されている。念のため帰属表示を行う。SecLists の該当ファイルはパスワードのみで、ユーザー名を含まない |
-| 同梱時の加工 | 12文字以上のみ（最小文字数に満たない語は不要）、`@` を含む行を除外（メールアドレスの混入防止）、小文字化、重複除去、ソート（`LC_ALL=C`） |
+| 同梱時の加工 | 12文字以上のみ（最小文字数に満たない語は不要）、`@` を含む行を除外（メールアドレスの混入防止）、小文字化、重複除去、ソート（`LC_ALL=C`）。`scripts/build-password-list.sh` で再現できる |
 | 同梱ファイル | 46,045行、673,304バイト、SHA-256 `2ce4934bf860d3d348a9f4ea646df42e8e65c292c734f0633635148c53a73e86`。gitleaks・Trivy の検出なし（確認時点） |
 
 - **帰属表示：** SecLists の MIT ライセンス全文と、採用データセットの出典（Mark Burnett、xato.net）・取得元コミット・加工内容を、区別して `backend/resources/security/common-passwords.NOTICE.md` に記載し、同梱している間は維持する。

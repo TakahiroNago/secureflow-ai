@@ -8,7 +8,7 @@ import { StatusBadge } from './components/StatusBadge'
 
 function mockFetch(response: Response | Error) {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
-    response instanceof Error ? Promise.reject(response) : Promise.resolve(response),
+    response instanceof Error ? Promise.reject(response) : Promise.resolve(response.clone()),
   )
 }
 

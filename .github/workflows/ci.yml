@@ -160,6 +160,9 @@ jobs:
       - name: Verify stack (P0-DB / P0-NET / P0-HC / P0-FE)
         run: bash scripts/verify-infra.sh
 
+      - name: Authentication over real HTTP (sessions in Redis, CSRF, lock, rate limit)
+        run: bash scripts/test-auth-flow.sh
+
       - name: Published port policy negative tests (P0-NET-01)
         run: bash scripts/test-published-ports.sh
 
