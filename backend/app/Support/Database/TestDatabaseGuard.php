@@ -22,7 +22,9 @@ final class TestDatabaseGuard
 
     public const APP_CONNECTION = 'pgsql';
 
-    public const APP_ROLE = 'secureflow_app';
+    public const APP_ROLE = 'secureflow_test_app';
+
+    public const DEVELOPMENT_APP_ROLE = 'secureflow_app';
 
     public const OWNER_CONNECTION = 'pgsql_migrator';
 
@@ -116,7 +118,7 @@ final class TestDatabaseGuard
         if (($server['createdb'] ?? true) !== false) {
             $violations[] = "{$expectedRole} has CREATEDB";
         }
-        if ($expectedRole === self::OWNER_ROLE && ($server['development_connect'] ?? true) !== false) {
+        if (($server['development_connect'] ?? true) !== false) {
             $violations[] = "{$expectedRole} can connect to the development database";
         }
 

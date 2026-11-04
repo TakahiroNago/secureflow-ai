@@ -11,8 +11,8 @@
 # DB credentials:
 #   app / worker / scheduler -> application role only (DML)
 #   migrate (profile "tools") -> additionally the development owner role (DDL, dev DB only)
-#   test (profile "tools")    -> additionally the test owner role (DDL, test DB only)
-#   The test owner uses ":-" so that an older .env keeps working; scripts/add-test-owner.sh adds it.
+#   test (profile "tools")    -> test application role (DML) and test owner role (DDL), test DB only
+#   The test roles use ":-" so that an older .env keeps working; scripts/add-test-roles.sh adds them.
 name: ${COMPOSE_PROJECT_NAME:-secureflow}
 
 x-hardening: &hardening
@@ -81,6 +81,8 @@ services:
       DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?}
       DB_TEST_MIGRATOR_USERNAME: ${DB_TEST_MIGRATOR_USERNAME:-secureflow_test_owner}
       DB_TEST_MIGRATOR_PASSWORD: ${DB_TEST_MIGRATOR_PASSWORD:-}
+      DB_TEST_USERNAME: ${DB_TEST_USERNAME:-secureflow_test_app}
+      DB_TEST_PASSWORD: ${DB_TEST_PASSWORD:-}
     volumes:
       - pgdata:/var/lib/postgresql
       - ./docker/postgres/initdb:/docker-entrypoint-initdb.d:ro
@@ -249,9 +251,9 @@ services:
     command: ["php", "artisan", "migrate", "--database=pgsql_migrator", "--force"]
     networks: [data]
 
-  # Test runner: test database only. Schema is built with the test owner role, which cannot
-  # connect to the development database. Test queries run with the application role
-  # (docs/test-strategy.md). Never receives the development owner credentials.
+  # Test runner: test database only. Schema is built with the test owner role, and test queries
+  # run with the test application role (docs/test-strategy.md). Neither can connect to the
+  # development database, and this service never receives its credentials.
   test:
     <<: *php-service
     profiles: [tools]
@@ -260,6 +262,8 @@ services:
       <<: *laravel-env
       APP_ENV: testing
       DB_DATABASE: ${DB_TEST_DATABASE:?set DB_TEST_DATABASE in .env}
+      DB_USERNAME: ${DB_TEST_USERNAME:-secureflow_test_app}
+      DB_PASSWORD: ${DB_TEST_PASSWORD:-}
       DB_MIGRATOR_USERNAME: ${DB_TEST_MIGRATOR_USERNAME:-secureflow_test_owner}
       DB_MIGRATOR_PASSWORD: ${DB_TEST_MIGRATOR_PASSWORD:-}
     command: ["php", "vendor/bin/pest"]

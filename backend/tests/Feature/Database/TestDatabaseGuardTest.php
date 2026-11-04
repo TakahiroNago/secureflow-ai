@@ -26,11 +26,21 @@ it('passes in the real test environment', function () {
 });
 
 it('accepts a safe configuration', function () {
-    expect(TestDatabaseGuard::evaluateConfig('testing', safeConfig('secureflow_app'), safeConfig('secureflow_test_owner')))->toBe([]);
+    expect(TestDatabaseGuard::evaluateConfig('testing', safeConfig('secureflow_test_app'), safeConfig('secureflow_test_owner')))->toBe([]);
+});
+
+it('rejects the development application role', function () {
+    expect(TestDatabaseGuard::evaluateConfig('testing', safeConfig(TestDatabaseGuard::DEVELOPMENT_APP_ROLE), safeConfig('secureflow_test_owner')))->not->toBe([]);
+});
+
+it('rejects a test application role that can reach the development database', function () {
+    $server = [...safeServer('secureflow_test_app'), 'development_connect' => true];
+
+    expect(implode(' ', TestDatabaseGuard::evaluateConnection('secureflow_test_app', $server)))->toContain('development database');
 });
 
 it('rejects an environment other than exactly testing', function (string $environment) {
-    expect(TestDatabaseGuard::evaluateConfig($environment, safeConfig('secureflow_app'), safeConfig('secureflow_test_owner')))
+    expect(TestDatabaseGuard::evaluateConfig($environment, safeConfig('secureflow_test_app'), safeConfig('secureflow_test_owner')))
         ->toContain('APP_ENV is not testing');
 })->with(['local', 'production', 'staging', 'Testing', 'testing ', '']);
 
@@ -38,7 +48,7 @@ it('rejects any unsafe setting on either connection', function (string $key, mix
     $unsafe = fn (string $role) => [...safeConfig($role), $key => $value];
 
     expect(TestDatabaseGuard::evaluateConfig('testing', $unsafe('secureflow_app'), safeConfig('secureflow_test_owner')))->not->toBe([])
-        ->and(TestDatabaseGuard::evaluateConfig('testing', safeConfig('secureflow_app'), $unsafe('secureflow_test_owner')))->not->toBe([]);
+        ->and(TestDatabaseGuard::evaluateConfig('testing', safeConfig('secureflow_test_app'), $unsafe('secureflow_test_owner')))->not->toBe([]);
 })->with([
     'development database' => ['database', 'secureflow'],
     'similar name, prefix' => ['database', 'secureflow_test2'],
@@ -53,16 +63,16 @@ it('rejects any unsafe setting on either connection', function (string $key, mix
 ]);
 
 it('rejects swapped roles', function () {
-    expect(TestDatabaseGuard::evaluateConfig('testing', safeConfig('secureflow_test_owner'), safeConfig('secureflow_app')))->not->toBe([]);
+    expect(TestDatabaseGuard::evaluateConfig('testing', safeConfig('secureflow_test_owner'), safeConfig('secureflow_test_app')))->not->toBe([]);
 });
 
 it('rejects the development owner as the schema owner', function () {
-    expect(TestDatabaseGuard::evaluateConfig('testing', safeConfig('secureflow_app'), safeConfig('secureflow_owner')))->not->toBe([]);
+    expect(TestDatabaseGuard::evaluateConfig('testing', safeConfig('secureflow_test_app'), safeConfig('secureflow_owner')))->not->toBe([]);
 });
 
 it('accepts what a safe server reports', function (string $role) {
     expect(TestDatabaseGuard::evaluateConnection($role, safeServer($role)))->toBe([]);
-})->with(['secureflow_app', 'secureflow_test_owner']);
+})->with(['secureflow_test_app', 'secureflow_test_owner']);
 
 it('rejects what an unsafe server reports', function (string $key, mixed $value, string $message) {
     $server = [...safeServer('secureflow_test_owner'), $key => $value];

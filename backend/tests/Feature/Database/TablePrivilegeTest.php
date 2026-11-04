@@ -100,15 +100,38 @@ it('gives every role only the expected attributes', function (string $connection
     ]);
 })->with([TestDatabaseGuard::APP_CONNECTION, TestDatabaseGuard::OWNER_CONNECTION]);
 
-it('rejects the test owner on the development and maintenance databases', function (string $database) {
-    config(['database.connections.owner_elsewhere' => [
-        ...config('database.connections.'.TestDatabaseGuard::OWNER_CONNECTION),
+it('rejects both test roles on the development and maintenance databases', function (string $connection, string $database) {
+    config(['database.connections.elsewhere' => [
+        ...config('database.connections.'.$connection),
         'database' => $database,
     ]]);
 
-    expect(fn () => DB::connection('owner_elsewhere')->select('SELECT 1'))
+    expect(fn () => DB::connection('elsewhere')->select('SELECT 1'))
         ->toThrow(QueryException::class, 'permission denied for database');
-})->with([TestDatabaseGuard::DEVELOPMENT_DATABASE, 'postgres']);
+})->with([TestDatabaseGuard::APP_CONNECTION, TestDatabaseGuard::OWNER_CONNECTION])
+    ->with([TestDatabaseGuard::DEVELOPMENT_DATABASE, 'postgres']);
+
+it('keeps the test application role separate from the test owner', function () {
+    $row = appDb()->selectOne('SELECT pg_has_role(current_user, ?, ?) AS member', [TestDatabaseGuard::OWNER_ROLE, 'MEMBER']);
+
+    expect($row->member)->toBeFalse();
+    expect(fn () => appDb()->statement('SET ROLE '.TestDatabaseGuard::OWNER_ROLE))
+        ->toThrow(QueryException::class, 'permission denied');
+});
+
+it('leaves the development application role with nothing in the test database', function () {
+    $role = TestDatabaseGuard::DEVELOPMENT_APP_ROLE;
+
+    $access = ownerDb()->selectOne(
+        "SELECT has_database_privilege(?, current_database(), 'CONNECT') AS connect, has_schema_privilege(?, 'public', 'USAGE') AS usage",
+        [$role, $role],
+    );
+    $grants = ownerDb()->selectOne('SELECT count(*) AS n FROM information_schema.role_table_grants WHERE grantee = ?', [$role]);
+
+    expect($access->connect)->toBeFalse()
+        ->and($access->usage)->toBeFalse()
+        ->and($grants->n)->toBe(0);
+});
 
 it('does not let the test owner create or drop databases and roles', function (string $statement, string $message) {
     expect(fn () => ownerDb()->statement($statement))->toThrow(QueryException::class, $message);
