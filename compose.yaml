@@ -120,12 +120,21 @@ services:
       <<: *laravel-env
     networks: [data, web]
     healthcheck:
-      # Liveness of php-fpm (TCP accept on :9000). HTTP-level checks go through nginx.
-      test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
+      # Liveness: the code is really mounted (Docker Desktop can start containers with an empty
+      # bind mount), php-fpm accepts TCP on :9000 and Laravel boots. No DB or Redis access:
+      # that is what the readiness endpoint is for. HTTP-level checks go through nginx.
+      test:
+        - CMD-SHELL
+        - >-
+          test -f /var/www/html/artisan
+          && test -f /var/www/html/public/index.php
+          && php -r "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"
+          && php /var/www/html/artisan --version > /dev/null
       interval: 10s
-      timeout: 3s
-      retries: 10
-      start_period: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+      start_interval: 2s
 
   worker:
     <<: *php-service

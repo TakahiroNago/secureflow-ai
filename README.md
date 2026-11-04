@@ -41,7 +41,7 @@ migrate（owner ロール：マイグレーション専用・都度実行）
 backend/    Laravel API（app/, config/, routes/, tests/）
 frontend/   React + TypeScript + Vite + Tailwind CSS
 docker/     nginx / php / postgres の設定と初期化スクリプト
-scripts/    init-env.sh（.env 生成）、verify-infra.sh（基盤検証）
+scripts/    init-env.sh（.env 生成）、verify-infra.sh（基盤検証）、check-published-ports.sh（公開ポート検査）、test-*.sh（検査の負のテスト）
 docs/       要件定義・設計書
 .github/    GitHub Actions（CI）
 ```
@@ -169,6 +169,8 @@ docker compose config --images
 
 レスポンスにはバージョン・接続先・失敗した依存名・エラー詳細を含めません（詳細はアプリケーションログのみ）。レート制限は nginx で行います（60 回/分/IP）。
 
+`app` コンテナの healthcheck は、`artisan` と `public/index.php` の存在、php-fpm の TCP 応答、`php artisan --version` の成功を確認します（DB・Redis には接続しません）。
+
 ## データベースロールとマイグレーション
 
 | ロール | 用途 | 認証情報を受け取るサービス |
@@ -197,6 +199,10 @@ docker compose run --rm --no-deps frontend npm run build
 
 # 基盤（ロール・ポート・Redis 認証・ヘルスチェック・SPA 配信）
 bash scripts/verify-infra.sh
+
+# 検査自体の負のテスト（一時コンテナを作成し、終了時に削除）
+bash scripts/test-published-ports.sh    # 0.0.0.0・IPv6・想定外ポートの公開を検出できること
+bash scripts/test-app-healthcheck.sh    # 空の bind mount 等を unhealthy と判定できること
 ```
 
 `test` サービスは外部に出られない内部ネットワーク上で動くため、`composer audit` / `npm audit` はネットワークに出られるコンテナで実行します：
@@ -215,7 +221,7 @@ docker compose run --rm --no-deps frontend npm audit
 | secret-scan | gitleaks（Git 履歴全体）、Trivy（作業ツリーの秘密情報） |
 | backend | PostgreSQL / Redis 起動、基盤検証、Pint、Larastan、Pest、composer audit |
 | frontend | ESLint、型チェック、Vitest、ビルド、npm audit |
-| stack | 全サービス起動、マイグレーション、`verify-infra.sh` |
+| stack | 全サービス起動、マイグレーション、`verify-infra.sh`、公開ポート検査と healthcheck の負のテスト |
 
 ワークフローの権限は `contents: read` のみ。CI の `.env` は実行ごとに使い捨ての値を生成し、実際の AI API キーは使用しません。
 
@@ -234,7 +240,7 @@ docker compose run --rm --no-deps frontend npm audit
 | `scripts/*.sh: Permission denied` | Windows 側のエディタで編集すると実行権限が外れることがある。`bash scripts/xxx.sh` で実行するか `chmod +x scripts/*.sh` |
 | `.env` の値を作り直したい | `docker compose down -v` で DB ボリュームを削除してから `.env` を削除し、`scripts/init-env.sh` を再実行（DB ロールのパスワードは初回起動時にのみ設定されるため） |
 | `docker` コマンドが WSL で見つからない | Docker Desktop の WSL integration で Ubuntu を有効にする |
-| Docker Desktop 再起動後に nginx が終了コード 127 で停止（`error mounting ".../docker-desktop-bind-mounts/..."`、`not a directory` または `no such file or directory`）／ API が 404 `File not found.` を返す／ `Could not open input file: artisan` | Docker Desktop（WSL2）の bind mount が起動直後に解決できず、マウント先が空になった状態。`app` は `healthy` のままなので、`docker compose exec app ls public` で確認する。該当サービスだけを `docker compose up -d --no-deps --force-recreate <サービス名>` で作り直す（データは名前付きボリュームに残る） |
+| Docker Desktop 再起動後に nginx が終了コード 127 で停止（`error mounting ".../docker-desktop-bind-mounts/..."`、`not a directory` または `no such file or directory`）／ API が 404 `File not found.` を返す／ `Could not open input file: artisan` | Docker Desktop（WSL2）の bind mount が起動直後に解決できず、マウント先が空になった状態。`app` は `unhealthy` になる。`worker` / `scheduler` には healthcheck がないため `docker compose logs` で確認する。該当サービスだけを `docker compose up -d --no-deps --force-recreate <サービス名>` で作り直す（データは名前付きボリュームに残る） |
 
 ## ライセンス
 

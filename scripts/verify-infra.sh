@@ -30,8 +30,14 @@ for s in postgres redis; do
   cid=$(docker compose ps -q "$s")
   if [ -n "$cid" ] && [ -z "$(docker port "$cid")" ]; then ok "$s has no published ports"; else ng "$s has published ports or is not running"; fi
 done
-published=$(docker compose ps --format '{{.Publishers}}' | grep -oE '[0-9.:]+->' | grep -vE '^127\.0\.0\.1:' || true)
-if [ -z "$published" ]; then ok "all published ports bind to 127.0.0.1 only"; else ng "ports published on non-loopback: $published"; fi
+# shellcheck disable=SC2046 # one argument per container id
+if port_report=$(bash scripts/check-published-ports.sh \
+    --allow "nginx 80/tcp $NGINX_PORT" --allow "frontend 5173/tcp $FRONTEND_PORT" \
+    $(docker compose ps -aq) 2>&1); then
+  ok "only the expected ports are published, and only on 127.0.0.1 ($port_report)"
+else
+  ng "published port policy"; echo "$port_report" | sed 's/^/         /'
+fi
 
 echo "== P0-NET-02: redis requires authentication =="
 check "unauthenticated PING is rejected (NOAUTH)" \
@@ -68,8 +74,8 @@ if [ -n "$(docker compose ps -q app 2>/dev/null)" ]; then
     check "$s has no DB_MIGRATOR_* / POSTGRES_PASSWORD in its environment" \
       "! docker compose exec -T $s env | grep -qE '^(DB_MIGRATOR_|POSTGRES_PASSWORD=)'"
   done
-  check "php artisan migrate in the app container fails (no DDL privilege)" \
-    "! docker compose exec -T app php artisan migrate --force"
+  check "php artisan migrate in the app container fails because of the DB privilege" \
+    "! migrate_output=\$(docker compose exec -T app php artisan migrate --force 2>&1) && grep -qi 'permission denied' <<< \"\$migrate_output\""
 
   echo "== P0-HC-01 / P0-HC-02: health endpoints through nginx =="
   base=http://127.0.0.1:$NGINX_PORT
