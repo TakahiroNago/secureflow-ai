@@ -77,6 +77,12 @@ if [ -n "$(docker compose ps -q app 2>/dev/null)" ]; then
   check "php artisan migrate in the app container fails because of the DB privilege" \
     "! migrate_output=\$(docker compose exec -T app php artisan migrate --force 2>&1) && grep -qi 'permission denied' <<< \"\$migrate_output\""
 
+  echo "== P0-HC-03 / P0-HC-04: container health =="
+  for s in app worker scheduler; do
+    check "$s reports healthy" \
+      "[ \"\$(docker inspect --format '{{.State.Health.Status}}' \"\$(docker compose ps -q $s)\")\" = healthy ]"
+  done
+
   echo "== P0-HC-01 / P0-HC-02: health endpoints through nginx =="
   base=http://127.0.0.1:$NGINX_PORT
   check "this project's nginx is published on 127.0.0.1:$NGINX_PORT" \

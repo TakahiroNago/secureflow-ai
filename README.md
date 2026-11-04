@@ -169,7 +169,7 @@ docker compose config --images
 
 レスポンスにはバージョン・接続先・失敗した依存名・エラー詳細を含めません（詳細はアプリケーションログのみ）。レート制限は nginx で行います（60 回/分/IP）。
 
-`app` コンテナの healthcheck は、`artisan` と `public/index.php` の存在、php-fpm の TCP 応答、`php artisan --version` の成功を確認します（DB・Redis には接続しません）。
+`app` コンテナの healthcheck は、`artisan` と `public/index.php` の存在、php-fpm の TCP 応答、`php artisan --version` の成功を確認します。`worker` / `scheduler` は、ソースの存在、`php artisan --version` の成功、`queue:work` / `schedule:work` の実プロセスを確認します。いずれも DB・Redis には接続せず、処理するジョブがないだけでは unhealthy になりません。
 
 ## データベースロールとマイグレーション
 
@@ -203,6 +203,7 @@ bash scripts/verify-infra.sh
 # 検査自体の負のテスト（一時コンテナを作成し、終了時に削除）
 bash scripts/test-published-ports.sh    # 0.0.0.0・IPv6・想定外ポートの公開を検出できること
 bash scripts/test-app-healthcheck.sh    # 空の bind mount 等を unhealthy と判定できること
+bash scripts/test-worker-healthcheck.sh # worker / scheduler のソース・プロセス異常を判定できること
 ```
 
 `test` サービスは外部に出られない内部ネットワーク上で動くため、`composer audit` / `npm audit` はネットワークに出られるコンテナで実行します：
@@ -240,7 +241,7 @@ docker compose run --rm --no-deps frontend npm audit
 | `scripts/*.sh: Permission denied` | Windows 側のエディタで編集すると実行権限が外れることがある。`bash scripts/xxx.sh` で実行するか `chmod +x scripts/*.sh` |
 | `.env` の値を作り直したい | `docker compose down -v` で DB ボリュームを削除してから `.env` を削除し、`scripts/init-env.sh` を再実行（DB ロールのパスワードは初回起動時にのみ設定されるため） |
 | `docker` コマンドが WSL で見つからない | Docker Desktop の WSL integration で Ubuntu を有効にする |
-| Docker Desktop 再起動後に nginx が終了コード 127 で停止（`error mounting ".../docker-desktop-bind-mounts/..."`、`not a directory` または `no such file or directory`）／ API が 404 `File not found.` を返す／ `Could not open input file: artisan` | Docker Desktop（WSL2）の bind mount が起動直後に解決できず、マウント先が空になった状態。`app` は `unhealthy` になる。`worker` / `scheduler` には healthcheck がないため `docker compose logs` で確認する。該当サービスだけを `docker compose up -d --no-deps --force-recreate <サービス名>` で作り直す（データは名前付きボリュームに残る） |
+| Docker Desktop 再起動後に nginx が終了コード 127 で停止（`error mounting ".../docker-desktop-bind-mounts/..."`、`not a directory` または `no such file or directory`）／ API が 404 `File not found.` を返す／ `Could not open input file: artisan` | Docker Desktop（WSL2）の bind mount が起動直後に解決できず、マウント先が空になった状態。`app` は `unhealthy` に、`worker` / `scheduler` は `artisan` を開けず再起動を繰り返す（`docker compose ps` で確認する）。該当サービスだけを `docker compose up -d --no-deps --force-recreate <サービス名>` で作り直す（データは名前付きボリュームに残る） |
 
 ## ライセンス
 

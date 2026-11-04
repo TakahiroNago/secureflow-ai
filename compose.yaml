@@ -142,6 +142,21 @@ services:
       <<: *laravel-env
     command: ["php", "artisan", "queue:work", "redis", "--sleep=3", "--tries=1", "--max-time=3600"]
     networks: [data]
+    healthcheck:
+      # Liveness: the code is mounted, Laravel boots and PID 1 is the real worker. It does not look
+      # at the queue, so having no jobs to process never makes the container unhealthy.
+      test:
+        - CMD-SHELL
+        - >-
+          test -f /var/www/html/artisan
+          && test -f /var/www/html/bootstrap/app.php
+          && php /var/www/html/artisan --version > /dev/null
+          && tr '\0' ' ' < /proc/1/cmdline | grep -q 'artisan queue:work'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 2s
 
   scheduler:
     <<: *php-service
@@ -149,6 +164,21 @@ services:
       <<: *laravel-env
     command: ["php", "artisan", "schedule:work"]
     networks: [data]
+    healthcheck:
+      # Liveness: the code is mounted, Laravel boots and PID 1 is the real scheduler. Having no
+      # scheduled command due never makes the container unhealthy.
+      test:
+        - CMD-SHELL
+        - >-
+          test -f /var/www/html/artisan
+          && test -f /var/www/html/bootstrap/app.php
+          && php /var/www/html/artisan --version > /dev/null
+          && tr '\0' ' ' < /proc/1/cmdline | grep -q 'artisan schedule:work'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 2s
 
   nginx:
     <<: *hardening
