@@ -1,7 +1,7 @@
 # SecureFlow AI — データベース設計書
 
-- 版：v1.1（2026-11-03）
-- 状態：確定（v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.2（2026-11-04）
+- 状態：確定（v1.2：列挙列の NOT NULL 方針を明記。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - DBMS：PostgreSQL（実装時点の最新安定版）
 
 ---
@@ -13,7 +13,7 @@
 3. **履歴系テーブルは追記専用**（UPDATE/DELETE をDB権限とトリガーの両方で拒否）。
 4. **原文・秘密情報を保存しない。** ユーザー入力由来の本文はマスキング後のもののみ。
 5. 時刻はすべて `timestamptz`（UTC保存、表示時にJST変換）。
-6. 列挙値は `varchar` + `CHECK` 制約（PostgreSQLのENUM型は変更が重いため不採用）。
+6. 列挙値は `varchar` + `CHECK` 制約（PostgreSQLのENUM型は変更が重いため不採用）。`CHECK` は NULL を通すため、列挙列は **`NULL` と明記したものを除き `NOT NULL`** とする。
 7. 楽観ロック用 `lock_version` と、行ロック（`SELECT ... FOR UPDATE`）を併用する。
 
 ## 2. ER概要
@@ -67,7 +67,7 @@ security_test_runs 1─* security_test_results
 | name | varchar(100) | NOT NULL | |
 | email | citext | UNIQUE NOT NULL | ログインID |
 | password | varchar(255) | NOT NULL | Argon2id ハッシュ |
-| role | varchar(16) | CHECK IN ('admin','member','auditor') | |
+| role | varchar(16) | NOT NULL, CHECK IN ('admin','member','auditor') | |
 | is_active | boolean | NOT NULL DEFAULT true | |
 | failed_login_count | smallint | NOT NULL DEFAULT 0 | |
 | locked_until | timestamptz | NULL | アカウントロック |
@@ -229,11 +229,11 @@ security_test_runs 1─* security_test_results
 | id | bigint | PK, GENERATED ALWAYS AS IDENTITY | チェーン順序 |
 | event_id | uuid | UNIQUE NOT NULL | |
 | organization_id | uuid | NULL | 未知メールでのログイン失敗などは NULL |
-| actor_type | varchar(16) | CHECK IN ('user','system','anonymous') | |
+| actor_type | varchar(16) | NOT NULL, CHECK IN ('user','system','anonymous') | |
 | actor_user_id | uuid | NULL | |
 | event_type | varchar(64) | NOT NULL | [security-design.md §16](security-design.md) |
 | resource_type / resource_id | varchar(32) / uuid | NULL | |
-| result | varchar(8) | CHECK IN ('success','failure','denied') | |
+| result | varchar(8) | NOT NULL, CHECK IN ('success','failure','denied') | |
 | severity | varchar(8) | NULL | |
 | ip_address | inet | NULL | |
 | request_id | uuid | NULL | トレースID |
