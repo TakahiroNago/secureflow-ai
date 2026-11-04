@@ -1,7 +1,7 @@
 # SecureFlow AI — アーキテクチャ設計書
 
-- 版：v1.1（2026-11-03）
-- 状態：確定（v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.2（2026-11-04）
+- 状態：確定（v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - 関連：[database-design.md](database-design.md) / [api-design.md](api-design.md) / [security-design.md](security-design.md) / [threat-model.md](threat-model.md) / [test-strategy.md](test-strategy.md) / [development-roadmap.md](development-roadmap.md)
 
 ---
@@ -81,7 +81,7 @@
 | `frontend` | 開発時のVite dev server（本番相当ではビルド成果物をnginxが配信） | `127.0.0.1:5173` | — |
 
 - 公開するポートは `127.0.0.1` にバインドし、LANへ公開しない。DB・Redis はホストに公開せず、Compose 内部ネットワークからのみ到達できる（調査が必要な場合は `docker compose exec postgres psql` を使う）。
-- **owner ロールの認証情報は `migrate` サービスにのみ渡す。** `app` / `worker` / `scheduler` のコンテナには owner のパスワードが存在しないため、通常のLaravel実行経路からDDLは実行できない（`php artisan migrate` を app コンテナで実行しても権限不足で失敗する＝fail closed）。
+- **owner ロールの認証情報は `migrate` サービスと、テスト用DBのスキーマ初期化を行う `test` サービスにのみ渡す**（[database-design.md §4.3・§4.6](database-design.md)）。`app` / `worker` / `scheduler` のコンテナには owner のパスワードが存在しないため、通常のLaravel実行経路からDDLは実行できない（`php artisan migrate` を app コンテナで実行しても権限不足で失敗する＝fail closed）。
 - コンテナイメージは実際に採用したバージョンのタグで固定し、README に記載する。
 
 ### 4.1 開発環境
@@ -97,7 +97,7 @@
 | `GET /api/health/live` | Liveness | PHPプロセスが応答できるか（外部依存を確認しない） | 200 `{"status":"ok"}` |
 | `GET /api/health/ready` | Readiness | DB（appロールで `SELECT 1`）と Redis（`PING`）に到達できるか | 200 `{"status":"ok"}` ／ 503 `{"status":"unavailable"}` |
 
-応答にはバージョン・ホスト名・接続先・エラー詳細を含めない。失敗の詳細はアプリケーションログにのみ記録する。Docker の healthcheck は nginx・app が liveness、起動順序の制御には postgres・redis 自身の healthcheck を使う。
+応答にはバージョン・ホスト名・接続先・エラー詳細を含めない。失敗の詳細はアプリケーションログにのみ記録する。Docker の healthcheck は nginx・app・worker・scheduler が liveness（DB・Redis に接続しない）、起動順序の制御には postgres・redis 自身の healthcheck を使う。app はソースの存在、php-fpm の応答、Laravel の起動を確認する。worker・scheduler はソースの存在、Laravel の起動、`queue:work` / `schedule:work` の実プロセスを確認し、処理するジョブがないだけでは unhealthy にしない。
 
 ## 5. ディレクトリ構成
 

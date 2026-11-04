@@ -1,7 +1,7 @@
 # SecureFlow AI — テスト戦略
 
-- 版：v1.1（2026-11-03）
-- 状態：確定（v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.2（2026-11-04）
+- 状態：確定（v1.2：工程1-1 の設計レビューと検査の修正を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -19,7 +19,7 @@
 |---|---|---|---|
 | バックエンド Unit | Pest | `backend/tests/Unit` | 検出器、Masker、Normalizer、OutputValidator、PlanHasher、StateMachine、ActionCatalog |
 | バックエンド Feature（API） | Pest | `backend/tests/Feature` | エンドポイント、認証・認可、バリデーション、エラー形式 |
-| セキュリティ | Pest（group: security） | `backend/tests/Security` | 攻撃シナリオ（§5） |
+| セキュリティ | Pest（group: security） | `backend/tests/Security`（工程1-1で `Pest.php` と `phpunit.xml` に登録） | 攻撃シナリオ（§5） |
 | データ分離 | Pest（group: isolation） | `backend/tests/Isolation` | 2組織×3ロールの総当たり |
 | 並行性 | Pest（2つのDB接続） | `backend/tests/Concurrency` | 行ロック・一意制約・二重実行 |
 | フロントエンド | Vitest + Testing Library | `frontend/src/**/*.test.tsx` | コンポーネント、入力検証、エラー表示、画面遷移、テキスト描画 |
@@ -164,12 +164,28 @@ Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・�
 |---|---|---|---|
 | P0-HC-01 | Liveness `GET /api/health/live` | 200 `{"status":"ok"}`。DB・Redis 停止中でも 200。余計なキー・バージョン情報を含まない | Pest、curl |
 | P0-HC-02 | Readiness `GET /api/health/ready` | DB・Redis 到達時 200 `{"status":"ok"}`、いずれか不可で 503 `{"status":"unavailable"}`。失敗した依存名・エラー詳細を含まない | Pest（接続先を不正値にして検証）、curl |
+| P0-HC-03 | `app` コンテナの healthcheck | `artisan` と `public/index.php` の存在、php-fpm の TCP 応答、`artisan --version` の成功をすべて確認する。空の bind mount で unhealthy になる。DB・Redis には接続しない | `test-app-healthcheck.sh`（負のテスト） |
+| P0-HC-04 | `worker` / `scheduler` コンテナの healthcheck | Laravel ソースの存在、`artisan --version` の成功、`queue:work` / `schedule:work` の実プロセス（PID 1）を確認する。処理するジョブがないだけでは unhealthy にならない | `test-worker-healthcheck.sh`（負のテスト） |
 | P0-DB-01 | app ロールで DDL（`CREATE TABLE`） | 権限エラーで失敗 | Pest（app 接続） |
-| P0-DB-02 | owner ロールでのマイグレーション経路 | `migrate` サービスで `migrate` が成功。app コンテナには `DB_MIGRATOR_*` が存在しない | `docker compose run --rm migrate`、`docker compose exec app env` の確認 |
+| P0-DB-02 | owner ロールでのマイグレーション経路 | `migrate` サービスで `migrate` が成功。`app` / `worker` / `scheduler` には `DB_MIGRATOR_*` が存在しない。`app` での `migrate` は権限エラーで失敗する | `docker compose run --rm migrate`、`verify-infra.sh` |
 | P0-DB-03 | ロール属性 | owner・app とも NOSUPERUSER / NOCREATEDB / NOCREATEROLE。PUBLIC に public スキーマの CREATE 権限なし | psql での確認SQL |
-| P0-NET-01 | ポート公開 | `docker compose ps` / `docker port` で postgres・redis にホスト公開ポートがない。公開ポートは 127.0.0.1 のみ | コマンド確認 |
+| P0-NET-01 | ポート公開 | `docker inspect` の設定値と実際のバインドが許可リスト（nginx・frontend のみ）と一致し、公開先は 127.0.0.1 のみ。`0.0.0.0`、IPv6（`::`）、アドレスなし、想定外のポート、host ネットワーク、publish-all を失敗にする。評価できない場合も失敗にする | `check-published-ports.sh`、`test-published-ports.sh`（負のテスト） |
 | P0-NET-02 | Redis 認証 | パスワードなし接続が `NOAUTH` で拒否される | `redis-cli` |
 | P0-SEC-01 | リポジトリの秘密情報 | gitleaks・Trivy secret で検出0件。`.env` が追跡対象外 | CI、`git check-ignore` |
 | P0-FE-01 | フロントエンドのスモーク | 画面表示、Vite proxy 経由で live ヘルスチェック取得、`dangerouslySetInnerHTML` の使用で ESLint がエラー | Vitest、ESLint |
 
 テスト用データベースは `secureflow_test`（開発用DBとは別）とする。
+
+## 13. 工程1-1 のDBテスト
+
+テスト本体は `secureflow_app` ロールで実行する。owner 接続はスキーマの初期化とマイグレーションに限定する（[database-design.md §4.6](database-design.md)）。
+
+| ID | テスト | 期待結果 |
+|---|---|---|
+| DB-MIG-01 | マイグレーション | up → rollback → 再 up が成功し、rollback 後にテーブルと関数が残らない |
+| DB-PRIV-01 | テーブル権限 | 4テーブルの権限が [database-design.md §4.2](database-design.md) と過不足なく一致する。app から `migrations` にアクセスできない |
+| DB-PRIV-02 | `audit_logs` の INSERT | app の通常の INSERT は成功。`nextval()` と、任意の `id` を指定した INSERT（`OVERRIDING SYSTEM VALUE` を含む）は拒否される |
+| ST-28（DB部分） | `audit_logs` の改変 | app の UPDATE / DELETE / TRUNCATE は権限エラー。owner でも、行がある状態の UPDATE / DELETE / TRUNCATE はトリガーで拒否される |
+| DB-CON-01 | 制約 | NOT NULL の列挙列への NULL、不正な列挙値、大文字小文字違いのメール重複、範囲外の設定値が拒否される。ID を省略した生SQLの INSERT が拒否される |
+| DB-GUARD-01 | テスト用DBのガード | [database-design.md §4.6](database-design.md) の各条件について、1つでも満たさない場合に中断する |
+| DB-GUARD-02 | 破壊的コマンドの制限 | `APP_ENV=testing` を指定した場合を含め、テスト用DB以外では `migrate:fresh`・`migrate:refresh`・`migrate:reset`・`db:wipe` が拒否され、データが残る。開発用DBの `migrate:rollback --step` は実行できる。本番相当の `migrate:rollback` は拒否される |

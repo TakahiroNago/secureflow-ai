@@ -1,7 +1,7 @@
 # SecureFlow AI — セキュリティ設計書
 
-- 版：v1.1（2026-11-03）
-- 状態：確定（v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.2（2026-11-04）
+- 状態：確定（v1.2：監査ログの権限とチェーン順序を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - 参照：OWASP Top 10、OWASP Top 10 for LLM Applications 2025、OWASP ASVS
 
 ---
@@ -339,15 +339,15 @@ AI出力スキーマ（概要）：
 
 ### 16.3 改ざん防止（MVPで実装）
 
-1. **追記専用DB権限**：アプリ用ロールは `audit_logs` に SELECT/INSERT のみ。
+1. **追記専用DB権限**：アプリ用ロールは `audit_logs` に SELECT と、`id` を除く列への INSERT のみ。シーケンスの権限は持たない（[database-design.md §4.2](database-design.md)）。
 2. **UPDATE / DELETE / TRUNCATE 拒否トリガー**。
-3. **ハッシュチェーン**：`hash = SHA-256(prev_hash ‖ 正規化した行内容)`。`POST /audit-logs/verify` と `php artisan audit:verify` で検証。
+3. **ハッシュチェーン**：`hash = SHA-256(prev_hash ‖ 正規化した行内容)`。組織単位のチェーンとし、順序はチェーンヘッドとロックで管理する。`audit_logs.id` の順序はコミット順序を保証しないため、チェーン順序として扱わない（[database-design.md §3.12](database-design.md)）。`POST /audit-logs/verify` と `php artisan audit:verify` で検証。
 4. 一般ユーザー・admin を含め、アプリには監査ログの更新・削除APIが存在しない。
 
 ### 16.4 拡張候補
 
 - チェーンの最新ハッシュを定期的に外部ストレージ（例：S3 Object Lock、別アカウントのログ基盤）へ退避し、DB所有者によるチェーン全体の再計算・偽装も検出可能にする。
-- 組織別チェーン、保持期間経過後の安全な削除手順。
+- 保持期間経過後の安全な削除手順。
 
 ## 17. アプリケーションログとエラー
 
