@@ -25,23 +25,19 @@ it('grants the application role exactly the designed table privileges', function
     'organizations' => ['organizations', ['SELECT', 'INSERT', 'UPDATE']],
     'organization_settings' => ['organization_settings', ['SELECT', 'INSERT', 'UPDATE']],
     'users' => ['users', ['SELECT', 'INSERT', 'UPDATE']],
-    // INSERT on audit_logs exists only per column, see below.
     'audit_logs' => ['audit_logs', ['SELECT']],
+    'audit_chain_heads' => ['audit_chain_heads', ['SELECT']],
     'migrations' => ['migrations', []],
 ]);
 
-it('grants INSERT on audit_logs for every column except id', function () {
+it('grants INSERT on no column of audit_logs: appends go through audit_append()', function () {
     $columns = appDb()->select(
         "SELECT column_name, has_column_privilege(current_user, 'audit_logs', column_name, 'INSERT') AS granted
          FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'audit_logs'"
     );
 
-    $withoutInsert = array_values(array_map(
-        fn (object $column) => $column->column_name,
-        array_filter($columns, fn (object $column) => ! $column->granted),
-    ));
-
-    expect($columns)->toHaveCount(16)->and($withoutInsert)->toBe(['id']);
+    expect($columns)->toHaveCount(19)
+        ->and(array_filter($columns, fn (object $column) => $column->granted))->toBe([]);
 });
 
 it('grants the application role nothing on the audit_logs sequence', function (string $privilege) {

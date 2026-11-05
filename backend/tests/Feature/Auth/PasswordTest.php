@@ -29,7 +29,7 @@ const NEW_PASSWORD = 'a much longer new passphrase';
 
 function changePassword(SpaClient $client, string $new = NEW_PASSWORD, string $current = UserFactory::TEST_PASSWORD): TestResponse
 {
-    return $client->send('PATCH', PASSWORD_URI, ['current_password' => $current, 'new_password' => $new]);
+    return $client->send('PATCH', PASSWORD_URI, ['current_password' => $current, 'new_password' => $new], ['HTTP_IDEMPOTENCY_KEY' => (string) Str::uuid7()]);
 }
 
 // ---- AUTH-PW-01 ------------------------------------------------------------------------------
@@ -145,7 +145,7 @@ it('AUTH-PW-02: accepts 12 characters and the maximum length', function (string 
 it('AUTH-PW-02: refuses unknown fields and limits attempts', function () {
     $client = loggedIn($this, User::factory()->create());
 
-    $client->send('PATCH', PASSWORD_URI, ['current_password' => 'x', 'new_password' => NEW_PASSWORD, 'role' => 'admin'])
+    $client->send('PATCH', PASSWORD_URI, ['current_password' => 'x', 'new_password' => NEW_PASSWORD, 'role' => 'admin'], ['HTTP_IDEMPOTENCY_KEY' => (string) Str::uuid7()])
         ->assertStatus(422)
         ->assertJsonStructure(['errors' => ['role']]);
 

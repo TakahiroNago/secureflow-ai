@@ -1,9 +1,15 @@
 <?php
 
+use App\Audit\AuditAvailability;
+use App\Audit\AuditFailure;
+use App\Audit\OutageLog;
 use App\Http\Middleware\EnsureSessionIsCurrent;
+use App\Http\Middleware\RejectWhileDatabaseUnavailable;
 use App\Http\Middleware\RequireJsonBody;
 use App\Http\Middleware\RequireStatefulFrontend;
 use App\Support\Http\ProblemDetails;
+use App\Support\Http\ServiceUnavailableException;
+use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -30,9 +36,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->trimStrings(except: ['password', 'current_password', 'new_password']);
         $middleware->alias([
             'frontend' => RequireStatefulFrontend::class,
+            'db.available' => RejectWhileDatabaseUnavailable::class,
             'json.body' => RequireJsonBody::class,
             'session.current' => EnsureSessionIsCurrent::class,
         ]);
+        // Without this the framework moves authentication first, and it reads the users table.
+        $middleware->prependToPriorityList(AuthenticatesRequests::class, RejectWhileDatabaseUnavailable::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
@@ -45,12 +54,50 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // The message of a query exception contains the SQL with its bindings, such as a password
         // hash or an email address. Log only what identifies the failure.
-        $exceptions->report(function (QueryException $exception): bool {
+        // PDOException too: a failed connect while opening a transaction arrives unwrapped.
+        $exceptions->report(function (PDOException $exception): bool {
+            $failure = AuditFailure::from($exception);
+
             Log::error('Database query failed.', [
-                'sqlstate' => $exception->getCode(),
-                'connection' => $exception->getConnectionName(),
+                'metric' => 'db.query_failed',
+                'sqlstate' => $failure->sqlState,
+                'cause' => $failure->cause,
+                'connection' => $exception instanceof QueryException ? $exception->getConnectionName() : null,
             ]);
+
+            // Not a state change: only audit_append() decides that. It may still be the same disk.
+            if ($failure->class === AuditFailure::STORAGE) {
+                app(OutageLog::class)->occurrence('db.storage_error', 'db.storage_error.'.$failure->storageArea, [
+                    'sqlstate' => $failure->sqlState,
+                    'storage_area' => $failure->storageArea,
+                ]);
+            }
+
+            // Any route can be the first to notice, not only the ones with a preflight.
+            if ($failure->isConnection()) {
+                try {
+                    app(AuditAvailability::class)->probe();
+                } catch (Throwable) {
+                    // Redis may be down too. Reporting must not change the response.
+                }
+            }
 
             return false;
         });
+
+        // During an outage this would otherwise be one line per request.
+        $exceptions->report(function (RedisException $exception): bool {
+            app(OutageLog::class)->failure('redis', match (true) {
+                str_contains($exception->getMessage(), 'Connection refused') => 'connection_refused',
+                str_contains($exception->getMessage(), 'getaddrinfo') => 'name_resolution',
+                str_contains($exception->getMessage(), 'read error') => 'read_timeout',
+                str_contains($exception->getMessage(), 'WRONGPASS'), str_contains($exception->getMessage(), 'NOAUTH') => 'auth_failed',
+                default => 'unknown',
+            });
+
+            return false;
+        });
+
+        // Already logged by whatever raised it, and part of normal operation during an outage.
+        $exceptions->dontReport(ServiceUnavailableException::class);
     })->create();

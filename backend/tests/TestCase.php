@@ -2,10 +2,20 @@
 
 namespace Tests;
 
+use App\Audit\AuditLogger;
+use App\Audit\AuditWriter;
+use App\Audit\TransactionBoundary;
+use App\Domain\Auth\PendingFingerprintStore;
+use App\Domain\Auth\RetiredSessions;
 use App\Support\Database\TestDatabaseGuard;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use RuntimeException;
+use Tests\Support\ArrayPendingFingerprintStore;
+use Tests\Support\ArrayRetiredSessions;
+use Tests\Support\TestTransactionBoundary;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -20,6 +30,33 @@ abstract class TestCase extends BaseTestCase
     ];
 
     private static bool $schemaReady = false;
+
+    private string $logStateDirectory;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // After DatabaseTransactions has opened its transaction, so that one does not count as
+        // business work. Tests without the trait get base 0, which is what production sees.
+        $this->app->instance(TransactionBoundary::class, new TestTransactionBoundary(
+            DB::connection(AuditWriter::CONNECTION)->transactionLevel(),
+        ));
+        $this->app->forgetInstance(AuditLogger::class);
+
+        $this->app->instance(PendingFingerprintStore::class, new ArrayPendingFingerprintStore);
+        $this->app->instance(RetiredSessions::class, new ArrayRetiredSessions);
+
+        $this->logStateDirectory = sys_get_temp_dir().'/secureflow-test-log-state-'.uniqid('', true);
+        config(['audit.log_state_directory' => $this->logStateDirectory]);
+    }
+
+    protected function tearDown(): void
+    {
+        File::deleteDirectory($this->logStateDirectory);
+
+        parent::tearDown();
+    }
 
     /**
      * Runs before DatabaseTransactions opens its transactions.

@@ -25,6 +25,10 @@ psql_as() { # user password db sql
 }
 psql_su() { docker compose exec -T postgres psql -U postgres -d "$1" --no-psqlrc -tAc "$2"; }
 
+echo "== AUDIT-STORAGE-01: readiness never restarts anything =="
+check "no container healthcheck or restart depends on the readiness endpoint" \
+  "! docker compose config | grep -q 'health/ready'"
+
 echo "== P0-NET-01: no host-published ports for postgres / redis =="
 for s in postgres redis; do
   cid=$(docker compose ps -q "$s")

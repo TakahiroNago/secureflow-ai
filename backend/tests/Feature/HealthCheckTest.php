@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 
@@ -66,6 +67,20 @@ it('P0-HC-02: readiness returns ok when database and redis are reachable', funct
         ->assertOk()
         ->assertExactJson(['status' => 'ok']);
 });
+
+it('readiness answers 503 and liveness 200 while a storage failure is suspected, and nothing else changes that', function (?string $scope, int $readiness) {
+    Cache::put('audit:unavailable', [
+        'outage_id' => 'x', 'failure_class' => 'storage', 'storage_scope' => $scope, 'started_at' => 0, 'next_check_at' => PHP_INT_MAX,
+    ]);
+
+    $response = $this->getJson('/api/health/ready')->assertStatus($readiness);
+
+    expect($response->json())->toBe(['status' => $readiness === 200 ? 'ok' : 'unavailable']);
+    $this->getJson('/api/health/live')->assertOk()->assertExactJson(['status' => 'ok']);
+})->with([
+    'storage: may affect the whole database' => ['db_suspected', 503],
+    'configuration: the database itself is fine' => [null, 200],
+]);
 
 it('P0-HC-02: readiness returns 503 without details when the database is unreachable', function () {
     breakDatabase();

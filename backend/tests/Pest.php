@@ -1,13 +1,22 @@
 <?php
 
+use App\Audit\AuditLogger;
+use App\Audit\AuditWriter;
+use App\Domain\Auth\PendingFingerprintStore;
+use App\Domain\Auth\RetiredSessions;
 use App\Models\User;
 use App\Support\Database\TestDatabaseGuard;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Connection;
 use Illuminate\Database\QueryException;
+use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
+use Tests\Support\ArrayPendingFingerprintStore;
+use Tests\Support\ArrayRetiredSessions;
 use Tests\Support\SpaClient;
 use Tests\TestCase;
 
@@ -72,24 +81,133 @@ function dbError(Connection $db, Closure $statement): ?QueryException
     return null;
 }
 
-const AUDIT_INSERT_COLUMNS = 'event_id, actor_type, event_type, result, occurred_at, prev_hash, hash';
+const AUDIT_INSERT_COLUMNS = 'event_id, actor_type, event_type, result, occurred_at, prev_hash, hash, chain_seq, hash_version';
+
+const AUDIT_INSERT_PLACEHOLDERS = '?, ?, ?, ?, ?, ?, ?, ?, ?';
 
 /**
- * @return list<string>
+ * @return list<string|int|null>
  */
 function auditValues(?string $actorType = 'system', ?string $result = 'success'): array
 {
     $hash = str_repeat('0', 64);
 
-    return [(string) Str::uuid7(), $actorType, 'test.event', $result, now()->toIso8601String(), $hash, $hash];
+    return [(string) Str::uuid7(), $actorType, 'test.event', $result, now()->toIso8601String(), $hash, $hash, random_int(1, PHP_INT_MAX), 1];
 }
 
+/** A direct insert: only the owner can do this, which is what the constraint tests need. */
 function insertAuditLog(Connection $db, ?string $actorType = 'system', ?string $result = 'success'): void
 {
     $db->insert(
-        'INSERT INTO audit_logs ('.AUDIT_INSERT_COLUMNS.') VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO audit_logs ('.AUDIT_INSERT_COLUMNS.') VALUES ('.AUDIT_INSERT_PLACEHOLDERS.')',
         auditValues($actorType, $result),
     );
+}
+
+/**
+ * audit_append() as the application role, with valid arguments unless overridden.
+ *
+ * @param  array<string, mixed>  $overrides
+ */
+function appendAudit(array $overrides = [], ?Connection $db = null): int
+{
+    $arguments = $overrides + [
+        'event' => (string) Str::uuid7(),
+        'organization' => null,
+        'actor_type' => 'system',
+        'actor' => null,
+        'type' => 'test.event',
+        'resource_type' => null,
+        'resource' => null,
+        'result' => 'success',
+        'severity' => null,
+        'ip' => null,
+        'request' => null,
+        'metadata' => '{}',
+    ];
+
+    $order = ['event', 'organization', 'actor_type', 'actor', 'type', 'resource_type', 'resource', 'result', 'severity', 'ip', 'request', 'metadata'];
+
+    return (int) ($db ?? appDb())->selectOne(
+        'SELECT public.audit_append(?::uuid, ?::uuid, ?, ?::uuid, ?, ?, ?::uuid, ?, ?, ?::inet, ?::uuid, ?::jsonb) AS seq',
+        array_map(fn (string $name) => $arguments[$name], $order),
+    )->seq;
+}
+
+/** errorInfo[0], the way the application reads it. */
+function sqlStateFrom(?Throwable $exception): ?string
+{
+    return $exception?->getPrevious()->errorInfo[0] ?? null;
+}
+
+/** Empties the append-only tables. Test database only: the owner switches the triggers off. */
+function resetAuditTables(): void
+{
+    $db = ownerDb();
+    $db->statement('ALTER TABLE audit_logs DISABLE TRIGGER USER');
+    $db->statement('ALTER TABLE audit_chain_heads DISABLE TRIGGER USER');
+    $db->statement('TRUNCATE audit_logs, audit_chain_heads');
+    $db->statement('ALTER TABLE audit_logs ENABLE TRIGGER USER');
+    $db->statement('ALTER TABLE audit_chain_heads ENABLE TRIGGER USER');
+}
+
+function useAuditWriter(AuditWriter $writer): void
+{
+    app()->instance(AuditWriter::class, $writer);
+    app()->forgetInstance(AuditLogger::class);
+
+    // A route keeps its controller, and through it the old writer, for the rest of the test.
+    foreach (app('router')->getRoutes() as $route) {
+        $route->controller = null;
+    }
+}
+
+/** The manager copies the Redis settings when it is built, so a change needs a new manager. */
+function useRedisSettings(array $settings): void
+{
+    config($settings);
+    app()->forgetInstance('redis');
+    Redis::clearResolvedInstance('redis');
+}
+
+function retiredSessions(): ArrayRetiredSessions
+{
+    $sessions = app(RetiredSessions::class);
+    assert($sessions instanceof ArrayRetiredSessions);
+
+    return $sessions;
+}
+
+function pendingStore(): ArrayPendingFingerprintStore
+{
+    $store = app(PendingFingerprintStore::class);
+    assert($store instanceof ArrayPendingFingerprintStore);
+
+    return $store;
+}
+
+/**
+ * Every log line from now on, with its context.
+ *
+ * @return ArrayObject<int, MessageLogged>
+ */
+function captureLogs(): ArrayObject
+{
+    $lines = new ArrayObject;
+    Event::listen(MessageLogged::class, function (MessageLogged $line) use ($lines): void {
+        $lines[] = $line;
+    });
+
+    return $lines;
+}
+
+/**
+ * @param  ArrayObject<int, MessageLogged>  $lines
+ * @return list<MessageLogged>
+ */
+function linesWithMetric(ArrayObject $lines, string $metric): array
+{
+    return array_values(array_filter((array) $lines, fn (MessageLogged $line) => ($line->context['metric'] ?? null) === $metric));
 }
 
 function insertOrganization(Connection $db): string

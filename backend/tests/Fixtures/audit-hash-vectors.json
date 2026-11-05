@@ -1,0 +1,28 @@
+{
+  "comment": "docs/database-design.md §3.12.3. Computed independently in PostgreSQL 18.6, Python and PHP 8.4. If one stops matching, report it: do not change the value.",
+  "vectors": [
+    { "id": "V1", "sha256": "0c402d0ec526b37510b5dfe13fdd6b5922b9359130e0ddab0fb754cc2f304ced",
+      "fields": ["01890000-0000-7000-8000-000000000001", "1", "0000000000000000000000000000000000000000000000000000000000000000", "01890000-0000-7000-8000-0000000000e1", "01890000-0000-7000-8000-000000000001", "user", "01890000-0000-7000-8000-0000000000a1", "auth.login", null, null, "success", null, "203.0.113.1", "01890000-0000-7000-8000-0000000000d1", "{\"a\": 1, \"reason_code\": \"ok\"}", "2026-11-04T03:34:56.789012Z"] },
+    { "id": "V2", "sha256": "25275350129eb68b2684b305c5b081d28d30f6ffe71c5f07134985fd2ce50807",
+      "fields": ["00000000-0000-0000-0000-000000000000", "2", "ab54a98ceb1f0ad2c1bbff1dd3c0b6d7b6e9d0f1c2a3b4c5d6e7f8091a2b3c4d", "01890000-0000-7000-8000-0000000000e2", null, "anonymous", null, "auth.login_failed", null, null, "failure", "low", "2001:db8::1", null, "{\"ok\": true, \"reason_code\": \"認証\"}", "2026-11-04T03:34:56.789012Z"] },
+    { "id": "V3-a", "sha256": "de5dc1213c87c491294f35bdd4456d5e75f24ee09cba38b3bc69dda531922a02", "base": true, "metadata": "{}" },
+    { "id": "V3-b", "sha256": "5f2f49b503f86b28ccf7bbd87537949efd20efd64dcb4cb960de4cd82ac274c9", "base": true, "metadata": "{}", "resource_type": "" },
+    { "id": "V3-c", "sha256": "b465f39d1def92bd176fa9abf7b236c5606ba15909e10a871c4b3547107b5152", "base": true, "metadata": "{}", "resource_type": "-" },
+    { "id": "V5-a", "sha256": "22ccb86eb6d80a079155f11038a9c55d6c86227f22645e0b2b3238c608c08157", "base": true, "metadata": "{\"s\": \"é\"}" },
+    { "id": "V5-b", "sha256": "461ee0a81494283fe02b3537548eeb9a53df06cd49aa4145e0ff76f67628f1d7", "base": true, "metadata": "{\"s\": \"é\"}" },
+    { "id": "V5-c", "sha256": "df9a0413595c7e350fcb6dae79e56de00f610963cb14a1d755eef6a90221405c", "base": true, "metadata": "{\"s\": \"認証\"}" },
+    { "id": "V5-d", "sha256": "fd492e5fde083020f4f2c5f1a1748e1d470f41d37216a5ab23f137a4fa2634c4", "base": true, "metadata": "{\"s\": \"😀\"}" },
+    { "id": "V6-a", "sha256": "0d2051aa7c74678b7f7e3a5da3b3bed38b9f205b56fbd06f6cd6dcbe33c26381", "base": true, "metadata": "{}", "occurred_at": "2026-11-04T03:34:56.000000Z", "occurred_input": "2026-11-04 12:34:56+09:00" },
+    { "id": "V6-b", "sha256": "3202dfdc6bffed3f4668b708af347534b1f2bbcdf219b816fdf9e60f1b3d4c63", "base": true, "metadata": "{}", "occurred_at": "2026-11-04T03:34:56.000001Z", "occurred_input": "2026-11-04 03:34:56.000001+00" },
+    { "id": "V6-c", "sha256": "6bb33ebf344433dc69c5827957e75492a87037ad6b85f0d10a2665873c79d951", "base": true, "metadata": "{}", "occurred_at": "2026-12-31T23:59:59.999999Z", "occurred_input": "2026-12-31 23:59:59.999999+00" },
+    { "id": "V7", "sha256": "2bc8c2b30cd935937c18664b7375be3bf83a1533cef6d39f2db4923e61c8a74b", "base": true, "metadata": "{\"b\": 1, \"aa\": \"y\"}", "metadata_input": "{\"b\":1,\"aa\":\"x\",\"aa\":\"y\"}" }
+  ],
+  "base": {
+    "fields": ["00000000-0000-0000-0000-000000000000", "1", "0000000000000000000000000000000000000000000000000000000000000000", "01890000-0000-7000-8000-0000000000e3", null, "system", null, "audit.test", null, null, "success", null, null, null, "{}", "2026-11-04T03:34:56.789012Z"]
+  },
+  "metadata_only": {
+    "id": "V4",
+    "sha256": "98943942d3cc3cb39fa7e704e2ecb811a1a2b53f32b8296b99e1cb13c5c5e572",
+    "input": "{\"zz\":-5,\"ok\":false,\"reason_code\":\"a\\\"b\\\\c/d é 認証 😀\",\"aa\":9007199254740991,\"line\":\"x y\"}"
+  }
+}

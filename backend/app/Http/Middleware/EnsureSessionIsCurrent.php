@@ -26,7 +26,7 @@ final class EnsureSessionIsCurrent
         $user = $request->user();
 
         if (! $user instanceof User || ! $request->hasSession() || ! $this->session->isCurrent($request, $user)) {
-            if ($request->hasSession()) {
+            if ($request->hasSession() && ! $this->session->wasRetired($request)) {
                 $this->session->end($request);
             }
 
