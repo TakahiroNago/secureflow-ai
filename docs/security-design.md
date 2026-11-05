@@ -1260,7 +1260,7 @@ MVP では、再試行や突き合わせを自動化しない。停止の時間�
 
 | コマンド | 内容 |
 |---|---|
-| `php artisan audit:verify [--organization=<id> \| --system \| --all] [--anchor=<ファイル>]` | 検証結果（チェーン、件数、`first_broken_seq`、理由コード）を出力する。終了コード：0 成功、1 検証失敗、2 実行不能（DB 障害など）。実行不能を「検証成功」と扱わない |
+| `php artisan audit:verify [--organization=<id> \| --system \| --all] [--anchor=<ファイル>]` | 検証結果（チェーン、件数、`first_broken_seq`、理由コード）を出力する。終了コード：0 成功、1 検証失敗、2 実行不能（DB 障害など、対象の指定なし）。実行不能を「検証成功」と扱わない。`--all` でチェーンが1つもない場合は、検証していないことを出力して 0 とする（最初の監査ログの前の状態）。この場合、チェーンの全消去と区別できるのは `--anchor` を指定したときのみである。`--all --anchor` は、保管したヘッドにあってDBにないチェーンも検証し、`ANCHOR_MISMATCH` とする |
 | `php artisan audit:head [--organization=<id> \| --system \| --all]` | 外部保管用に `hash_version`・`chain_id`・`last_seq`・`last_hash`・取得時刻を JSON Lines で出力する。保管は運用者が手動で行う |
 
 どちらも `app` コンテナで app ロールにより実行し、**運用者のみが実行できる経路**（コンテナへのアクセス）とする。システムチェーンの検証結果を組織の利用者へ返す API は設けない。工程1-3では手動で実行し、スケジュール実行はしない。**実行しない間は改ざんも検出されない。** 日次の自動検証は後続工程の候補とする（[development-roadmap.md §7](development-roadmap.md)）。
