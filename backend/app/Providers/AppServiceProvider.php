@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Ai\AiConfiguration;
+use App\Ai\AiGateway;
+use App\Ai\Contracts\AiProvider;
 use App\Audit\AuditLogger;
 use App\Audit\DatabaseTransactionBoundary;
 use App\Audit\TransactionBoundary;
@@ -17,6 +20,7 @@ use App\Support\Database\TcpTimeoutPostgresConnector;
 use App\Support\Session\RetirementAwareSessionHandler;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Cache\RedisStore;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\Connection;
@@ -52,6 +56,13 @@ class AppServiceProvider extends ServiceProvider
         $this->app->scoped(PendingFingerprintStore::class, RedisPendingFingerprintStore::class);
         $this->app->scoped(AuditLogger::class);
         $this->app->bind('db.connector.pgsql', TcpTimeoutPostgresConnector::class);
+
+        $this->app->bind(AiProvider::class, fn ($app) => AiConfiguration::provider(config()->string('ai.provider'), $app->environment()));
+        $this->app->bind(AiGateway::class, fn ($app) => new AiGateway(
+            $app->make(AiProvider::class),
+            config()->integer('ai.timeout_seconds'),
+            config()->integer('ai.max_output_tokens'),
+        ));
     }
 
     /**
@@ -72,6 +83,18 @@ class AppServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             DatabaseCommandPolicy::apply($this->app->environment());
         }
+
+        // Fails at start wherever the AI can be reached. Other commands still run, such as migrate during
+        // an incident, and resolving a provider checks again, so none of them can reach it either.
+        $assertAiConfiguration = fn () => AiConfiguration::assertValid(config()->string('ai.provider'), $this->app->environment());
+        if (! $this->app->runningInConsole()) {
+            $assertAiConfiguration();
+        }
+        Event::listen(CommandStarting::class, function (CommandStarting $event) use ($assertAiConfiguration): void {
+            if (in_array($event->command, AiConfiguration::SERVING_COMMANDS, true)) {
+                $assertAiConfiguration();
+            }
+        });
 
         // Cookie sessions only. There is no personal_access_tokens table, and a bearer token must
         // simply be unauthenticated rather than reach a query on a table that does not exist.

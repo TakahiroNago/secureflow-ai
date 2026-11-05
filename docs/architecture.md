@@ -1,7 +1,7 @@
 # SecureFlow AI — アーキテクチャ設計書
 
-- 版：v1.4（2026-11-04）
-- 状態：確定（v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.5（2026-11-06）
+- 状態：確定（v1.5：工程1-4 の AI の起動条件と再試行を反映。v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - 関連：[database-design.md](database-design.md) / [api-design.md](api-design.md) / [security-design.md](security-design.md) / [threat-model.md](threat-model.md) / [test-strategy.md](test-strategy.md) / [development-roadmap.md](development-roadmap.md)
 
 ---
@@ -168,8 +168,9 @@ Worker
   5. PromptBuilder：固定システムプロンプト（秘密情報なし・カナリア含む）＋
      ランダム境界文字列で囲んだマスク済み入力（「データとして扱え」と明示）
   6. AiGateway：予算確認 → Provider呼び出し（tools無し、JSON Schema指定、
-     max_output_tokens上限、タイムアウト30秒、5xx/429のみ指数バックオフで最大2回）
+     max_output_tokens上限、タイムアウト30秒、5xx/429/タイムアウトのみ指数バックオフで最大2回）
      → ai_usage_logs 記録（本文は記録しない）
+     ※ 予算確認と ai_usage_logs は工程2-8。工程1-4 の AiGateway は呼び出しと再試行のみ
   7. OutputValidator：JSON解析 → スキーマ検証（未知キー拒否・長さ上限・列挙値）
      → action_type を ActionCatalog と照合 → 出力の個人情報は再マスキング、
      認証・秘密情報が出力に含まれる場合は分析を blocked（fail closed）
@@ -297,6 +298,8 @@ Draft ──submit──▶ Pending ──approve──▶ Approved ──execut
 | `REDIS_TIMEOUT` / `REDIS_READ_TIMEOUT` / `REDIS_MAX_RETRIES` | Redis の接続・読み取りのタイムアウトと再試行。障害中の待ち時間を決める（暫定値。AUDIT-LOAD-01 で確認） | 2 / 2 / 3 |
 
 `AI_PROVIDER=openai` は、Phase 2 でマスキング・出力検証が完成し、必要なセキュリティテスト（[test-strategy.md §5](test-strategy.md) の ST-02〜04, 07, 10, 13〜19, 30, 31, 35〜37）を通過し、D11 の確認が完了するまで受け付けない（起動時の設定検証でエラー）。それまで OpenAiProvider はコード上も登録しない。
+
+**起動時の設定検証（工程1-4）：** `mock` 以外の値（空、大文字を含む値を含む）と、`local`・`testing` 以外の環境の `mock` はエラーとする。したがって、工程2-8までは本番相当の環境では起動しない（公開環境は工程2-8以降の前提とする）。エラーにするのは AI に到達しうる入口、すなわち Web の起動と `queue:work`・`queue:listen`・`schedule:work`・`schedule:run` である。`migrate` などの管理コマンドは、障害時の対応を妨げないよう止めない。AI の呼び出し時（`AiProvider` の解決時）にも同じ検証を行うため、どの経路でも不正な設定のまま AI には到達しない。エラーのメッセージには設定値を含めない（秘密情報の誤設定に備える）。
 
 ## 12. 拡張性（Phase 4〜5）
 
