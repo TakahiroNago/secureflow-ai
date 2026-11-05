@@ -102,7 +102,43 @@ return [
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
             // pdo_pgsql maps ATTR_TIMEOUT to libpq connect_timeout (seconds)
-            'options' => [PDO::ATTR_TIMEOUT => (int) env('DB_CONNECT_TIMEOUT', 3)],
+            'options' => [PDO::ATTR_TIMEOUT => (int) env('DB_CONNECT_TIMEOUT_SECONDS', 2)],
+            // Provisional values; docs/security-design.md §16.5.6. lock_timeout stays below statement_timeout.
+            'server_options' => [
+                'statement_timeout' => (string) env('DB_STATEMENT_TIMEOUT_MS', 5000),
+                'lock_timeout' => (string) env('DB_LOCK_TIMEOUT_MS', 3000),
+                'idle_in_transaction_session_timeout' => (string) env('DB_IDLE_IN_TX_TIMEOUT_MS', 30000),
+            ],
+            // Both are needed: keepalive sees a loss while waiting, tcp_user_timeout while sending.
+            'keepalives' => 1,
+            'keepalives_idle' => (int) env('DB_KEEPALIVES_IDLE', 5),
+            'keepalives_interval' => (int) env('DB_KEEPALIVES_INTERVAL', 2),
+            'keepalives_count' => (int) env('DB_KEEPALIVES_COUNT', 3),
+            'tcp_user_timeout' => (int) env('DB_TCP_USER_TIMEOUT_MS', 5000),
+        ],
+
+        /*
+         * A second connection as the application role, for what must not share a transaction with
+         * the request: the availability probe, re-reads after an unknown commit, chain verification.
+         */
+        'pgsql_audit_read' => [
+            'driver' => 'pgsql',
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '5432'),
+            'database' => env('DB_DATABASE', 'secureflow'),
+            'username' => env('DB_USERNAME', 'secureflow_app'),
+            'password' => env('DB_PASSWORD', ''),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'options' => [PDO::ATTR_TIMEOUT => (int) env('DB_CONNECT_TIMEOUT_SECONDS', 2)],
+            'keepalives' => 1,
+            'keepalives_idle' => (int) env('DB_KEEPALIVES_IDLE', 5),
+            'keepalives_interval' => (int) env('DB_KEEPALIVES_INTERVAL', 2),
+            'keepalives_count' => (int) env('DB_KEEPALIVES_COUNT', 3),
+            'tcp_user_timeout' => (int) env('DB_TCP_USER_TIMEOUT_MS', 5000),
         ],
 
         /*
@@ -123,7 +159,7 @@ return [
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
             // pdo_pgsql maps ATTR_TIMEOUT to libpq connect_timeout (seconds)
-            'options' => [PDO::ATTR_TIMEOUT => (int) env('DB_CONNECT_TIMEOUT', 3)],
+            'options' => [PDO::ATTR_TIMEOUT => (int) env('DB_CONNECT_TIMEOUT_SECONDS', 2)],
         ],
 
         'sqlsrv' => [
@@ -193,6 +229,33 @@ return [
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
             'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
+        ],
+
+        // Sessions must not wait long: at the default settings a save took about 20s on a stopped
+        // Redis. Provisional values; the final ones are an open item (docs/test-strategy.md §15).
+        'session' => [
+            'url' => env('REDIS_URL'),
+            'host' => env('REDIS_HOST', '127.0.0.1'),
+            'username' => env('REDIS_USERNAME'),
+            'password' => env('REDIS_PASSWORD'),
+            'port' => env('REDIS_PORT', '6379'),
+            'database' => env('REDIS_DB', '0'),
+            'timeout' => (float) env('REDIS_SESSION_TIMEOUT', 1),
+            'read_timeout' => (float) env('REDIS_SESSION_READ_TIMEOUT', 1),
+            'max_retries' => 0,
+        ],
+
+        // Only for the fingerprint written under a row lock: see RedisPendingFingerprintStore.
+        'pending' => [
+            'url' => env('REDIS_URL'),
+            'host' => env('REDIS_HOST', '127.0.0.1'),
+            'username' => env('REDIS_USERNAME'),
+            'password' => env('REDIS_PASSWORD'),
+            'port' => env('REDIS_PORT', '6379'),
+            'database' => env('REDIS_DB', '0'),
+            'timeout' => 1.0,
+            'read_timeout' => (float) env('PASSWORD_PENDING_REDIS_READ_TIMEOUT_MS', 900) / 1000,
+            'max_retries' => 0,
         ],
 
         'cache' => [

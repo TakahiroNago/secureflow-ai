@@ -1,7 +1,7 @@
 <?php
 
+use App\Http\Middleware\ValidateCsrfTokenOfLogin;
 use Illuminate\Cookie\Middleware\EncryptCookies;
-use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Laravel\Sanctum\Sanctum;
 
 return [
@@ -82,7 +82,7 @@ return [
         // have already passed through it. EnsureSessionIsCurrent replaces it.
         'authenticate_session' => null,
         'encrypt_cookies' => EncryptCookies::class,
-        'validate_csrf_token' => ValidateCsrfToken::class,
+        'validate_csrf_token' => ValidateCsrfTokenOfLogin::class,
     ],
 
 ];

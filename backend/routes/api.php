@@ -26,7 +26,7 @@ Route::prefix('v1')->middleware('json.body')->group(function (): void {
         ->middleware(['frontend', 'throttle:login'])
         ->name('auth.login');
 
-    Route::middleware(['auth:sanctum', 'session.current'])->group(function (): void {
+    Route::middleware(['db.available', 'auth:sanctum', 'session.current'])->group(function (): void {
         Route::post('/auth/logout', [AuthController::class, 'logout'])->name('auth.logout');
         Route::get('/auth/me', [AuthController::class, 'me'])->name('auth.me');
         Route::patch('/account/password', [AccountPasswordController::class, 'update'])

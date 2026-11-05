@@ -88,15 +88,15 @@ it('requires JSON for a request body', function () {
     $response->assertStatus(415)->assertJsonPath('code', 'UNSUPPORTED_MEDIA_TYPE');
 });
 
-it('writes nothing to the audit log, which is step 1-3', function () {
+it('records a login, a failed login and a logout in the audit log', function () {
     $user = User::factory()->create();
-    $before = DB::table('audit_logs')->count();
 
     $client = loggedIn($this, $user);
     spaLogin(spa($this), 'nobody@example.com', 'any password at all');
     $client->send('POST', '/api/v1/auth/logout')->assertNoContent();
 
-    expect(DB::table('audit_logs')->count())->toBe($before);
+    expect(DB::table('audit_logs')->pluck('event_type')->all())
+        ->toContain('auth.login', 'auth.login_failed', 'auth.logout');
 });
 
 // ---- Cookies ---------------------------------------------------------------------------------

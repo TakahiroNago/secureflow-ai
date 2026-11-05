@@ -29,7 +29,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
  * @property-read Organization $organization
  */
 #[Fillable(['name', 'email', 'password'])]
-#[Hidden(['password'])]
+#[Hidden(['password', 'password_change_key_hash', 'password_change_previous_hash'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */

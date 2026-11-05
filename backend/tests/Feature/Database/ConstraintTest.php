@@ -21,7 +21,6 @@ it('accepts valid rows', function () {
     $organization = insertOrganization(appDb());
     $user = insertUser(appDb(), $organization);
     insertSettings(appDb(), $organization, ['updated_by' => $user]);
-    insertAuditLog(appDb());
 
     $row = appDb()->table('users')->where('id', $user)->first();
     $settings = appDb()->table('organization_settings')->where('organization_id', $organization)->first();
@@ -35,16 +34,21 @@ it('rejects NULL in the enum columns', function (Closure $statement) {
     expect(sqlStateOf($statement))->toBe('23502');
 })->with([
     'users.role' => fn (Connection $db) => insertUser($db, insertOrganization($db), ['role' => null]),
-    'audit_logs.actor_type' => fn (Connection $db) => insertAuditLog($db, actorType: null),
-    'audit_logs.result' => fn (Connection $db) => insertAuditLog($db, result: null),
+]);
+
+it('rejects bad audit rows even from the owner', function (Closure $statement, string $sqlState) {
+    expect(dbError(ownerDb(), $statement)?->getCode())->toBe($sqlState);
+})->with([
+    'NULL actor_type' => [fn (Connection $db) => insertAuditLog($db, actorType: null), '23502'],
+    'NULL result' => [fn (Connection $db) => insertAuditLog($db, result: null), '23502'],
+    'unknown actor_type' => [fn (Connection $db) => insertAuditLog($db, actorType: 'root'), '23514'],
+    'unknown result' => [fn (Connection $db) => insertAuditLog($db, result: 'maybe'), '23514'],
 ]);
 
 it('rejects values outside the enums', function (Closure $statement) {
     expect(sqlStateOf($statement))->toBe('23514');
 })->with([
     'users.role' => fn (Connection $db) => insertUser($db, insertOrganization($db), ['role' => 'root']),
-    'audit_logs.actor_type' => fn (Connection $db) => insertAuditLog($db, actorType: 'root'),
-    'audit_logs.result' => fn (Connection $db) => insertAuditLog($db, result: 'maybe'),
 ]);
 
 it('accepts every designed enum value', function (string $role) {
@@ -99,8 +103,8 @@ it('rejects references to rows that do not exist', function (Closure $statement)
 
 it('rejects a duplicate audit event id', function () {
     $values = auditValues();
-    $sql = 'INSERT INTO audit_logs ('.AUDIT_INSERT_COLUMNS.') VALUES (?, ?, ?, ?, ?, ?, ?)';
-    appDb()->insert($sql, $values);
+    $sql = 'INSERT INTO audit_logs ('.AUDIT_INSERT_COLUMNS.') VALUES ('.AUDIT_INSERT_PLACEHOLDERS.')';
+    ownerDb()->insert($sql, $values);
 
-    expect(sqlStateOf(fn (Connection $db) => $db->insert($sql, $values)))->toBe('23505');
+    expect(dbError(ownerDb(), fn (Connection $db) => $db->insert($sql, $values))?->getCode())->toBe('23505');
 });

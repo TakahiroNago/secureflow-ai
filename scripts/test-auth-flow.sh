@@ -137,13 +137,20 @@ O=$work/alice-other.jar; : > "$O"
 csrf "$O" "$VITE"
 call "$O" "$VITE" POST /api/v1/auth/login "$(login_json alice@example.com "$PW_ALICE")"
 is "a second session through the Vite proxy" "$STATUS" 200
-call "$A" "$NGINX" PATCH /api/v1/account/password "{\"current_password\":\"wrong one here\",\"new_password\":\"$PW_ALICE2\"}"
+new_key() { cat /proc/sys/kernel/random/uuid; }
+call "$A" "$NGINX" PATCH /api/v1/account/password "{\"current_password\":\"wrong one here\",\"new_password\":\"$PW_ALICE2\"}" -H "Idempotency-Key: $(new_key)"
 is "wrong current password is 422" "$STATUS" 422
 has "with its code" "$BODY" '"code":"CURRENT_PASSWORD_INVALID"'
-call "$A" "$NGINX" PATCH /api/v1/account/password "{\"current_password\":\"$PW_ALICE\",\"new_password\":\"passwordpassword\"}"
+call "$A" "$NGINX" PATCH /api/v1/account/password "{\"current_password\":\"$PW_ALICE\",\"new_password\":\"passwordpassword\"}" -H "Idempotency-Key: $(new_key)"
 is "a password on the list is 422" "$STATUS" 422
-call "$A" "$NGINX" PATCH /api/v1/account/password "{\"current_password\":\"$PW_ALICE\",\"new_password\":\"$PW_ALICE2\"}"
+KEY=$(new_key)
+call "$A" "$NGINX" PATCH /api/v1/account/password "{\"current_password\":\"$PW_ALICE\",\"new_password\":\"$PW_ALICE2\"}" -H "Idempotency-Key: $KEY"
 is "the change succeeds" "$STATUS" 200
+call "$A" "$NGINX" PATCH /api/v1/account/password "{\"current_password\":\"$PW_ALICE\",\"new_password\":\"$PW_ALICE2\"}" -H "Idempotency-Key: $KEY"
+is "the same key and content again is 200" "$STATUS" 200
+is "and runs once" "$(sql "SELECT count(*) FROM audit_logs WHERE event_type='auth.password_changed'")" 1
+call "$A" "$NGINX" PATCH /api/v1/account/password "{\"current_password\":\"$PW_ALICE\",\"new_password\":\"a different pass phrase 12\"}" -H "Idempotency-Key: $KEY"
+is "the same key with other content is 409" "$STATUS" 409
 call "$A" "$NGINX" GET /api/v1/auth/me ""
 is "the current session keeps working" "$STATUS" 200
 call "$O" "$VITE" GET /api/v1/auth/me ""
@@ -191,7 +198,17 @@ echo "== the rest of the system =="
 is "the SPA serves /login" "$(curl -s -o /dev/null -w '%{http_code}' "$NGINX/login")" 200
 is "liveness needs no session" "$(curl -s -o /dev/null -w '%{http_code}' -H "Referer: $NGINX/" "$NGINX/api/health/live")" 200
 hasnt "liveness sets no cookie" "$(curl -s -D - -o /dev/null -H "Referer: $NGINX/" -H 'Accept: application/json' "$NGINX/api/health/live")" '^set-cookie'
-is "nothing is written to the audit log (step 1-3)" "$(sql 'SELECT count(*) FROM audit_logs')" 0
+echo "== audit log =="
+for event in auth.login auth.login_failed auth.logout auth.locked auth.password_changed auth.password_change_failed; do
+  is "$event is recorded" "$(sql "SELECT count(*) > 0 FROM audit_logs WHERE event_type='$event'")" t
+done
+is "the application role cannot insert directly" "$(docker compose exec -T postgres psql -U postgres -d "$DB_DATABASE" --no-psqlrc -tAc "SELECT has_table_privilege('$DB_USERNAME', 'audit_logs', 'INSERT')")" f
+docker compose exec -T app php artisan audit:verify --all > "$work/verify.txt" 2>&1
+is "audit:verify succeeds on what was recorded" "$?" 0
+hasnt "the unknown address is not recorded" "$(sql "SELECT metadata::text || coalesce(host(ip_address),'') FROM audit_logs")" 'nobody@example.com'
+hasnt "no password in the audit log" "$(sql "SELECT metadata::text FROM audit_logs")" 'a wrong password'
+docker compose exec -T app php artisan audit:status > /dev/null 2>&1
+is "audit:status reports available" "$?" 0
 logs=$(docker compose logs --no-color --no-log-prefix --since=15m app worker scheduler nginx 2>&1)
 for secret in "$PW_ALICE" "$PW_ALICE2" "$PW_BOB" 'a wrong password' 'argon2id'; do
   hasnt "the logs do not contain '${secret:0:12}…'" "$logs" "$secret"

@@ -180,11 +180,24 @@ SPA の Cookie 認証を許可するオリジンは `SANCTUM_STATEFUL_DOMAINS` �
 | エンドポイント | 種別 | 正常 | 異常 |
 |---|---|---|---|
 | `GET /api/health/live` | Liveness（プロセスが応答できるか。外部依存は確認しない） | 200 `{"status":"ok"}` | — |
-| `GET /api/health/ready` | Readiness（DB を app ロールで `SELECT 1`、Redis を `PING`） | 200 `{"status":"ok"}` | 503 `{"status":"unavailable"}` |
+| `GET /api/health/ready` | Readiness（DB を app ロールで `SELECT 1`、Redis を `PING`、監査ログの記録で DB 全体に及ぶ可能性のあるストレージ障害が疑われていないこと） | 200 `{"status":"ok"}` | 503 `{"status":"unavailable"}` |
 
 レスポンスにはバージョン・接続先・失敗した依存名・エラー詳細を含めません（詳細はアプリケーションログのみ）。レート制限は nginx で行います（60 回/分/IP）。
 
 `app` コンテナの healthcheck は、`artisan` と `public/index.php` の存在、php-fpm の TCP 応答、`php artisan --version` の成功を確認します。`worker` / `scheduler` は、ソースの存在、`php artisan --version` の成功、`queue:work` / `schedule:work` の実プロセスを確認します。いずれも DB・Redis には接続せず、処理するジョブがないだけでは unhealthy になりません。
+
+## 監査ログ
+
+監査ログは組織ごとのチェーンとシステムのチェーンで記録され、改ざんを検出できます（[database-design.md §3.12](docs/database-design.md)）。アプリケーションは DB 関数 `audit_append()` でのみ追記します。
+
+| コマンド | 内容 | 終了コード |
+|---|---|---|
+| `docker compose exec app php artisan audit:verify --all` | 全チェーンを検証する（`--organization=<ID>`、`--system` で個別に指定） | 0 成功 / 1 検証失敗 / 2 実行不能 |
+| `docker compose exec app php artisan audit:head --all` | 各チェーンの先頭を JSONL で出力する | 0 成功 / 2 実行不能 |
+| `docker compose exec app php artisan audit:verify --all --anchor=<ファイル>` | 以前に保管した `audit:head` の出力と照合する | 同上 |
+| `docker compose exec app php artisan audit:status` | 監査ログに書き込めるか確認する | 0 可能 / 1 不可 / 2 不明 |
+
+`--anchor` なしの検証では、チェーン全体の再計算と、末尾の削除とヘッドの巻き戻しの組み合わせを検出できません。`audit:head` の出力を DB の外に保管してください。検証に失敗しても自動修復もサービスの停止も行いません。
 
 ## データベースロールとマイグレーション
 

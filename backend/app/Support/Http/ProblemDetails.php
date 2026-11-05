@@ -3,11 +3,14 @@
 namespace App\Support\Http;
 
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use PDOException;
+use RedisException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 
@@ -17,6 +20,14 @@ use Throwable;
  */
 final class ProblemDetails
 {
+    /**
+     * Every 503 of the password change endpoint says this, before or after the commit. Saying it only
+     * after the commit would reveal that the current password was right.
+     */
+    public const PASSWORD_CHANGE_UNAVAILABLE_DETAIL = 'パスワード変更の結果を確認できませんでした。変更が確定している可能性があります。できるだけ早く、同じ内容・同じ冪等性キーで再試行してください。';
+
+    private const UNAVAILABLE_DETAIL = '現在サービスを利用できません。しばらく待ってから再度お試しください。';
+
     /**
      * @param  array<array-key, mixed>  $errors
      * @param  array<string, mixed>  $headers
@@ -63,7 +74,27 @@ final class ProblemDetails
             $exception instanceof HttpExceptionInterface && $exception->getStatusCode() === 419 => self::response(
                 419, 'CSRF_TOKEN_MISMATCH', 'CSRF token mismatch', 'ページを再読み込みしてください。',
             ),
+            // Decided by exception class, never by message. A dependency failure is not AUTH_FAILED.
+            $exception instanceof ServiceUnavailableException,
+            $exception instanceof RedisException,
+            $exception instanceof QueryException,
+            $exception instanceof PDOException => self::unavailable($request),
+            ! $exception instanceof HttpExceptionInterface && $request->is('api/v1/auth/*', 'api/v1/account/*', 'sanctum/*') => self::response(
+                500, 'INTERNAL_ERROR', 'Internal server error', 'サーバーでエラーが発生しました。',
+            ),
             default => null,
         };
+    }
+
+    private static function unavailable(Request $request): JsonResponse
+    {
+        return self::response(
+            503,
+            'SERVICE_UNAVAILABLE',
+            'Service unavailable',
+            $request->is('api/v1/account/password') ? self::PASSWORD_CHANGE_UNAVAILABLE_DETAIL : self::UNAVAILABLE_DETAIL,
+            [],
+            ['Retry-After' => (string) config()->integer('audit.db_unavailable_ttl_seconds')],
+        );
     }
 }
