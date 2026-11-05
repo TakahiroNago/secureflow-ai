@@ -10,10 +10,12 @@ IMAGE=nginx:1.30.6-alpine3.24 # the pinned compose image; EXPOSEs 80
 PREFIX="sf-port-policy-$$"
 
 pass=0; fail=0; skip=0
-containers=()
 tmp=$(mktemp -d)
+# By name and label: start() runs in a $(...), so a list kept there would not reach this shell.
 cleanup() {
-  [ ${#containers[@]} -eq 0 ] || docker rm -f "${containers[@]}" >/dev/null 2>&1
+  local ids
+  ids=$(docker ps -aq --filter label=secureflow.port-policy-test=1 --filter "name=$PREFIX-")
+  [ -z "$ids" ] || docker rm -f $ids >/dev/null 2>&1
   rm -rf "$tmp"
 }
 trap cleanup EXIT
@@ -73,7 +75,6 @@ echo "== real containers =="
 start() { # suffix docker-run-args...
   local name="$PREFIX-$1"; shift
   docker run -d --name "$name" --label secureflow.port-policy-test=1 "$@" "$IMAGE" sleep 300 >/dev/null 2>"$tmp/run.err" || return 1
-  containers+=("$name")
   echo "$name"
 }
 
