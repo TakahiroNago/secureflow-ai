@@ -1,7 +1,7 @@
 # SecureFlow AI — 開発ロードマップ
 
-- 版：v1.4（2026-11-04）
-- 状態：確定（v1.4：工程1-3 の範囲を反映。v1.3：工程1-2 の範囲を反映。v1.2：工程1-1 の設計レビューを反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.5（2026-11-06）
+- 状態：確定（v1.5：工程1-4 の決定と工程1-6 の条件を反映。v1.4：工程1-3 の範囲を反映。v1.3：工程1-2 の範囲を反映。v1.2：工程1-1 の設計レビューを反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -35,7 +35,7 @@
 | 1-3 | `audit_chain_heads`、`audit_logs` のチェーン用の列・制約・インデックス・権限、SECURITY DEFINER 関数 `audit_append()`、組織チェーンとシステムチェーン、AuditLogger、認証イベント記録（[security-design.md §16.5](security-design.md)）、監査の事前確認と3つの状態の分離（DB unavailable は確認プローブ、Audit unavailable は実際の追記で回復を確認。文字列で判定しない）、`audit.unavailable` のログと `audit:status`、readiness の実装と `README.md` のヘルスチェックの説明の更新、Redis 障害時の fail closed（RFC 9457 形式の 503）、パスワード変更の確定と再試行（`users.password_change_key_hash`、`users.password_change_previous_hash`）、DB のタイムアウトの層、障害中のログの集約、PHP の検証器、`audit:verify`（手動実行）、`audit:head`（外部保管は手動）、匿名イベントの上限（暫定値・環境変数で変更可）と未記録の検知。**開発用DBへの適用前に、工程1-1適用後・Seeder 実行後のバックアップを取得する**（[database-design.md §4.5](database-design.md)） | app ロールで直接追記できない。記録にパスワード等が含まれない。チェーン検証成功。PHP と PostgreSQL が固定テストベクトルを再現する。改ざんを検出し、検出できない範囲がテストで明示されている。記録の失敗時の動作がイベントごとの設計どおりで、監査が利用できないときの応答から認証情報の正否を区別できない。監査の失敗時の応答からパスワードの正否を判別できないことをテストで確認している。暫定値の負荷試験の結果を報告している | Unit、ST-28、[test-strategy.md §15](test-strategy.md) |
 | 1-4 | ActionCatalog、AiProvider、MockAiProvider、AiGateway（モック）、OutputValidator（スキーマ・許可リスト） | 不正JSON・未知キー・未知操作を拒否、forbidden 判定 | Unit（§4 のモックシナリオ）、ST-07 |
 | 1-5 | workflows / revisions / tasks / approvals / executions マイグレーション、StateMachine、PlanHasher、Policy、組織スコープ | 不正遷移 409、他人データ 404、ハッシュ仕様どおり | Unit（遷移全組合せ、正規化）、Isolation、ST-12, 23, 34 |
-| 1-6 | ai_analysis_requests、`failed_jobs`（テーブルと権限）、AnalyzeWorkflowJob（モック）、ワークフローAPI・画面（入力・分析・表示・編集・保存） | 入力→生成→編集→保存。編集で新リビジョン | Feature、Vitest |
+| 1-6 | ai_analysis_requests、`failed_jobs`（テーブルと権限）、AnalyzeWorkflowJob（モック）、ワークフローAPI・画面（入力・分析・表示・編集・保存）。**ジョブの時間制限は `AiGateway::worstCaseSeconds()`（既定値で93秒）より長くする。worker の `--timeout`（現在は未指定で既定の60秒）とキューの `retry_after` もこれに合わせて見直す** | 入力→生成→編集→保存。編集で新リビジョン。再試行の途中でジョブが打ち切られない | Feature、Vitest |
 | 1-7 | ダッシュボード（基本KPI） | 集計値が正しい（ロール別範囲） | Feature（固定データ） |
 
 ## 4. Phase 2：セキュリティ制御と監査ログ
