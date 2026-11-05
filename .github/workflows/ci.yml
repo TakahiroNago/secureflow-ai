@@ -163,6 +163,9 @@ jobs:
       - name: Authentication over real HTTP (sessions in Redis, CSRF, lock, rate limit)
         run: bash scripts/test-auth-flow.sh
 
+      - name: Login screen in real browsers (AUTH-E2E-01)
+        run: bash scripts/test-login-browser.sh
+
       - name: Published port policy negative tests (P0-NET-01)
         run: bash scripts/test-published-ports.sh
 
