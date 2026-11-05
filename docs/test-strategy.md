@@ -257,6 +257,7 @@ Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・�
 | AUDIT-SESSION-01 | パスワード変更後のセッション（`scripts/test-session-invalidation.sh`、Pest） | 変更後に実際の認証済み API を呼び出して確認する。①変更を実行したセッションは維持される。②変更前から存在した他のセッションは 401 になる（同じキー・同じ内容の再試行を最初の要求とした場合、同時に送った場合を含む）。③再ログイン後の新しいセッションは、同じキー・同じ内容の再試行で 200 となり、再実行されない。④**同じセッションからの並行要求（`scripts/test-password-concurrency.sh`）で、200 と新しいセッションの Cookie が各1件のみ、有効なセッションIDが1つのみ、Redis に保存されたセッションが増えない。古いIDの要求が削除済みのセッションを書き戻さず、Cookie を返さない** |
 | AUDIT-SESSION-02 | 並行する要求とセッションの終了（`scripts/test-session-race.sh`、Pest。使い捨ての環境） | セッションを読み込み、保存する前の要求を止めた状態で、ログイン済みの `GET` とログアウト、ログイン済みの `GET` とパスワード変更、ログインのない `GET` とログインを重ねる。止めない実際の重複として、`GET` 4件とログアウトも重ねる。古いIDが Redis に復活しない。古い Cookie が 401。止めた要求がセッションと CSRF の Cookie を返さない。通常のログアウトと再ログインが動作する。**同期点はスクリプトの実行中のみ隔離環境の `bootstrap/providers.php` に追加し、終了時に戻す。本番のコードは参照しない** |
 | AUDIT-SESSION-03 | 応答の到着順とセッションの Cookie（`scripts/test-session-cookie-order.sh`、`scripts/test-session-browser.sh`、Pest。使い捨ての環境） | 完了した `GET` の応答を止め、ログアウトまたはパスワード変更の応答より後に届ける。curl は到着順に Cookie を適用する。実ブラウザは Chromium、Firefox、WebKit で、中継のプロキシが応答を止める（アプリの変更なし）。古いIDが Redis に復活しない。最終の Cookie で `auth/me` が 401。`csrf-cookie` は廃止済みのIDに Cookie を返さない。Cookie を消さない再ログインは、`Sec-Fetch-Site` を送るブラウザで 200、送らないクライアントで 419 となり、Cookie を消すと 200。止めない重複の頻度も記録する。古いIDで送った `csrf-cookie` が変更の後に処理されても、新しいセッションの Cookie が変わらないことを確認する |
+| AUTH-E2E-01 | 実際のログイン画面（`scripts/test-login-browser.sh`、Vitest。使い捨ての環境と CI） | nginx が配信するビルド済みの画面を、Chromium、Firefox、WebKit で操作する。入力とクリックでログインし、「ようこそ」の画面に留まる。ログインの完了後に送った `auth/me` がすべて 200。再読み込みでログインが続く。ログアウトでログイン画面に戻り、再読み込みでも戻らない。ページの `Referrer-Policy` は `no-referrer` のまま |
 | AUDIT-CSRF-01 | 419 と 401 の区別 | Cookie なし、セッションの不在・期限切れ、ログインのないセッションは、状態を変更する要求でも 401。ログイン済みのセッションで CSRF トークンなしは 419。ログイン API の CSRF トークンなしは 419。並行試験で 419 が出る場合は注記として記録する |
 | AUDIT-WORKER-01 | Redis の障害と `worker`（`scripts/test-worker-redis-failure.sh`。使い捨ての環境） | テスト用のジョブで、待機中と実行中のジョブの Redis の停止と強制終了の後の動作、再実行、`failed_jobs` への記録、`worker` の再起動と復帰を確認する。**再現した現象は未検証事項ではなく既知の制約として** [architecture.md §10](architecture.md) に記録する |
 | AUDIT-E2E-01 | 実際の HTTP での通し確認（`scripts/test-auth-flow.sh`） | 工程1-2 の「監査ログが0件」の確認を、イベントが記録され `audit:verify --all` が成功する確認に置き換える |
@@ -355,11 +356,12 @@ Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・�
 | 不採用とした `csrf-cookie` の修正（参考） | 廃止済みのIDに新しいIDを発行する修正を検証した。curl と `Sec-Fetch-*` なしの Chromium で、Cookie を消さない再ログインが 200 になった。一方、古いIDで送った `csrf-cookie` が変更の後に処理されると、3ブラウザの全周回（各5周回×3回）で新しいセッションの Cookie が匿名のIDに上書きされ、`auth/me` が 401 になった。このためコードから削除した。この結果は現在のコードのものではない |
 | 実ブラウザの止めない重複（Chromium、各10周回×2回） | 最終の Cookie が古いIDの周回は0件。ログアウト後の `auth/me` は 401、パスワード変更後は 200。**同一マシン上の結果であり、ネットワークの遅延がある環境の頻度ではない。** Chromium は同じURLの要求を HTTP キャッシュのロックで直列化する（完了しない要求の間、次の要求が20秒待つことを単独の試験で確認）。当初は同じURLで実行していたため、`GET` ごとに別のURLに直して再実行し、結果は同じだった（ログアウトは 200 が10件と 401 が30件、パスワード変更は 200 が40件） |
 | 短縮後の全試験（新しいボリューム、下の実行手順） | **22.5分（短縮前は95分）。** Pest 570件、`verify-infra` 54件×2回、`test-auth-flow` 75件、`test-session-invalidation` 23件、`test-password-concurrency` 132件、`test-session-race` 382件、`test-session-cookie-order` 642件と止めない試験のみの122件、`test-failure-modes` 185件。いずれも失敗0。`test-session-browser` はこの実行では試験の誤りによる6件の失敗があり、期待値を直して同じ環境で再実行し、0件失敗を確認した（全周回 128項目と止めない試験のみ）。カウンタをリセットせずに35回試すと 401 が30件、429 が5件で、レート制限の動作は変わっていない |
+| 実際のログイン画面（`test-login-browser.sh`） | **修正前は3ブラウザとも、ログイン後の `auth/me` が 401 となり、ログイン画面に戻った（15件失敗）。** 修正後は3ブラウザとも合格し、4回の実行で同じ結果だった。Vitest は修正前に1件失敗、修正後に36件合格。curl は `Origin` と `Referer` を手で付け、`test-session-browser.sh` は `Referrer-Policy` のないページから実行していたため、検出できなかった |
 | 遅れた `csrf-cookie`（3ブラウザ、各5周回） | 古いIDで送り、パスワード変更の後に処理させた。すべての周回で Cookie は変わらず、`auth/me` は 200、新しいセッションはサーバーに残り、古いIDは復活しなかった |
 
 **使い捨ての環境での全試験の実行手順：** 次の順に1回ずつ実行する。`SECUREFLOW_ALLOW_FAILURE_INJECTION=<プロジェクト名>` を付ける（`test-auth-flow.sh` と `verify-infra.sh` は付けずに実行する）。
 
-1. `verify-infra.sh`、`test-auth-flow.sh`、`test-session-invalidation.sh`、`test-password-concurrency.sh`、`test-session-race.sh`
+1. `verify-infra.sh`、`test-auth-flow.sh`、`test-login-browser.sh`、`test-session-invalidation.sh`、`test-password-concurrency.sh`、`test-session-race.sh`
 2. `test-session-cookie-order.sh`、続けて `HELD_ROUNDS=0 test-session-cookie-order.sh`
 3. `test-session-browser.sh`、続けて `ROUNDS=0 OTHER_ROUNDS=0 test-session-browser.sh`
 4. `test-failure-modes.sh`、`verify-infra.sh`
@@ -388,7 +390,7 @@ Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・�
 | `GET` 以外の並行要求とログアウト | 止める試験と重複の試験はいずれも `GET` のみで行った。`POST`・`PATCH` は同じ経路だが未実行 |
 | 廃止の記録の保存と削除の間の Redis の実障害 | Pest の注入のみ |
 | Cookie の上書きの実環境での頻度 | ネットワークの遅延がある環境、複数のタブ、https（[security-design.md §16.5.5](security-design.md) の残る制約）。同一マシン上では発生しなかった |
-| 実際の画面の操作 | フロントエンドの画面を操作した試験ではない。`Sec-Fetch-Site` を送らない環境で古い Cookie が残った場合の画面の表示も未確認 |
+| 実際の画面の操作 | ログインからログアウトまでは AUTH-E2E-01 で確認した。パスワード変更の画面、遅れた応答と組み合わせた画面の動作、Vite の開発サーバー（5173）経由、`Sec-Fetch-Site` を送らない環境で古い Cookie が残った場合の画面の表示は未確認 |
 | 非 localhost の http での実ブラウザ | ブラウザが `Sec-Fetch-*` を送らない状況は、プロキシでヘッダを除いて模擬した |
 | 回復の確認の全体の動作 | 同時実行と排他の期限切れ、再読み取りの不一致、実際の `53100` からの回復。組織チェーンのみの障害（他は工程1-3の Pest で確認済み） |
 | Vite proxy 経由の接続元 | 未測定 |

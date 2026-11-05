@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# SecureFlow AI — the real login screen in real browsers (AUTH-E2E-01): the built SPA as nginx serves it, with nginx's
+# own headers. Chromium, Firefox and WebKit fill in the form and click, as a person does. A small TCP forwarder in the
+# container gives them localhost:<NGINX_PORT>, which is what Sanctum's stateful domains list. It changes no bytes.
+#
+# It creates users, so it refuses to run unless the caller names this exact project:
+#
+#   SECUREFLOW_ALLOW_FAILURE_INJECTION=<COMPOSE_PROJECT_NAME> bash scripts/test-login-browser.sh
+#
+# CI runs it on its own stack, which is thrown away after the job. Needs a built frontend. Downloads the image and the playwright package on first use.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+
+set -a; . ./.env; set +a
+. scripts/lib/login-limit.sh
+: "${NGINX_PORT:=8080}"
+P=${COMPOSE_PROJECT_NAME:-secureflow}
+if [ "${CI:-}" != true ] && { [ "$P" = secureflow ] || [ "${SECUREFLOW_ALLOW_FAILURE_INJECTION:-}" != "$P" ]; }; then
+  echo "Refusing to run: this creates users. Name a throwaway project in SECUREFLOW_ALLOW_FAILURE_INJECTION." >&2
+  exit 2
+fi
+nginx_id=$(docker compose ps -q nginx)
+[ -n "$nginx_id" ] && [ "$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$nginx_id")" = "$P" ] \
+  || { echo "Refusing to run: nginx is not running in $P." >&2; exit 2; }
+NET=${P}_web
+[ "$(docker network inspect -f '{{index .Labels "com.docker.compose.project"}}' "$NET" 2>/dev/null)" = "$P" ] \
+  || { echo "Refusing to run: network $NET is not in $P." >&2; exit 2; }
+
+PW_VERSION=1.56.1
+IMAGE=mcr.microsoft.com/playwright:v$PW_VERSION-noble@sha256:f1e7e01021efd65dd1a2c56064be399f3e4de00fd021ac561325f2bfbb2b837a
+
+mkdir -p "$HOME/tmp"
+work=$(mktemp -d "$HOME/tmp/login-browser-XXXXXX")
+chmod 700 "$work"
+trap 'rm -rf "$work"' EXIT
+in_image() { docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$work:/work" -w /work "$@"; }
+
+in_image "$IMAGE" npm install --silent --no-audit --no-fund --ignore-scripts "playwright@$PW_VERSION" > /dev/null \
+  || { echo 'could not install playwright' >&2; exit 2; }
+
+docker compose exec -T app php artisan db:seed --force > /dev/null 2>&1
+# A script before this one may have used up the limit per address. In CI this waits for the window to pass.
+next_login_window
+echo "Target: $P through $NET"
+: > "$work/users.txt"
+for name in chromium firefox webkit; do
+  email="login-$$-$RANDOM-$name@example.com"; pw="start pass phrase $(cat /proc/sys/kernel/random/uuid)"
+  printf '%s\n%s\n' "$pw" "$pw" | docker compose exec -T app php artisan user:create \
+    --organization='Default Organization' --name="$email" --email="$email" --role=member > /dev/null 2>&1 \
+    || { echo 'could not create a user' >&2; exit 2; }
+  printf '%s\t%s\t%s\n' "$name" "$email" "$pw" >> "$work/users.txt"
+done
+
+cat > "$work/run.mjs" <<'JS'
+import { chromium, firefox, webkit } from 'playwright';
+import { readFileSync } from 'node:fs';
+import net from 'node:net';
+
+const PORT = Number(process.env.PORT);
+const BASE = `http://localhost:${PORT}`;
+const browsers = { chromium, firefox, webkit };
+await new Promise((r) => net.createServer((c) => {
+  const up = net.connect(80, 'nginx');
+  c.pipe(up); up.pipe(c);
+  c.on('error', () => up.destroy()); up.on('error', () => c.destroy());
+}).listen(PORT, 'localhost', r));
+
+let fails = 0;
+const check = (label, ok, got = '') => {
+  if (!ok) fails++;
+  console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${label}${ok ? '' : ` (got ${got})`}`);
+};
+for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
+  const [name, email, password] = line.split('\t');
+  console.log(`\n== ${name} ==`);
+  const browser = await browsers[name].launch();
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  // Only what is sent after the login has answered: before that, 401 is the right answer.
+  let loggedIn = false;
+  const sentAfterLogin = new Set();
+  const me = [];
+  page.on('request', (q) => { if (loggedIn && q.url().endsWith('/api/v1/auth/me')) sentAfterLogin.add(q); });
+  page.on('response', (r) => {
+    if (r.url().endsWith('/api/v1/auth/login') && r.status() === 200) loggedIn = true;
+    if (sentAfterLogin.has(r.request())) me.push(r.status());
+  });
+
+  const first = await page.goto(`${BASE}/`);
+  check('the page keeps the Referrer-Policy of the design', first.headers()['referrer-policy'] === 'no-referrer', first.headers()['referrer-policy']);
+  await page.getByRole('heading', { name: 'ログイン' }).waitFor();
+  check('a visitor sees the login screen', new URL(page.url()).pathname === '/login', page.url());
+
+  await page.getByLabel('メールアドレス').fill(email);
+  await page.getByLabel('パスワード').fill(password);
+  await page.getByRole('button', { name: 'ログイン' }).click();
+  await page.getByText('ようこそ').first().waitFor({ timeout: 10000 }).catch(() => {});
+  // The reported failure: the welcome screen shows for a moment, then the login screen comes back.
+  await page.waitForTimeout(3000);
+  check('after logging in, it stays on the welcome screen', new URL(page.url()).pathname === '/', page.url());
+  check('the welcome screen is showing', await page.getByText('ようこそ').first().isVisible());
+  check('auth/me answered 200 every time', me.length > 0 && me.every((s) => s === 200), JSON.stringify(me));
+
+  await page.reload();
+  await page.waitForTimeout(1500);
+  check('reloading keeps the login', new URL(page.url()).pathname === '/' && await page.getByText('ようこそ').first().isVisible(), page.url());
+
+  await page.getByRole('button', { name: 'ログアウト' }).click({ timeout: 5000 }).catch(() => check('there is a logout button', false, 'none'));
+  await page.getByRole('heading', { name: 'ログイン' }).waitFor({ timeout: 10000 }).catch(() => {});
+  check('logging out shows the login screen', new URL(page.url()).pathname === '/login', page.url());
+  await page.reload();
+  await page.waitForTimeout(1500);
+  check('and after a reload it is still logged out', new URL(page.url()).pathname === '/login', page.url());
+  await browser.close();
+}
+console.log(`\nResult: ${fails} failed`);
+process.exit(fails ? 1 : 0);
+JS
+
+in_image --network "$NET" -e PORT="$NGINX_PORT" "$IMAGE" node run.mjs
