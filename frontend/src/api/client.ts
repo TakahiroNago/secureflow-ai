@@ -71,6 +71,9 @@ async function send(method: string, path: string, body: unknown): Promise<Respon
   return fetch(path, {
     method,
     credentials: 'same-origin',
+    // Sanctum uses a session only for a request with an Origin or a Referer. A browser sends no Origin on a
+    // same-origin GET, and the pages are served with Referrer-Policy: no-referrer. Only these calls, only here.
+    referrerPolicy: 'same-origin',
     headers,
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   })

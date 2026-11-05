@@ -58,6 +58,19 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe('requests', () => {
+  it('sends a Referer to its own origin, or the server would not use the session for a GET', async () => {
+    const spy = server({ 'GET /api/v1/auth/me': () => problem(401, 'UNAUTHENTICATED') })
+
+    render(<App />)
+    await waitFor(() => {
+      expect(callsTo(spy, 'GET /api/v1/auth/me').length).toBeGreaterThan(0)
+    })
+
+    expect(callsTo(spy, 'GET /api/v1/auth/me')[0]?.[1]?.referrerPolicy).toBe('same-origin')
+  })
+})
+
 describe('route guard', () => {
   it('sends an unauthenticated visitor to the login page and shows nothing protected', async () => {
     server({ 'GET /api/v1/auth/me': () => problem(401, 'UNAUTHENTICATED') })
