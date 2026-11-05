@@ -26,8 +26,8 @@ final class AuditVerifyCommand extends Command
     public function handle(AuditChainVerifier $verifier, AuditLogger $logger): int
     {
         try {
-            $chains = $this->chains();
             $anchors = $this->anchors();
+            $chains = $this->chains($anchors);
         } catch (Throwable $exception) {
             $this->error('Could not read the chains: '.$exception::class);
 
@@ -35,6 +35,12 @@ final class AuditVerifyCommand extends Command
         }
 
         if ($chains === []) {
+            if ($this->option('all')) {
+                $this->line('No chains yet: there is nothing to verify.');
+
+                return 0;
+            }
+
             $this->error('Choose --organization, --system or --all.');
 
             return 2;
@@ -80,16 +86,21 @@ final class AuditVerifyCommand extends Command
     }
 
     /**
+     * @param  array<string, array{last_seq: int, last_hash: string}>  $anchors
      * @return list<string>
      */
-    private function chains(): array
+    private function chains(array $anchors): array
     {
         if ($this->option('all')) {
             $rows = DB::connection('pgsql_audit_read')->select(
                 'SELECT chain_id::text AS id FROM audit_chain_heads UNION SELECT DISTINCT chain_id::text FROM audit_logs ORDER BY 1'
             );
 
-            return array_values(array_map(fn (stdClass $row) => (string) $row->id, $rows));
+            // A chain can be gone altogether, rows and head. Then only a saved head still knows about it.
+            $chains = array_unique([...array_map(fn (stdClass $row) => (string) $row->id, $rows), ...array_keys($anchors)]);
+            sort($chains);
+
+            return $chains;
         }
 
         $chains = [];

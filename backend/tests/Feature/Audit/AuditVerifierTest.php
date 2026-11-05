@@ -227,6 +227,41 @@ it('AUDIT-CMD-01: audit:head prints what audit:verify can check against', functi
     unlink($file);
 });
 
+it('AUDIT-CMD-01: audit:verify --all exits 0 before any chain exists, and says nothing was verified', function () {
+    resetAuditTables();
+
+    expect(Artisan::call('audit:verify', ['--all' => true]))->toBe(0)
+        ->and(Artisan::output())->toContain('No chains yet')->not->toContain('"valid":true');
+});
+
+it('AUDIT-CMD-01: a saved head finds a chain that is gone altogether, which the database alone cannot', function () {
+    Artisan::call('audit:head', ['--all' => true]);
+    $file = tempnam(sys_get_temp_dir(), 'anchor');
+    file_put_contents($file, Artisan::output());
+
+    tamper("DELETE FROM audit_logs WHERE chain_id = ':org'", "DELETE FROM audit_chain_heads WHERE chain_id = ':org'");
+
+    expect(Artisan::call('audit:verify', ['--all' => true]))->toBe(0)
+        ->and(Artisan::call('audit:verify', ['--all' => true, '--anchor' => $file]))->toBe(1)
+        ->and(Artisan::output())->toContain('ANCHOR_MISMATCH')->toContain($this->organization);
+
+    unlink($file);
+});
+
+it('AUDIT-CMD-01: with a saved head, no chains at all is a failure and not a pass', function () {
+    Artisan::call('audit:head', ['--all' => true]);
+    $file = tempnam(sys_get_temp_dir(), 'anchor');
+    file_put_contents($file, Artisan::output());
+
+    resetAuditTables();
+
+    expect(Artisan::call('audit:verify', ['--all' => true]))->toBe(0)
+        ->and(Artisan::call('audit:verify', ['--all' => true, '--anchor' => $file]))->toBe(1)
+        ->and(Artisan::output())->toContain('ANCHOR_MISMATCH')->not->toContain('No chains yet');
+
+    unlink($file);
+});
+
 it('AUDIT-CMD-01: prints no row contents', function () {
     Artisan::call('audit:verify', ['--all' => true]);
 

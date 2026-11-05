@@ -10,10 +10,12 @@ IMAGE=nginx:1.30.6-alpine3.24 # the pinned compose image; EXPOSEs 80
 PREFIX="sf-port-policy-$$"
 
 pass=0; fail=0; skip=0
-containers=()
 tmp=$(mktemp -d)
+# By name and label: start() runs in a $(...), so a list kept there would not reach this shell.
 cleanup() {
-  [ ${#containers[@]} -eq 0 ] || docker rm -f "${containers[@]}" >/dev/null 2>&1
+  local ids
+  ids=$(docker ps -aq --filter label=secureflow.port-policy-test=1 --filter "name=$PREFIX-")
+  [ -z "$ids" ] || docker rm -f $ids >/dev/null 2>&1
   rm -rf "$tmp"
 }
 trap cleanup EXIT
@@ -73,12 +75,19 @@ echo "== real containers =="
 start() { # suffix docker-run-args...
   local name="$PREFIX-$1"; shift
   docker run -d --name "$name" --label secureflow.port-policy-test=1 "$@" "$IMAGE" sleep 300 >/dev/null 2>"$tmp/run.err" || return 1
-  containers+=("$name")
   echo "$name"
 }
 
-port=$((30000 + RANDOM % 10000))
-if c=$(start ok -p "127.0.0.1:$port:80"); then
+# The number has to be explicit, because the policy refuses a port Docker picks. Anything on the host can already
+# be using it, and then another one is tried. A container that failed to start keeps its name.
+for attempt in 1 2 3 4 5; do
+  port=$((30000 + RANDOM % 10000))
+  c=$(start ok -p "127.0.0.1:$port:80") && break
+  c=''
+  grep -qE 'address already in use|port is already allocated' "$tmp/run.err" || break
+  docker rm -f "$PREFIX-ok" > /dev/null 2>&1
+done
+if [ -n "$c" ]; then
   expect "real: allowed 127.0.0.1 binding passes" 0 "OK:" --allow "$c 80/tcp $port" "$c"
   expect "real: the same binding fails without an allow entry" 1 "not on the allow list" "$c"
   expect "real: the same binding fails with the wrong host port" 1 "not on the allow list" --allow "$c 80/tcp 1" "$c"

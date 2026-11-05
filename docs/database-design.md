@@ -430,7 +430,7 @@ PHP の検証器（`AuditChainVerifier`）は `audit_append()` の補助関数�
 | `UNSUPPORTED_VERSION` | 未知の `hash_version`、または版が小さくなる行 |
 | `HEAD_MISMATCH` | ヘッドの `last_seq`・`last_hash` が最後の行と一致しない（末尾の行の削除） |
 | `HEAD_MISSING` | 行があるのにヘッドがない |
-| `ANCHOR_MISMATCH` | 外部保管したヘッド（`audit:head` の出力）と、その `chain_seq` の行のハッシュが一致しない、またはその行がない |
+| `ANCHOR_MISMATCH` | 外部保管したヘッド（`audit:head` の出力）と、その `chain_seq` の行のハッシュが一致しない、またはその行がない（チェーンが丸ごとない場合を含む） |
 
 **検証で検出できない改ざん：** 末尾の行の削除とヘッドの巻き戻しを同時に行った場合、および所有者権限でチェーン全体を再計算した場合、**DB の中の情報だけでは検出できない**（試作で確認済み）。これを検出できるのは、改ざんより前に `audit:head` の出力をDBの外へ保管している場合に限られ、**検出できるのはその保管時点までの範囲である**（[security-design.md §16.3](security-design.md)、[threat-model.md R-03](threat-model.md)）。
 

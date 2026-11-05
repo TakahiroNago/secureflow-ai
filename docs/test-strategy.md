@@ -230,7 +230,7 @@ Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・�
 | AUDIT-CONC-01 | 並行書き込み | 複数の接続から同じチェーンに同時に記録しても、欠番・重複がなく検証が成功する。別のチェーンが待たされない。ロック待ちが2秒を超えると `55P03` で失敗する。検証中も記録が止まらず、誤検出がない |
 | AUDIT-VERIFY-01 | 改ざんの検出（ST-28） | 値・metadata・時刻・event_id の変更、途中の行の削除、末尾の行の削除、チェーン間の行の移動、ヘッドの変更、ヘッドの削除、`ip_address` のマスク長の変更を、それぞれ [database-design.md §3.12.5](database-design.md) の理由コードで検出する。他のチェーンは成功のまま |
 | AUDIT-VERIFY-02 | 検出の限界の明示 | 末尾の削除＋ヘッドの巻き戻し、チェーン全体の再計算は `--anchor` なしでは検出されず、改ざん前に保管した `audit:head` の値を `--anchor` に渡すと `ANCHOR_MISMATCH` で検出される（検出できないことを仕様として固定する） |
-| AUDIT-CMD-01 | コマンド | `audit:verify` の終了コードが 成功 0 / 検証失敗 1 / 実行不能 2。`audit:head` の出力形式が固定されている。出力に行の内容・秘密情報を含まない |
+| AUDIT-CMD-01 | コマンド | `audit:verify` の終了コードが 成功 0 / 検証失敗 1 / 実行不能 2。`--all` でチェーンが1つもない場合は 0 で、検証していないことを出力する。行とヘッドが丸ごと消されたチェーンは、`--all --anchor` で `ANCHOR_MISMATCH` となる（チェーンが1つも残らない場合を含む）。`audit:head` の出力形式が固定されている。出力に行の内容・秘密情報を含まない |
 | AUDIT-VFAIL-01 | 検証失敗時の動作 | 自動修復しない（行とヘッドが変わらない）。サービスを止めない（その後の記録とログインが成功する）。重大ログを出力し、`audit.verification_failed` を1件だけ記録する。記録に失敗しても終了コードは 1 のままで、再帰しない |
 | AUDIT-EVENT-01 | 認証イベントの記録 | 成功・失敗・ログアウト・ロック・パスワード変更で、[security-design.md §16.5](security-design.md) のチェーン・actor・resource・metadata が記録される |
 | AUDIT-FAIL-01 | 記録の失敗（T-37）。事前確認の成功後に記録が失敗する場合 | `auth.login`：503 で、セッションが開始されず、`last_login_at` と失敗回数が変わらない。`auth.login_failed`：503 で、失敗回数が維持される。`auth.locked`：503 で、ロックが維持される。`auth.password_changed`：503 で、パスワード、`password_changed_at`、他のセッションが変わらない。`auth.password_change_failed`：503。`auth.logout`：204 でセッションが破棄される。いずれも重大ログを出力し、`outcome` と `failure_class` で区別できる。別トランザクションのイベントは、記録が失敗しても業務処理（失敗回数・ロック・セッションの破棄）のコミットが残る。**実際のエラー（別の接続でヘッドをロックした `55P03`）を少なくとも1件、実トランザクションで確認する** |
