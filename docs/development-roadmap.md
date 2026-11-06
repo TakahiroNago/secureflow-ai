@@ -38,7 +38,7 @@
 | 1-4 | ActionCatalog、AiProvider、MockAiProvider、AiGateway（モック）、OutputValidator（スキーマ・許可リスト） | 不正JSON・未知キー・未知操作を拒否、forbidden 判定 | Unit（§4 のモックシナリオ）、ST-07 |
 | 1-5 | workflows / revisions / tasks / approvals / executions マイグレーション（複合外部キー、列単位の権限、改変拒否、**自己承認禁止・admin 必須のトリガー**）、StateMachine、PlanHasher、Policy、組織スコープ。**API はないため、HTTP の応答はテスト専用のルートで確認する** | 不正遷移 409、他人データ 404、ハッシュ仕様どおり | Unit（遷移全組合せ、正規化）、Isolation、Concurrency、ST-12, 34、ST-21・ST-38（DB 部分）、ST-23（モデルと Policy） |
 | 1-6 | ai_analysis_requests、`failed_jobs`（テーブルと権限）、AnalyzeWorkflowJob（モック）、ワークフローAPI・画面（入力・分析・表示・編集・保存）。**ジョブの時間制限は `AiGateway::worstCaseSeconds()`（既定値で93秒）より長くする。worker の `--timeout`（現在は未指定で既定の60秒）とキューの `retry_after` もこれに合わせて見直す**。`workflow.created`・`workflow.updated`・`analysis.failed` の監査記録、DB キューへの移行、停滞回収 | 入力→生成→編集→保存。編集で新リビジョン。再試行の途中でジョブが打ち切られない。状態変更が監査と同じトランザクションで記録される | Feature、Vitest、ST-23（全エンドポイント） |
-| 1-7 | ダッシュボード（基本KPI） | 集計値が正しい（ロール別範囲） | Feature（固定データ） |
+| 1-7 | ダッシュボード（基本KPI、状態別のグラフ、最近の操作）。データのない項目は工程2-3、2-8、3-3 まで未実装と表示する（0 としない） | 集計値が正しい（ロール別範囲） | Feature（固定データ）、Vitest、実ブラウザ |
 
 ## 4. Phase 2：セキュリティ制御と監査ログ
 

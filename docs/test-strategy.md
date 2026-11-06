@@ -1,7 +1,7 @@
 # SecureFlow AI — テスト戦略
 
-- 版：v1.8（2026-11-06）
-- 状態：確定（v1.8：工程1-6 の分析とワークフロー API のテストを追加。v1.7：工程1-5 のワークフロー基盤のテストを追加。v1.6：AUDIT-LOAD-01 の測定結果を追加。v1.5：工程1-4 の AI 基盤のテストを追加。v1.4：工程1-3 の監査ログテストを追加。v1.3：工程1-2 の認証テストを追加。v1.2：工程1-1 の設計レビューと検査の修正を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.9（2026-11-06）
+- 状態：確定（v1.9：工程1-7 のダッシュボードのテストを追加。v1.8：工程1-6 の分析とワークフロー API のテストを追加。v1.7：工程1-5 のワークフロー基盤のテストを追加。v1.6：AUDIT-LOAD-01 の測定結果を追加。v1.5：工程1-4 の AI 基盤のテストを追加。v1.4：工程1-3 の監査ログテストを追加。v1.3：工程1-2 の認証テストを追加。v1.2：工程1-1 の設計レビューと検査の修正を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -493,3 +493,13 @@ Redis の停止（`docker compose stop`）と凍結（`docker compose pause`）�
 | WF-UI-01 | 画面 | 常に警告を表示する。応答の検証。AI やユーザーの文字列をマークアップとして描画しない。`If-Match` と送信する項目。競合で入力を失わない。ポーリングの停止 | `frontend/src/features/workflows/workflows.test.tsx` |
 | WF-FLOW-01 | 実 HTTP と実 worker | 入力から編集まで。**入力が DB の全データとログに現れない**ことを `pg_dump` とログで確認する。チェーンの検証 | `scripts/test-workflow-flow.sh`（CI） |
 | AUDIT-WORKER-01 | 実際の障害（使い捨ての環境） | 待機中の Redis の強制終了でジョブが残り1回実行される。死んだ worker のジョブが戻ると行が失敗になる。ジョブのない停滞を実際の scheduler が回収する。PostgreSQL の再起動から回復する。時間制限を超えたジョブが止まる | `scripts/test-worker-failure.sh` |
+
+## 20. 工程1-7 のダッシュボードのテスト
+
+| ID | 対象 | 内容 | ファイル |
+|---|---|---|---|
+| DASH-01 | 集計値 | 固定データで、手で書いた期待値と比較する。2組織、3ロール。member は自分の分のみ、admin / auditor は組織全体。別の組織を数えない。月の境界（UTC） | `tests/Feature/Dashboard/DashboardSummaryTest.php` |
+| DASH-02 | 未実装の項目 | `null` を返し、0 を返さない。画面は「未実装」と表示する | 同上、`frontend/src/features/dashboard/dashboard.test.tsx` |
+| DASH-03 | 最近の操作 | member は自分の操作のみ。許可した種類のみ。システムチェーンを含まない。IP と metadata を返さない。新しい順に10件 | 同上 |
+| DASH-04 | 画面 | 数値とグラフの表の対応。応答の検証。文字列をマークアップとして描画しない | `frontend/src/features/dashboard/dashboard.test.tsx` |
+| AUTH-E2E-01（拡張） | 実ブラウザ3種 | ログインから入力、分析、編集を経てダッシュボードの集計とグラフまでの通し確認。画面の例外がないこと | `scripts/test-login-browser.sh` |

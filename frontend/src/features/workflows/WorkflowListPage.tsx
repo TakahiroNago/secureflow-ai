@@ -19,9 +19,6 @@ export function WorkflowListPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">ワークフロー</h2>
         <div className="flex items-center gap-3 text-sm">
-          <Link className="underline" to="/">
-            ホーム
-          </Link>
           {user?.role !== 'auditor' && (
             <Link className="rounded-md bg-slate-900 px-3 py-2 font-medium text-white" to="/analyses/new">
               新しく作成

@@ -1,7 +1,7 @@
 # SecureFlow AI — API設計書
 
-- 版：v1.5（2026-11-06）
-- 状態：確定（v1.5：工程1-6 の分析とワークフローの API を反映。v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.6（2026-11-06）
+- 状態：確定（v1.6：工程1-7 のダッシュボードを反映。v1.5：工程1-6 の分析とワークフローの API を反映。v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -182,6 +182,19 @@ IP 単位の制限は、NAT 配下など同じ送信元 IP を共有する利用
 |---|---|---|---|
 | GET | `/api/v1/dashboard/summary` | 認証 | KPI（ワークフロー数、実行済み数、承認待ち数、未対応警告数、期間内検出数）、最近の操作、AI利用、最新自己診断結果。ロールに応じた範囲で集計 |
 | GET | `/api/v1/ai-usage/summary?period=day\|month` | 認証 | 回数・トークン・推定費用・上限に対する割合 |
+
+**`dashboard/summary` の応答（工程1-7）：** member は自分の分、admin / auditor は組織全体を集計する。
+
+| 項目 | 内容 |
+|---|---|
+| `workflows.total`、`workflows.by_status` | ワークフロー数と状態別の件数（全状態を返す） |
+| `executed` | 完了した実行の数。**単位はワークフローである**（承認と実行の単位に合わせる。要件の「タスク数」をこの単位で表示する） |
+| `pending_approval` | `pending` のワークフロー数 |
+| `analyses_this_month` | 今月（UTC）の分析の依頼数 |
+| `security`、`ai_usage`、`self_test` | 工程2-3、2-8、3-3 までは値を `null` で返し、`available_from_step` を付ける。**0 を返さない。**「警告0件」は安全であるように読めるためである |
+| `recent_operations` | 最新10件。`auth.login`、`auth.logout`、`workflow.created`、`workflow.updated` のみ。member は自分の操作のみ。**IP アドレス、metadata、ハッシュを返さない。** システムチェーンを含まない |
+
+`ai-usage/summary` は工程2-8 で実装する。
 
 ### 3.3 入力検査・AI分析
 
