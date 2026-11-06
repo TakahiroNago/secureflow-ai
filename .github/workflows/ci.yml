@@ -54,6 +54,9 @@ jobs:
       - name: Create CI-only .env (random throwaway secrets)
         run: bash scripts/init-env.sh
 
+      - name: Tuning variables reach the containers
+        run: bash scripts/test-compose-env.sh
+
       - name: Build PHP image
         run: docker compose build app
 
