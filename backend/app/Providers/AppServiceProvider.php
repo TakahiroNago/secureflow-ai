@@ -14,9 +14,12 @@ use App\Domain\Auth\RedisRetiredSessions;
 use App\Domain\Auth\RetiredSessions;
 use App\Http\Middleware\StartSessionUnlessRetired;
 use App\Models\User;
+use App\Models\Workflow;
+use App\Policies\WorkflowPolicy;
 use App\Support\Database\DatabaseCommandPolicy;
 use App\Support\Database\SingleConnectPostgresConnection;
 use App\Support\Database\TcpTimeoutPostgresConnector;
+use App\Support\Organization\OrganizationContext;
 use App\Support\Session\RetirementAwareSessionHandler;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Cache\RedisStore;
@@ -30,6 +33,7 @@ use Illuminate\Http\Request;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Session\SessionManager;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\ServiceProvider;
@@ -55,6 +59,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(TransactionBoundary::class, DatabaseTransactionBoundary::class);
         $this->app->scoped(PendingFingerprintStore::class, RedisPendingFingerprintStore::class);
         $this->app->scoped(AuditLogger::class);
+        $this->app->scoped(OrganizationContext::class);
         $this->app->bind('db.connector.pgsql', TcpTimeoutPostgresConnector::class);
 
         $this->app->bind(AiProvider::class, fn ($app) => AiConfiguration::provider(config()->string('ai.provider'), $app->environment()));
@@ -95,6 +100,8 @@ class AppServiceProvider extends ServiceProvider
                 $assertAiConfiguration();
             }
         });
+
+        Gate::policy(Workflow::class, WorkflowPolicy::class);
 
         // Cookie sessions only. There is no personal_access_tokens table, and a bearer token must
         // simply be unauthenticated rather than reach a query on a table that does not exist.

@@ -2,6 +2,8 @@
 
 namespace App\Support\Http;
 
+use App\Domain\Workflow\WorkflowConflictException;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
@@ -15,8 +17,8 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 
 /**
- * RFC 9457 errors for the authentication API (docs/api-design.md §1.1). The other errors are
- * unified in step 2-9. Details come from fixed strings, never from exception messages.
+ * RFC 9457 errors for the authentication and workflow APIs (docs/api-design.md §1.1). The other errors
+ * are unified in step 2-9. Details come from fixed strings, never from exception messages.
  */
 final class ProblemDetails
 {
@@ -74,6 +76,14 @@ final class ProblemDetails
             $exception instanceof HttpExceptionInterface && $exception->getStatusCode() === 419 => self::response(
                 419, 'CSRF_TOKEN_MISMATCH', 'CSRF token mismatch', 'ページを再読み込みしてください。',
             ),
+            $exception instanceof WorkflowConflictException => self::response(
+                409, $exception->problemCode, 'Conflict', $exception->detail,
+            ),
+            $exception instanceof HttpExceptionInterface && $exception->getStatusCode() === 403 && $request->is('api/v1/*') => self::forbidden($exception),
+            // Laravel has already turned a missing model into this, so the message names no model or id.
+            $exception instanceof HttpExceptionInterface && $exception->getStatusCode() === 404 && $request->is('api/v1/*') => self::response(
+                404, 'NOT_FOUND', 'Not found', '対象が見つかりません。',
+            ),
             // Decided by exception class, never by message. A dependency failure is not AUTH_FAILED.
             $exception instanceof ServiceUnavailableException,
             $exception instanceof RedisException,
@@ -83,6 +93,21 @@ final class ProblemDetails
                 500, 'INTERNAL_ERROR', 'Internal server error', 'サーバーでエラーが発生しました。',
             ),
             default => null,
+        };
+    }
+
+    /**
+     * The code comes from the policy that refused. Its message is not shown.
+     */
+    private static function forbidden(Throwable $exception): JsonResponse
+    {
+        $previous = $exception->getPrevious();
+        $refusal = $previous instanceof AuthorizationException ? $previous->response() : null;
+
+        return match ($refusal?->code()) {
+            'APPROVER_ROLE_REQUIRED' => self::response(403, 'APPROVER_ROLE_REQUIRED', 'Forbidden', '承認または却下する権限がありません。'),
+            'SELF_APPROVAL_FORBIDDEN' => self::response(403, 'SELF_APPROVAL_FORBIDDEN', 'Forbidden', '自分が作成したワークフローは承認または却下できません。'),
+            default => self::response(403, 'FORBIDDEN', 'Forbidden', 'この操作を行う権限がありません。'),
         };
     }
 

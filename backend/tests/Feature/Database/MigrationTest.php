@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\User;
 use App\Support\Database\TestDatabaseGuard;
 use Illuminate\Support\Facades\Artisan;
 
@@ -8,6 +9,8 @@ use Illuminate\Support\Facades\Artisan;
 */
 
 const STEP_1_3_TABLES = ['audit_chain_heads', 'audit_logs', 'organization_settings', 'organizations', 'users'];
+
+const STEP_1_5_TABLES = ['approvals', 'audit_chain_heads', 'audit_logs', 'organization_settings', 'organizations', 'users', 'workflow_executions', 'workflow_revisions', 'workflow_tasks', 'workflows'];
 
 function publicTables(): array
 {
@@ -28,12 +31,13 @@ it('migrates up, rolls back completely and migrates up again', function () {
     $connection = ['--database' => TestDatabaseGuard::OWNER_CONNECTION, '--force' => true];
 
     resetAuditTables();
+    resetWorkflowTables();
 
-    expect(publicTables())->toBe(STEP_1_3_TABLES)
+    expect(publicTables())->toBe(STEP_1_5_TABLES)
         ->and(prerequisitesExist())->toBe(['function' => 1, 'citext' => 1]);
 
     try {
-        expect(Artisan::call('migrate:rollback', $connection + ['--step' => 6]))->toBe(0)
+        expect(Artisan::call('migrate:rollback', $connection + ['--step' => 7]))->toBe(0)
             ->and(publicTables())->toBe([])
             ->and(prerequisitesExist())->toBe(['function' => 0, 'citext' => 0]);
     } finally {
@@ -41,7 +45,7 @@ it('migrates up, rolls back completely and migrates up again', function () {
     }
 
     expect($status)->toBe(0)
-        ->and(publicTables())->toBe(STEP_1_3_TABLES)
+        ->and(publicTables())->toBe(STEP_1_5_TABLES)
         ->and(prerequisitesExist())->toBe(['function' => 1, 'citext' => 1])
         ->and(ownerDb()->selectOne("SELECT count(*) AS n FROM pg_proc WHERE proname LIKE 'audit\\_%'")->n)->toBe(5);
 });
@@ -50,9 +54,10 @@ it('AUDIT-MIG-01: rolling back only the chain step restores the step 1-1 privile
     $connection = ['--database' => TestDatabaseGuard::OWNER_CONNECTION, '--force' => true];
 
     resetAuditTables();
+    resetWorkflowTables();
 
     try {
-        expect(Artisan::call('migrate:rollback', $connection + ['--step' => 1]))->toBe(0)
+        expect(Artisan::call('migrate:rollback', $connection + ['--step' => 2]))->toBe(0)
             ->and(publicTables())->toBe(['audit_logs', 'organization_settings', 'organizations', 'users'])
             ->and(ownerDb()->selectOne("SELECT count(*) AS n FROM pg_proc WHERE proname LIKE 'audit\\_%'")->n)->toBe(0)
             ->and(appDb()->selectOne("SELECT has_column_privilege(current_user, 'audit_logs', 'event_id', 'INSERT') AS granted")->granted)->toBeTrue();
@@ -68,15 +73,61 @@ it('AUDIT-MIG-01: refuses to run in either direction while audit_logs has rows',
     $connection = ['--database' => TestDatabaseGuard::OWNER_CONNECTION, '--force' => true];
 
     resetAuditTables();
+    resetWorkflowTables();
     appendAudit();
 
     try {
-        expect(fn () => Artisan::call('migrate:rollback', $connection + ['--step' => 1]))
+        expect(fn () => Artisan::call('migrate:rollback', $connection + ['--step' => 2]))
             ->toThrow(RuntimeException::class, 'audit_logs has rows')
             ->and(publicTables())->toBe(STEP_1_3_TABLES);
     } finally {
         resetAuditTables();
+        Artisan::call('migrate', $connection);
     }
+
+    expect(publicTables())->toBe(STEP_1_5_TABLES);
+});
+
+it('refuses to drop the workflow tables while a revision exists, and keeps them whole', function () {
+    $connection = ['--database' => TestDatabaseGuard::OWNER_CONNECTION, '--force' => true];
+
+    resetWorkflowTables();
+    $creator = User::factory()->create();
+    $workflow = workflowOf($creator);
+    insertRevision(appDb(), $workflow);
+
+    try {
+        expect(fn () => Artisan::call('migrate:rollback', $connection + ['--step' => 1]))
+            ->toThrow(RuntimeException::class, 'workflow_revisions has rows')
+            ->and(publicTables())->toBe(STEP_1_5_TABLES);
+    } finally {
+        resetWorkflowTables();
+        ownerDb()->table('users')->where('id', $creator->id)->delete();
+        ownerDb()->table('organizations')->where('id', $creator->organization_id)->delete();
+    }
+});
+
+it('rolls the workflow step back completely, including the key added to users', function () {
+    $connection = ['--database' => TestDatabaseGuard::OWNER_CONNECTION, '--force' => true];
+
+    resetWorkflowTables();
+
+    $objects = fn () => [
+        'functions' => ownerDb()->selectOne("SELECT count(*) AS n FROM pg_proc WHERE proname LIKE 'approvals\\_%'")->n,
+        'users_key' => ownerDb()->selectOne("SELECT count(*) AS n FROM pg_constraint WHERE conname = 'users_organization_id_id_unique'")->n,
+    ];
+
+    expect($objects())->toBe(['functions' => 2, 'users_key' => 1]);
+
+    try {
+        expect(Artisan::call('migrate:rollback', $connection + ['--step' => 1]))->toBe(0)
+            ->and(publicTables())->toBe(STEP_1_3_TABLES)
+            ->and($objects())->toBe(['functions' => 0, 'users_key' => 0]);
+    } finally {
+        Artisan::call('migrate', $connection);
+    }
+
+    expect($objects())->toBe(['functions' => 2, 'users_key' => 1]);
 });
 
 it('AUDIT-MIG-01: does not touch the id sequence', function () {

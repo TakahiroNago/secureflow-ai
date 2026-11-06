@@ -1,7 +1,7 @@
 # SecureFlow AI — テスト戦略
 
-- 版：v1.6（2026-11-06）
-- 状態：確定（v1.6：AUDIT-LOAD-01 の測定結果を追加。v1.5：工程1-4 の AI 基盤のテストを追加。v1.4：工程1-3 の監査ログテストを追加。v1.3：工程1-2 の認証テストを追加。v1.2：工程1-1 の設計レビューと検査の修正を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.7（2026-11-06）
+- 状態：確定（v1.7：工程1-5 のワークフロー基盤のテストを追加。v1.6：AUDIT-LOAD-01 の測定結果を追加。v1.5：工程1-4 の AI 基盤のテストを追加。v1.4：工程1-3 の監査ログテストを追加。v1.3：工程1-2 の認証テストを追加。v1.2：工程1-1 の設計レビューと検査の修正を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -462,3 +462,20 @@ Redis の停止（`docker compose stop`）と凍結（`docker compose pause`）�
 **ワーカーの枯渇（R-19）：** DB のプロセスが止まってカーネルのみが応答する間、接続済みのワーカーは凍結の解除まで戻らない。処理中の要求の数だけワーカーを失い、全ワーカーが処理中であれば要求を全く処理できず、liveness と readiness も nginx の `fastcgi_read_timeout`（60秒）で 504 となる。**この間も Docker の app の health は `healthy` のままであった。** healthcheck は php-fpm の TCP の受付と `artisan` の起動のみを確認し、ワーカーの空きを確認しないためと考えられる。凍結の解除で自然に回復した。
 
 **測定していないもの：** WAL の増加量、ネットワークの断（AUDIT-DBTO-01 で確認する）、複数の接続元、https、本番用イメージ、DB の停止（凍結のみ測定した）。
+
+## 18. 工程1-5 のワークフロー基盤のテスト
+
+ワークフローの API は工程1-6 で追加する。HTTP の応答は、テストの中だけで登録するルート（`routes/api.php` と同じミドルウェア）で確認し、本番のアプリケーションにはこのルートを持たせない。
+
+| ID | 対象 | 内容 | ファイル |
+|---|---|---|---|
+| WF-SM-01 | 状態遷移 | 7状態×8イベントの56通りすべて。許可の表は実装と別にテストに書く。Approved・Running に承認を経ずに到達できない | `tests/Unit/Workflow/WorkflowStateMachineTest.php` |
+| WF-TR-01 | 遷移の適用 | トランザクションの外では実行できない。不正な遷移は何も変えない。古い読み取りは 409 `REVISION_CONFLICT`。別の組織のワークフローは見つからない | `tests/Feature/Workflow/WorkflowTransitionTest.php` |
+| WF-CON-01 | 並行性（実プロセス、実コミット） | 並行する4つの遷移のうち1件のみ成功する。遷移中の行はロックされる。トランザクションと一緒にロールバックされる。同じリビジョンの2件の決定のうち1件のみ成功する | `tests/Concurrency/WorkflowConcurrencyTest.php` |
+| WF-HASH-01 | PlanHasher | Python の独立した実装（`tests/Fixtures/generate-plan-hash-vectors.py`）の固定ベクトルと一致する。`jsonb` の往復でキーの順序が変わっても一致する。承認の対象のすべての項目の変更でハッシュが変わる。設計にない項目、NUL、不正な UTF-8 を拒否し、エラーに内容を含めない | `tests/Unit/Workflow/PlanHasherTest.php` |
+| WF-DB-01 | DB の制約 | 改変拒否、複合外部キー、列単位の権限、CHECK、一意制約、未検査の行。ST-21・ST-38 の DB 部分 | `tests/Feature/Workflow/WorkflowSchemaTest.php`、`tests/Feature/Database/TablePrivilegeTest.php` |
+| WF-MIG-01 | マイグレーション | 全体の往復。`workflow_revisions`・`approvals` に行があれば `down` が中断する | `tests/Feature/Database/MigrationTest.php` |
+| ST-06, 12, 21, 23, 37 | Policy | 操作ごと、ロールごとの判定を手で書いた表と比較する。ロールの変更、無効化、ロック | `tests/Security/WorkflowPolicyTest.php` |
+| ST-23 | 組織スコープ | 2組織×全モデル。文脈がなければクエリを実行しない。別の組織の行を読めず、更新できず、作成できず、移動できない。**全エンドポイントの確認は工程1-6** | `tests/Isolation/WorkflowIsolationTest.php` |
+| ST-12, 21, 23 | HTTP の応答 | 別の組織、別の member、存在しない ID の 404 の本文が `trace_id` を除いて同一である。UUID でない ID も 404。403、409 の RFC 9457 形式。応答に内部情報と内容を含めない | `tests/Feature/Workflow/WorkflowHttpTest.php` |
+| ST-34 | ルート | 全ルートの認証、組織の文脈、Policy を自動検査する。欠けたルートを実際に登録して検出できることも確認する。組織の文脈がルートモデルバインディングより先に設定される | `tests/Security/RouteAuthorizationTest.php` |

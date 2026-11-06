@@ -3,10 +3,12 @@
 use App\Audit\AuditAvailability;
 use App\Audit\AuditFailure;
 use App\Audit\OutageLog;
+use App\Domain\Workflow\WorkflowConflictException;
 use App\Http\Middleware\EnsureSessionIsCurrent;
 use App\Http\Middleware\RejectWhileDatabaseUnavailable;
 use App\Http\Middleware\RequireJsonBody;
 use App\Http\Middleware\RequireStatefulFrontend;
+use App\Http\Middleware\SetOrganizationContext;
 use App\Support\Http\ProblemDetails;
 use App\Support\Http\ServiceUnavailableException;
 use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
@@ -39,9 +41,12 @@ return Application::configure(basePath: dirname(__DIR__))
             'db.available' => RejectWhileDatabaseUnavailable::class,
             'json.body' => RequireJsonBody::class,
             'session.current' => EnsureSessionIsCurrent::class,
+            'org.context' => SetOrganizationContext::class,
         ]);
         // Without this the framework moves authentication first, and it reads the users table.
         $middleware->prependToPriorityList(AuthenticatesRequests::class, RejectWhileDatabaseUnavailable::class);
+        // Route model binding must run inside the organization scope.
+        $middleware->appendToPriorityList(AuthenticatesRequests::class, SetOrganizationContext::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
@@ -100,4 +105,5 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Already logged by whatever raised it, and part of normal operation during an outage.
         $exceptions->dontReport(ServiceUnavailableException::class);
+        $exceptions->dontReport(WorkflowConflictException::class);
     })->create();

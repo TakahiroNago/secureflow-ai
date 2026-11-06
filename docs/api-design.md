@@ -1,7 +1,7 @@
 # SecureFlow AI — API設計書
 
-- 版：v1.3（2026-11-04）
-- 状態：確定（v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.4（2026-11-06）
+- 状態：確定（v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -17,6 +17,7 @@
 | エラーレスポンス | RFC 9457 Problem Details（下記） |
 | ページング | カーソル方式 `?cursor=...&limit=20`（limit最大100） |
 | 楽観ロック | 編集系は `If-Match: "<revision_no>"` 必須。不一致は 409 `REVISION_CONFLICT` |
+| 認可の失敗 | 別の組織・別の member のリソース、存在しないリソースはすべて同じ 404 `NOT_FOUND`（存在を明かさない）。ロール不足は 403 `FORBIDDEN`（承認は `APPROVER_ROLE_REQUIRED`、`SELF_APPROVAL_FORBIDDEN`）。工程1-5 |
 | 冪等性 | 実行APIは `Idempotency-Key` ヘッダ必須（UUID推奨、最大100文字） |
 | 時刻 | ISO 8601（UTC） |
 

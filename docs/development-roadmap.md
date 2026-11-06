@@ -1,7 +1,7 @@
 # SecureFlow AI — 開発ロードマップ
 
-- 版：v1.5（2026-11-06）
-- 状態：確定（v1.5：工程1-4 の決定と工程1-6 の条件を反映。v1.4：工程1-3 の範囲を反映。v1.3：工程1-2 の範囲を反映。v1.2：工程1-1 の設計レビューを反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.6（2026-11-06）
+- 状態：確定（v1.6：R-19 の対策を公開環境の前提に追加。工程1-5 の範囲、トリガーと監査の時期、未検査の扱いを反映。v1.5：工程1-4 の決定と工程1-6 の条件を反映。v1.4：工程1-3 の範囲を反映。v1.3：工程1-2 の範囲を反映。v1.2：工程1-1 の設計レビューを反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -34,8 +34,8 @@
 | 1-2 | 認証API（`PATCH /account/password` を含む）・ログイン画面・セッション管理・ロック・`user:create` コマンド・Seeder（組織や初期設定のみ。ログイン可能な固定ユーザーは生成しない）、Argon2id の設定、漏洩パスワード辞書、`User` モデルと Factory の設計どおりの修正（`HasUuids` を含む）。認証イベントの監査記録は工程1-3 | ログイン/ログアウト可、未認証 401、失敗は 401 `AUTH_FAILED`、6回目 429、ロック動作（既存セッションは維持）、`is_active=false` で即時無効化、パスワード変更で他のセッションのみ無効化 | Feature、ST-05, 24, 25, 26, 27、[test-strategy.md §14](test-strategy.md)、Vitest |
 | 1-3 | `audit_chain_heads`、`audit_logs` のチェーン用の列・制約・インデックス・権限、SECURITY DEFINER 関数 `audit_append()`、組織チェーンとシステムチェーン、AuditLogger、認証イベント記録（[security-design.md §16.5](security-design.md)）、監査の事前確認と3つの状態の分離（DB unavailable は確認プローブ、Audit unavailable は実際の追記で回復を確認。文字列で判定しない）、`audit.unavailable` のログと `audit:status`、readiness の実装と `README.md` のヘルスチェックの説明の更新、Redis 障害時の fail closed（RFC 9457 形式の 503）、パスワード変更の確定と再試行（`users.password_change_key_hash`、`users.password_change_previous_hash`）、DB のタイムアウトの層、障害中のログの集約、PHP の検証器、`audit:verify`（手動実行）、`audit:head`（外部保管は手動）、匿名イベントの上限（暫定値・環境変数で変更可）と未記録の検知。**開発用DBへの適用前に、工程1-1適用後・Seeder 実行後のバックアップを取得する**（[database-design.md §4.5](database-design.md)） | app ロールで直接追記できない。記録にパスワード等が含まれない。チェーン検証成功。PHP と PostgreSQL が固定テストベクトルを再現する。改ざんを検出し、検出できない範囲がテストで明示されている。記録の失敗時の動作がイベントごとの設計どおりで、監査が利用できないときの応答から認証情報の正否を区別できない。監査の失敗時の応答からパスワードの正否を判別できないことをテストで確認している。暫定値の負荷試験の結果を報告している | Unit、ST-28、[test-strategy.md §15](test-strategy.md) |
 | 1-4 | ActionCatalog、AiProvider、MockAiProvider、AiGateway（モック）、OutputValidator（スキーマ・許可リスト） | 不正JSON・未知キー・未知操作を拒否、forbidden 判定 | Unit（§4 のモックシナリオ）、ST-07 |
-| 1-5 | workflows / revisions / tasks / approvals / executions マイグレーション、StateMachine、PlanHasher、Policy、組織スコープ | 不正遷移 409、他人データ 404、ハッシュ仕様どおり | Unit（遷移全組合せ、正規化）、Isolation、ST-12, 23, 34 |
-| 1-6 | ai_analysis_requests、`failed_jobs`（テーブルと権限）、AnalyzeWorkflowJob（モック）、ワークフローAPI・画面（入力・分析・表示・編集・保存）。**ジョブの時間制限は `AiGateway::worstCaseSeconds()`（既定値で93秒）より長くする。worker の `--timeout`（現在は未指定で既定の60秒）とキューの `retry_after` もこれに合わせて見直す** | 入力→生成→編集→保存。編集で新リビジョン。再試行の途中でジョブが打ち切られない | Feature、Vitest |
+| 1-5 | workflows / revisions / tasks / approvals / executions マイグレーション（複合外部キー、列単位の権限、改変拒否、**自己承認禁止・admin 必須のトリガー**）、StateMachine、PlanHasher、Policy、組織スコープ。**API はないため、HTTP の応答はテスト専用のルートで確認する** | 不正遷移 409、他人データ 404、ハッシュ仕様どおり | Unit（遷移全組合せ、正規化）、Isolation、Concurrency、ST-12, 34、ST-21・ST-38（DB 部分）、ST-23（モデルと Policy） |
+| 1-6 | ai_analysis_requests、`failed_jobs`（テーブルと権限）、AnalyzeWorkflowJob（モック）、ワークフローAPI・画面（入力・分析・表示・編集・保存）。**ジョブの時間制限は `AiGateway::worstCaseSeconds()`（既定値で93秒）より長くする。worker の `--timeout`（現在は未指定で既定の60秒）とキューの `retry_after` もこれに合わせて見直す**。`workflow.created`・`workflow.updated` の監査記録 | 入力→生成→編集→保存。編集で新リビジョン。再試行の途中でジョブが打ち切られない。状態変更が監査と同じトランザクションで記録される | Feature、Vitest、ST-23（全エンドポイント） |
 | 1-7 | ダッシュボード（基本KPI） | 集計値が正しい（ロール別範囲） | Feature（固定データ） |
 
 ## 4. Phase 2：セキュリティ制御と監査ログ
@@ -44,11 +44,11 @@
 |---|---|---|---|
 | 2-1 | Normalizer、PII/Secret 検出器（ルールごとの severity・action 定義）、Masker、マスキング後再検査（fail closed） | コーパスで目標検出率・誤検知・誤停止が目標内。個人情報は mask_continue、認証・秘密情報は block。マスキング失敗で停止 | Unit、コーパス評価、ST-03, 04, 35, 36 |
 | 2-2 | InjectionDetector（ルール・スコアリング） | 4段階判定が仕様どおり | Unit、ST-02, 13, 14, 15 |
-| 2-3 | InputScanner 統合、scan-preview API、全体判定（action から算出。D4・D14）、scans/findings 保存、限界文言 | block 判定で AI 呼び出し0回。severity と action が別フィールドで返る。限界文言が常に返る | Feature、モック呼出回数検証、ST-39 |
+| 2-3 | InputScanner 統合、scan-preview API、全体判定（action から算出。D4・D14）、scans/findings 保存、限界文言、`workflow_revisions.scan_id` の外部キーと新規行の必須化（工程1-5 の未検査の行は変更しない） | block 判定で AI 呼び出し0回。severity と action が別フィールドで返る。限界文言が常に返る | Feature、モック呼出回数検証、ST-39 |
 | 2-4 | OutputValidator 拡張（出力マスキング・カナリア・HTML除去・権限照合）、プロンプト構築 | 各モックシナリオで期待どおり | ST-10, 18, 19 |
-| 2-5 | 承認API・承認画面（ハッシュ照合・admin のみ・自己承認禁止・リスク確認・承認者不在表示）、DBトリガー（自己承認禁止・admin 必須）、submit / reopen | 承認後編集で再承認要求、古いハッシュ 409、自己承認拒否、auditor・member の承認拒否、承認可能な admin 不在で実行不可 | ST-06, 09, 16, 17, 20, 21, 37, 38、AUTH-LOCK-03、E2E一部 |
-| 2-6 | ExecutionVerifier、ExecuteWorkflowJob、Simulators、冪等性、停滞回収 | 未承認実行拒否、二重実行なし、障害時 Failed | ST-08, 22, 33、AUTH-LOCK-03、Concurrency |
-| 2-7 | 全イベントの監査記録（認証以外。`rate_limit.exceeded` の集約を含む）、検証API（検証器とコマンドは工程1-3）、監査ログ画面（フィルタ） | 全イベント記録、改ざん検出、auditor 参照可・member 403、システムチェーンを API から参照できない | ST-06, 28、AUDIT-SYS-01、Vitest |
+| 2-5 | 承認API・承認画面（ハッシュ照合・admin のみ・自己承認禁止・リスク確認・承認者不在表示）、submit / reopen、`workflow.submitted`・`workflow.reopened`・`approval.*` の監査記録 | 承認後編集で再承認要求、古いハッシュ 409、自己承認拒否、auditor・member の承認拒否、承認可能な admin 不在で実行不可、未検査のリビジョンの提出・承認の拒否 | ST-06, 09, 16, 17, 20, 21, 37, 38、AUTH-LOCK-03、E2E一部 |
+| 2-6 | ExecutionVerifier、ExecuteWorkflowJob、Simulators、冪等性、停滞回収、`execution.*` の監査記録 | 未承認実行拒否、未検査のリビジョンの実行拒否、二重実行なし、障害時 Failed | ST-08, 22, 33、AUTH-LOCK-03、Concurrency |
+| 2-7 | 残りのイベントの監査記録（認証と、工程1-6・2-5・2-6 で機能と同時に記録するものを除く。`rate_limit.exceeded` の集約を含む）、検証API（検証器とコマンドは工程1-3）、監査ログ画面（フィルタ） | 全イベント記録、改ざん検出、auditor 参照可・member 403、システムチェーンを API から参照できない | ST-06, 28、AUDIT-SYS-01、Vitest |
 | 2-8 | **（実装前に D11 確認：モデル・API仕様・データ保持・学習利用・送信データ範囲・レート制限等。確認結果をレビューに提出）** OpenAiProvider（Structured Outputs、tools無し、タイムアウト、再試行、利用記録、上限）、有効化ゲート（起動時の設定検証） | フェイクHTTPで全エラー系成功。有効化条件（[security-design.md §6.1](security-design.md)）を満たすまで `AI_PROVIDER=openai` が拒否される。条件達成と承認後に実APIで手動確認1回 | ST-30, 31、ゲートのテスト |
 | 2-9 | 全体レート制限、セキュリティヘッダ・CSP、エラー形式統一、ログの機密情報除去 | ヘッダ付与、エラーに内部情報なし | ST-11, 29, 32 |
 | 2-10 | セキュリティ管理画面（検出一覧・対策状況）、設定画面（APIキー非表示） | キー値が画面・APIに出ない | Feature、Vitest |
@@ -82,6 +82,7 @@
 | 監査イベントを確実に残す方式（トランザクションアウトボックス等） | 別トランザクションの記録の欠落（R-13） |
 | 匿名イベントの上限の確定（公開環境の構成が決まった時点で再測定） | R-12、R-17 |
 | **信頼できるリバースプロキシと接続元 IP の取得方法の確定（公開環境の前提。IP 単位の制限が正しく動作するまで公開環境へ移行しない）** | 送信元 IP（R-17） |
+| **DB のプロセスの無応答によるワーカーの枯渇への対策（公開環境の前提。対策するまで公開環境へ移行しない）：** php-fpm の `request_terminate_timeout`（候補30秒）と nginx の応答の変換、ワーカーの空きを確認する healthcheck。測定結果は [test-strategy.md §17.2](test-strategy.md) | R-19 |
 | WAL 領域の枯渇からの具体的な復旧手順（運用設計） | R-18 |
 | **ログの基盤と `audit.unavailable` のアラートの接続（公開環境の前提）。** readiness では監査の障害を区別できないため。**readiness はトラフィックの制御のみ、liveness は再起動の判断のみに使う** | R-16 |
 | 複数の app コンテナでの DB unavailable・Audit unavailable と、ログの集約の共有 | R-18、R-22 |
