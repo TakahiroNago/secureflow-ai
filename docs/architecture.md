@@ -1,7 +1,7 @@
 # SecureFlow AI — アーキテクチャ設計書
 
-- 版：v1.5（2026-11-06）
-- 状態：確定（v1.5：工程1-4 の AI の起動条件と再試行を反映。v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.6（2026-11-06）
+- 状態：確定（v1.6：環境変数を Compose からコンテナへ渡す条件を明記。v1.5：工程1-4 の AI の起動条件と再試行を反映。v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - 関連：[database-design.md](database-design.md) / [api-design.md](api-design.md) / [security-design.md](security-design.md) / [threat-model.md](threat-model.md) / [test-strategy.md](test-strategy.md) / [development-roadmap.md](development-roadmap.md)
 
 ---
@@ -296,6 +296,8 @@ Draft ──submit──▶ Pending ──approve──▶ Approved ──execut
 | `PASSWORD_PENDING_REDIS_TIMEOUT_MS` / `PASSWORD_PENDING_REDIS_READ_TIMEOUT_MS` / `PASSWORD_PENDING_TTL_MARGIN_SECONDS` | パスワード変更の保留の指紋の書き込みの全体の期限（条件付きで確定。単調増加時計で判定し、超過は成功扱いにせずロールバックする）、読み取りのタイムアウト、キーの有効期限の余裕（工程1-3。[security-design.md §16.5.5](security-design.md)） | 1000 / 900 / 300 |
 | `LOG_AGGREGATION_INTERVAL_SECONDS` | 障害中のログの集約の間隔（工程1-3。暫定値。[security-design.md §16.5.7](security-design.md)） | 60 |
 | `REDIS_TIMEOUT` / `REDIS_READ_TIMEOUT` / `REDIS_MAX_RETRIES` | Redis の接続・読み取りのタイムアウトと再試行。障害中の待ち時間を決める（暫定値。AUDIT-LOAD-01 で確認） | 2 / 2 / 3 |
+
+**Compose との関係：** コンテナに渡るのは `compose.yaml` に書かれた変数のみである。上の調整値を追加するときは `compose.yaml` にも同じ既定値で追加する（`scripts/test-compose-env.sh` が CI で確認する）。`.env` を変更した後はコンテナの再作成が必要である。
 
 `AI_PROVIDER=openai` は、Phase 2 でマスキング・出力検証が完成し、必要なセキュリティテスト（[test-strategy.md §5](test-strategy.md) の ST-02〜04, 07, 10, 13〜19, 30, 31, 35〜37）を通過し、D11 の確認が完了するまで受け付けない（起動時の設定検証でエラー）。それまで OpenAiProvider はコード上も登録しない。
 
