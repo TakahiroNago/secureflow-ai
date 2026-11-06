@@ -9,6 +9,16 @@ enum Severity: string
     case High = 'high';
     case Critical = 'critical';
 
+    /** One level up, and Critical stays Critical. */
+    public function raised(): self
+    {
+        return match ($this) {
+            self::Low => self::Medium,
+            self::Medium => self::High,
+            self::High, self::Critical => self::Critical,
+        };
+    }
+
     public function rank(): int
     {
         return match ($this) {

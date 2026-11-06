@@ -1,0 +1,348 @@
+{
+  "version": "2026.11.2",
+  "rules": [
+    {
+      "id": "IJ-OVR-001",
+      "category": "IJ-OVR",
+      "severity": "high",
+      "pattern": "(?:これまで|今まで|以前|前|上記|先ほど|さっき|元|最初|あなたが受けた|与えられた)(?:の|に受けた|に与えられた)?[^。\\n]{0,12}(?:指示|命令|プロンプト|システムメッセージ)[^。\\n]{0,10}(?:無視|忘れ|破棄|無効|上書き|従わな)"
+    },
+    {
+      "id": "IJ-OVR-002",
+      "category": "IJ-OVR",
+      "severity": "high",
+      "pattern": "(?:これまで|今まで|以前|上記|先ほど|あなたの)の?[^。\\n]{0,8}(?:ルール|制約|設定|内容|会話|やりとり|こと)[^。\\n]{0,8}(?:無視|忘れ)"
+    },
+    {
+      "id": "IJ-OVR-003",
+      "category": "IJ-OVR",
+      "severity": "high",
+      "pattern": "\\b(?:ignore|disregard|forget|override|bypass)\\s*(?:all\\s*|any\\s*|the\\s*|your\\s*|of\\s*|these\\s*|those\\s*|my\\s*)*(?:previous|prior|above|earlier|preceding|former|system|original|initial|your|all)\\s*(?:\\w+\\s*){0,2}?(?:instructions?|prompts?|rules?|directives?|guidelines?|messages?)\\b"
+    },
+    {
+      "id": "IJ-OVR-004",
+      "category": "IJ-OVR",
+      "severity": "high",
+      "pattern": "\\bforget\\s*(?:everything|all\\s*of\\s*this|all\\s*that|what)\\s*(?:above|before|you|i\\s*said|was\\s*said|we)"
+    },
+    {
+      "id": "IJ-OVR-005",
+      "category": "IJ-OVR",
+      "severity": "high",
+      "pattern": "\\b(?:your\\s*)?(?:new|updated|real)\\s*(?:instructions?|system\\s*prompt|directives?)\\s*(?:are|is|:)"
+    },
+    {
+      "id": "IJ-OVR-006",
+      "category": "IJ-OVR",
+      "severity": "high",
+      "pattern": "(?:新しい|本当の|真の)(?:指示|命令|システムプロンプト)[はを:]"
+    },
+    {
+      "id": "IJ-OVR-007",
+      "category": "IJ-OVR",
+      "severity": "high",
+      "pattern": "(?:システムメッセージ|システムプロンプト)[^。\\n]{0,6}(?:無視|無効|破棄|上書き)"
+    },
+    {
+      "id": "IJ-EXF-001",
+      "category": "IJ-EXF",
+      "severity": "high",
+      "pattern": "(?:システム|内部|初期|隠し|秘密)の?(?:プロンプト|指示|命令|メッセージ)[^。\\n]{0,12}(?:表示|出力|教え|見せ|開示|公開|書き出|繰り返|暴露)"
+    },
+    {
+      "id": "IJ-EXF-002",
+      "category": "IJ-EXF",
+      "severity": "high",
+      "pattern": "(?:あなた|君|お前|貴方)(?:へ|に|が)?の?[^。\\n]{0,10}(?:指示|設定|プロンプト|命令|ルール)[^。\\n]{0,12}(?:表示|出力|教え|見せ|開示|書き出)"
+    },
+    {
+      "id": "IJ-EXF-003",
+      "category": "IJ-EXF",
+      "severity": "high",
+      "pattern": "(?:あなた|君|お前|システム|サーバー|サーバ|環境変数|内部)(?:が持つ|の持つ|の)?[^。\\n]{0,8}(?:API\\s*キー|パスワード|秘密鍵|認証情報|トークン|シークレット)[^。\\n]{0,8}(?:教え|表示|出力|見せ|開示)"
+    },
+    {
+      "id": "IJ-EXF-004",
+      "category": "IJ-EXF",
+      "severity": "high",
+      "pattern": "\\b(?:show|reveal|print|display|repeat|output|tell\\s*me|give\\s*me|share|leak|dump|what\\s*(?:are|is|were))\\s*(?:me\\s*)?(?:all\\s*)?(?:of\\s*)?(?:your|the\\s*(?:system|hidden|initial|original|secret))\\s*(?:\\w+\\s*){0,2}?(?:system\\s*prompt|instructions?|prompt|configuration|rules)\\b"
+    },
+    {
+      "id": "IJ-EXF-005",
+      "category": "IJ-EXF",
+      "severity": "high",
+      "pattern": "\\b(?:show|reveal|print|display|output|tell\\s*me|give\\s*me|share|leak|dump|what\\s*is)\\s*(?:me\\s*)?(?:your|the\\s*server'?s?|the\\s*system'?s?)\\s*(?:\\w+\\s*){0,1}?(?:api\\s*keys?|secrets?|passwords?|credentials?|tokens?|env(?:ironment)?\\s*variables?)\\b"
+    },
+    {
+      "id": "IJ-IMP-001",
+      "category": "IJ-IMP",
+      "severity": "medium",
+      "pattern": "(?:私|わたし|僕|俺)は[^。\\n]{0,10}(?:開発者|管理者|運営者|作成者)(?:です|だ|である|なので|だから)"
+    },
+    {
+      "id": "IJ-IMP-002",
+      "category": "IJ-IMP",
+      "severity": "medium",
+      "pattern": "(?:管理者|開発者|特権|デバッグ|メンテナンス)モード"
+    },
+    {
+      "id": "IJ-IMP-003",
+      "category": "IJ-IMP",
+      "severity": "medium",
+      "pattern": "\\b(?:developer|admin(?:istrator)?|god|sudo|root|maintenance)\\s*mode\\b"
+    },
+    {
+      "id": "IJ-IMP-004",
+      "category": "IJ-IMP",
+      "severity": "medium",
+      "pattern": "\\b(?:as\\s*the|i\\s*am\\s*(?:the|your)|i'm\\s*(?:the|your))\\s*(?:system\\s*)?(?:administrator|developer|admin|creator|owner)\\b"
+    },
+    {
+      "id": "IJ-IND-001",
+      "category": "IJ-IND",
+      "severity": "high",
+      "pattern": "<\\|im_start\\|>|<\\|im_end\\|>|<\\|system\\|>|\\[/?INST\\]|<<SYS>>|</?system>|^###\\s*(?:system|instructions?)\\b"
+    },
+    {
+      "id": "IJ-IND-002",
+      "category": "IJ-IND",
+      "severity": "high",
+      "pattern": "^\\s*(?:system|システム)\\s*:[^\\n]*\\n(?:[^\\n]*\\n){0,20}?\\s*(?:user|assistant|ユーザー|アシスタント)\\s*:"
+    },
+    {
+      "id": "IJ-IND-003",
+      "category": "IJ-IND",
+      "severity": "medium",
+      "pattern": "^\\s*(?:system|システム)\\s*:"
+    },
+    {
+      "id": "IJ-IND-004",
+      "category": "IJ-IND",
+      "severity": "medium",
+      "pattern": "(?:以下|次|下記|この|添付)の?(?:文書|文章|内容|メール|ファイル|ページ)[^。\\n]{0,12}(?:指示|命令)[^。\\n]{0,6}(?:従|実行)"
+    },
+    {
+      "id": "IJ-IND-005",
+      "category": "IJ-IND",
+      "severity": "medium",
+      "pattern": "\\bfollow\\s*(?:the\\s*)?(?:instructions?|commands?)\\s*(?:in|from|inside|contained\\s*in)\\s*(?:the\\s*|this\\s*)?(?:document|email|page|file|text|attachment|below)\\b"
+    },
+    {
+      "id": "IJ-IND-006",
+      "category": "IJ-IND",
+      "severity": "medium",
+      "pattern": "(?:AI|アシスタント|モデル|LLM)(?:への|に対する|に)(?:指示|命令|お願い)\\s*:"
+    },
+    {
+      "id": "IJ-IND-007",
+      "category": "IJ-IND",
+      "severity": "medium",
+      "pattern": "\\b(?:note|message|instructions?)\\s*(?:to|for)\\s*(?:the\\s*)?(?:ai|assistant|model|llm|chatbot)\\b"
+    },
+    {
+      "id": "IJ-JBR-001",
+      "category": "IJ-JBR",
+      "severity": "medium",
+      "pattern": "制限(?:なし|無し|を(?:解除|外|無視|無効)|を一切)|一切の制限"
+    },
+    {
+      "id": "IJ-JBR-002",
+      "category": "IJ-JBR",
+      "severity": "medium",
+      "pattern": "(?:フィルタ|フィルター|安全機能|安全装置|ガードレール|セーフティ)[^。\\n]{0,6}(?:無効|解除|外し|外して|オフ|切って)"
+    },
+    {
+      "id": "IJ-JBR-003",
+      "category": "IJ-JBR",
+      "severity": "medium",
+      "pattern": "(?:あなた|君)は(?:今から|これから|もう)[^。\\n]{0,24}(?:として振る舞|になりきっ|のふり|として行動|になって)"
+    },
+    {
+      "id": "IJ-JBR-004",
+      "category": "IJ-JBR",
+      "severity": "medium",
+      "pattern": "\\bwithout\\s*(?:any\\s*)?(?:restrictions?|limitations?|filters?|censorship|safeguards?)\\b"
+    },
+    {
+      "id": "IJ-JBR-005",
+      "category": "IJ-JBR",
+      "severity": "medium",
+      "pattern": "\\b(?:disable|turn\\s*off|remove|deactivate)\\s*(?:your\\s*|the\\s*|all\\s*|any\\s*)*(?:safety\\s*|content\\s*)*(?:filters?|guardrails?|restrictions?|safeguards?)\\b"
+    },
+    {
+      "id": "IJ-JBR-006",
+      "category": "IJ-JBR",
+      "severity": "medium",
+      "pattern": "\\bpretend\\s*(?:to\\s*be|you\\s*are)\\b|\\bact\\s*as\\s*(?:if\\s*you\\s*are\\s*)?(?:an?\\s*)?(?:unrestricted|uncensored|unfiltered|jailbroken)\\b|\\bjailbreak\\b|\\bdo\\s*anything\\s*now\\b"
+    },
+    {
+      "id": "IJ-JBR-007",
+      "category": "IJ-JBR",
+      "severity": "medium",
+      "case_sensitive": true,
+      "pattern": "\\bDAN\\b\\s*(?:mode|モード|として)|\\byou\\s*are\\s*DAN\\b|あなたはDAN"
+    },
+    {
+      "id": "IJ-ACT-001",
+      "category": "IJ-ACT",
+      "severity": "low",
+      "pattern": "メールを?(?:送信|送って)|ファイルを?削除|コマンドを?実行|(?:DB|データベース)を?(?:更新|削除)"
+    },
+    {
+      "id": "IJ-ACT-002",
+      "category": "IJ-ACT",
+      "severity": "low",
+      "pattern": "\\bsend\\s*(?:an?\\s*)?e-?mail\\b|\\bdelete\\s*(?:the\\s*|all\\s*|these\\s*)*files?\\b|\\b(?:run|execute)\\s*(?:this\\s*|the\\s*|a\\s*)?(?:shell\\s*)?(?:command|script)\\b|\\b(?:update|drop)\\s*the\\s*(?:database|table)\\b"
+    },
+    {
+      "id": "IJ-HEU-001",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "(?:前|以前|これまで|今まで|ここより前|さっき|先ほど|上)(?:に|の|で)?[^。\\n]{0,10}(?:言われた|指示|命令|ルール|内容|こと|説明)[^。\\n]{0,10}(?:気にせず|気にしないで|なかったこと|取り消|優先しない|従わなくて)"
+    },
+    {
+      "id": "IJ-HEU-002",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "(?:ルール|制約|規則|ポリシー|方針|倫理)[^。\\n]{0,8}(?:守らなくて|気にしないで|気にせず|縛られ|従わなくて|無視して)"
+    },
+    {
+      "id": "IJ-HEU-003",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "(?:裏|背後|最初|初め|冒頭|事前)[^。\\n]{0,10}(?:与えられ|設定され|渡され|書かれ)[^。\\n]{0,10}(?:指示|命令|プロンプト|ルール|文)"
+    },
+    {
+      "id": "IJ-HEU-004",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "(?:プロンプト|命令文|指示文)[^。\\n]{0,10}(?:全文|そのまま|コピー|貼り付け|一覧)"
+    },
+    {
+      "id": "IJ-HEU-005",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "(?:君|あなた|お前)[^。\\n]{0,6}(?:設定され|与えられ)[^。\\n]{0,10}(?:指示|ルール|命令)"
+    },
+    {
+      "id": "IJ-HEU-006",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "(?:安全|セキュリティ)[^。\\n]{0,8}(?:チェック|確認|審査|検査)[^。\\n]{0,6}(?:省略|スキップ|飛ばして)"
+    },
+    {
+      "id": "IJ-HEU-007",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "(?:開発チーム|運営|開発元|システム管理者)[^。\\n]{0,8}(?:権限で|者ですが|の者です|の命令|の指示です)"
+    },
+    {
+      "id": "IJ-HEU-008",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "(?:読んだ|処理する|解析する)(?:AI|モデル|アシスタント|LLM)"
+    },
+    {
+      "id": "IJ-HEU-009",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "あなた(?:が|は)(?:AI|モデル|アシスタント)"
+    },
+    {
+      "id": "IJ-HEU-010",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "^\\s*(?:assistant|アシスタント)\\s*:"
+    },
+    {
+      "id": "IJ-HEU-011",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "\\[(?:SYSTEM|ADMIN|SYS)\\]"
+    },
+    {
+      "id": "IJ-HEU-012",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "-{3,}\\s*(?:begin|end)\\s*(?:system\\s*)?prompt"
+    },
+    {
+      "id": "IJ-HEU-013",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "system\\s*prompt[^\\n]{0,12}(?:show|教え|見せ|表示|して)"
+    },
+    {
+      "id": "IJ-HEU-014",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "systemprompt"
+    },
+    {
+      "id": "IJ-HEU-015",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "\\b(?:instructions?|rules?|guidelines?|prompts?)\\s*(?:above|before|earlier)?\\s*(?:no\\s*longer|don'?t|do\\s*not)\\s*(?:apply|matter|count)\\b"
+    },
+    {
+      "id": "IJ-HEU-016",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "\\b(?:pay\\s*no\\s*attention|don'?t\\s*pay\\s*attention|stop\\s*following|do\\s*not\\s*follow|don'?t\\s*follow|no\\s*longer\\s*follow)\\s*(?:to\\s*)?(?:\\w+\\s*){0,3}?(?:instructions?|guidelines?|rules?|system|prompt|told)\\b"
+    },
+    {
+      "id": "IJ-HEU-017",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "\\b(?:discard|drop|erase|clear|throw\\s*away)\\s*(?:the\\s*|your\\s*|all\\s*)*(?:earlier|previous|prior|above|old|original)?\\s*(?:prompt|instructions?|context)\\b"
+    },
+    {
+      "id": "IJ-HEU-018",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "\\bhow\\s*were\\s*you\\s*(?:configured|instructed|programmed|set\\s*up)\\b|\\btext\\s*(?:that\\s*)?(?:appears\\s*)?before\\s*this\\s*(?:conversation|message)\\b|\\bpaste\\s*your\\s*(?:prompt|instructions)\\b"
+    },
+    {
+      "id": "IJ-HEU-019",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "\\b(?:what|which)\\s*(?:secret|api|private)\\s*(?:key|keys|token|password)\\s*do\\s*you\\b|\\bpassword\\s*stored\\s*in\\s*your\\b"
+    },
+    {
+      "id": "IJ-HEU-020",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "\\bthis\\s*is\\s*your\\s*(?:administrator|developer|creator|admin)\\b|\\b(?:company|team|people)\\s*that\\s*(?:built|created|made|trained)\\s*you\\b|\\byou\\s*must\\s*comply\\b"
+    },
+    {
+      "id": "IJ-HEU-021",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "\\bif\\s*you\\s*are\\s*an?\\s*(?:ai|llm|language\\s*model|assistant|bot)\\b|\\b(?:to\\s*the|attention)\\s*(?:ai|language\\s*model|llm|assistant|model)\\b|\\blanguage\\s*model\\s*(?:processing|reading)\\b"
+    },
+    {
+      "id": "IJ-HEU-022",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "\\bno\\s*(?:safety\\s*)?(?:filters?|limits?|restrictions?|censorship|safety\\s*policy)\\b"
+    },
+    {
+      "id": "IJ-HEU-023",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "\\brole-?play\\s*as\\b"
+    },
+    {
+      "id": "IJ-HEU-024",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "(?:倫理|安全|セキュリティ)的?な?(?:制約|制限|配慮)[^。\\n]{0,8}(?:気にしないで|無視|なしで)"
+    },
+    {
+      "id": "IJ-HEU-025",
+      "category": "IJ-HEU",
+      "severity": "medium",
+      "pattern": "\\bnot\\s*follow\\s*the\\s*system\\b"
+    }
+  ]
+}

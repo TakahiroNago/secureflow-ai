@@ -21,6 +21,10 @@ final class ScanFailure extends RuntimeException
 
     public const COUNT_MISMATCH = 'count_mismatch';
 
+    public const RULES_INVALID = 'rules_invalid';
+
+    public const TOO_MANY_ENCODED = 'too_many_encoded';
+
     public function __construct(public readonly string $reason)
     {
         parent::__construct('Scanning failed: '.$reason);

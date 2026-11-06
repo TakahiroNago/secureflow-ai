@@ -41,12 +41,14 @@ final class TextNormalizer
         }
 
         $invisible = array_flip(self::INVISIBLE);
-        $characters = $starts = $ends = [];
+        $characters = $starts = $ends = $disguised = [];
         $removed = 0;
+        $invisibleBefore = false;
 
         foreach ($source as $position => $character) {
             if (isset($invisible[$character])) {
                 $removed++;
+                $invisibleBefore = true;
 
                 continue;
             }
@@ -72,13 +74,18 @@ final class TextNormalizer
                     }
                 }
 
+                if ($invisibleBefore || (strlen($character) > 1 && preg_match('/^[A-Za-z0-9]$/', $output) === 1)) {
+                    $disguised[count($characters)] = true;
+                }
+
+                $invisibleBefore = false;
                 $characters[] = $output;
                 $starts[] = $position;
                 $ends[] = $position + 1;
             }
         }
 
-        return new NormalizedText(implode('', $characters), array_values($characters), $starts, array_values($ends), count($source), $removed);
+        return new NormalizedText(implode('', $characters), array_values($characters), $starts, array_values($ends), count($source), $removed, $disguised);
     }
 
     /**
