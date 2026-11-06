@@ -57,8 +57,8 @@ async function toApiError(response: Response): Promise<ApiError> {
   })
 }
 
-async function send(method: string, path: string, body: unknown): Promise<Response> {
-  const headers: Record<string, string> = { Accept: 'application/json' }
+async function send(method: string, path: string, body: unknown, extraHeaders: Record<string, string>): Promise<Response> {
+  const headers: Record<string, string> = { Accept: 'application/json', ...extraHeaders }
   const token = readCsrfToken()
 
   if (token !== null) {
@@ -84,21 +84,22 @@ async function send(method: string, path: string, body: unknown): Promise<Respon
  * because responses are untrusted input until they have been checked.
  */
 export async function apiRequest<Schema extends z.ZodType>(
-  method: 'GET' | 'POST' | 'PATCH',
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   path: string,
   schema: Schema,
   body?: unknown,
+  headers: Record<string, string> = {},
 ): Promise<z.output<Schema>> {
   if (method !== 'GET' && readCsrfToken() === null) {
     await refreshCsrfCookie()
   }
 
-  let response = await send(method, path, body)
+  let response = await send(method, path, body, headers)
 
   // The token expires with the session. Get a new one and try once more.
   if (response.status === 419) {
     await refreshCsrfCookie()
-    response = await send(method, path, body)
+    response = await send(method, path, body, headers)
   }
 
   if (!response.ok) {
