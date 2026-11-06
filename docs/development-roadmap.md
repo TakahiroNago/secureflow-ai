@@ -44,7 +44,7 @@
 
 | 工程 | 内容 | 完了条件 | テスト方法 |
 |---|---|---|---|
-| 2-1 | Normalizer、PII/Secret 検出器（ルールごとの severity・action 定義）、Masker、マスキング後再検査（fail closed） | コーパスで目標検出率・誤検知・誤停止が目標内。個人情報は mask_continue、認証・秘密情報は block。マスキング失敗で停止 | Unit、コーパス評価、ST-03, 04, 35, 36 |
+| 2-1 | Normalizer、PII/Secret 検出器（ルールごとの severity・action 定義）、Masker、マスキング後再検査（fail closed）。**検査の部品のみで、API と処理への組み込みは工程2-3** | コーパスで目標検出率・誤検知・誤停止が目標内。個人情報は mask_continue、認証・秘密情報は block。マスキング失敗で停止 | Unit、コーパス評価、ST-36、ST-03, 04, 35（部品の部分） |
 | 2-2 | InjectionDetector（ルール・スコアリング） | 4段階判定が仕様どおり | Unit、ST-02, 13, 14, 15 |
 | 2-3 | InputScanner 統合、scan-preview API、全体判定（action から算出。D4・D14）、scans/findings 保存、限界文言、`workflow_revisions.scan_id`・`ai_analysis_requests` の検査の列の外部キーと新規行の必須化（工程1-5 の未検査の行は変更しない）、入力と編集内容のマスキングと保存（**工程1-6 の例外の解消**） | block 判定で AI 呼び出し0回。severity と action が別フィールドで返る。限界文言が常に返る | Feature、モック呼出回数検証、ST-39 |
 | 2-4 | OutputValidator 拡張（出力マスキング・カナリア・HTML除去・権限照合）、プロンプト構築 | 各モックシナリオで期待どおり | ST-10, 18, 19 |
