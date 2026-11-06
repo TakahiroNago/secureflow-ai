@@ -44,15 +44,21 @@ final readonly class InputScanner
 
     /**
      * @param  array<string, string>  $fields  Field name => text.
+     * @param  list<InputFinding>  $alreadyFound  From checks of the caller, which count like any other.
      */
-    public function scanFields(#[SensitiveParameter] array $fields): InputScanResult
+    public function scanFields(#[SensitiveParameter] array $fields, array $alreadyFound = []): InputScanResult
     {
         $started = hrtime(true);
         $elapsed = fn (): float => (hrtime(true) - $started) / 1e9;
 
         $masked = [];
-        $findings = [];
+        $findings = $alreadyFound;
         $severity = null;
+
+        foreach ($alreadyFound as $finding) {
+            $severity = Severity::higher($severity, $finding->severity);
+        }
+
         $anyMasked = false;
         $failureReason = null;
 
@@ -272,6 +278,12 @@ final readonly class InputScanner
      */
     private static function blockReason(array $findings, bool $failed): string
     {
+        foreach ($findings as $finding) {
+            if ($finding->category === 'canary') {
+                return InputScanResult::REASON_CANARY;
+            }
+        }
+
         if ($failed) {
             return InputScanResult::REASON_MASK_FAILED;
         }

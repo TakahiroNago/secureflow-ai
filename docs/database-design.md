@@ -1,7 +1,7 @@
 # SecureFlow AI — データベース設計書
 
-- 版：v1.9（2026-11-06）
-- 状態：確定（v1.9：工程2-3 の入力検査の組み込みを反映。v1.8：工程1-6 の分析の依頼とキューのテーブルを反映。v1.7：工程1-5 のワークフローのテーブルの判断を反映。v1.6：工程1-3 の監査ログハッシュチェーンを反映。v1.5：テスト専用 app ロールを追加。v1.4：テスト専用 owner ロールとコマンド制限を追加。v1.3：工程1-1 の設計レビューを反映。v1.2：列挙列の NOT NULL 方針を明記。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.10（2026-11-07）
+- 状態：確定（v1.10：工程2-4 の出力検証とプロンプト構築を反映。v1.9：工程2-3 の入力検査の組み込みを反映。v1.8：工程1-6 の分析の依頼とキューのテーブルを反映。v1.7：工程1-5 のワークフローのテーブルの判断を反映。v1.6：工程1-3 の監査ログハッシュチェーンを反映。v1.5：テスト専用 app ロールを追加。v1.4：テスト専用 owner ロールとコマンド制限を追加。v1.3：工程1-1 の設計レビューを反映。v1.2：列挙列の NOT NULL 方針を明記。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - DBMS：PostgreSQL 18.6（インフラ要件。`compose.yaml` でタグを固定する）
 
 ---
@@ -146,7 +146,7 @@ security_test_runs 1─* security_test_results
 | target_data | varchar(500) | NOT NULL | 対象データの説明 |
 | impact_summary | varchar(1000) | NOT NULL | 実行による影響 |
 | derived_permissions | jsonb | NOT NULL | サーバーが導出した権限（ソート済み配列） |
-| ai_claimed_permissions | jsonb | NOT NULL | AI申告（参考・照合用。認可には使わない） |
+| ai_claimed_permissions | jsonb | NOT NULL | AI申告（参考・照合用。認可には使わない）。**他の項目と同じく検査してマスクした値**（工程2-4）。工程2-3 より前と工程2-3 の行は未検査である |
 | policy_decision | varchar(16) | CHECK IN ('allowed','forbidden') | |
 | created_at / updated_at | timestamptz | NOT NULL | |
 

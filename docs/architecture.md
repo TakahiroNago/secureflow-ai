@@ -1,7 +1,7 @@
 # SecureFlow AI — アーキテクチャ設計書
 
-- 版：v1.8（2026-11-06）
-- 状態：確定（v1.8：工程2-3 の入力検査の組み込みを反映。v1.7：工程1-6 のキューの方式、時間制限、停滞回収を反映。v1.6：環境変数を Compose からコンテナへ渡す条件を明記。v1.5：工程1-4 の AI の起動条件と再試行を反映。v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.9（2026-11-07）
+- 状態：確定（v1.9：工程2-4 の出力検証とプロンプト構築を反映。v1.8：工程2-3 の入力検査の組み込みを反映。v1.7：工程1-6 のキューの方式、時間制限、停滞回収を反映。v1.6：環境変数を Compose からコンテナへ渡す条件を明記。v1.5：工程1-4 の AI の起動条件と再試行を反映。v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - 関連：[database-design.md](database-design.md) / [api-design.md](api-design.md) / [security-design.md](security-design.md) / [threat-model.md](threat-model.md) / [test-strategy.md](test-strategy.md) / [development-roadmap.md](development-roadmap.md)
 
 ---
@@ -173,17 +173,17 @@ Worker
      max_output_tokens上限、タイムアウト30秒、5xx/429/タイムアウトのみ指数バックオフで最大2回）
      → ai_usage_logs 記録（本文は記録しない）
      ※ 予算確認と ai_usage_logs は工程2-8。工程1-4 の AiGateway は呼び出しと再試行のみ
-  7. OutputValidator：JSON解析 → スキーマ検証（未知キー拒否・長さ上限・列挙値）
-     → action_type を ActionCatalog と照合 → 出力の個人情報は再マスキング、
-     認証・秘密情報が出力に含まれる場合は分析を blocked（fail closed）
-     → カナリア検知 → HTMLタグ除去 → プレーンテキスト化
+  7. OutputScanner：カナリア検知 → OutputValidator（JSON解析・スキーマ・action_type）
+     → HTMLタグ除去 → カナリア検知 → 個人情報の再マスキング、
+     認証・秘密情報やインジェクション（High 以上）は分析を blocked（fail closed）
+     ※ 順序の理由は security-design.md §7
   8. PermissionPolicy：権限は ActionCatalog から導出。AI申告の権限とは照合のみ（不一致は finding）
   9. Workflow(Draft) + Revision#1 + Tasks を保存、ai_analysis_requests の入力本文を NULL 化
  10. 監査ログ記録
 User ─GET /analyses/{id}─▶ 状態ポーリング → workflow_id 取得
 ```
 
-**工程2-3 の実装：** Worker は AI の出力を項目ごとに検査し、マスク済みの文のみ保存する（`block` なら分析は `blocked` で、何も保存しない）。カナリアと HTML 除去は工程2-4 である。編集も同じ検査を通す（[security-design.md §3.5](security-design.md)）。**工程2-4 までのプロンプトは仮のもので、モックは入力を使わない。**
+**工程2-3・2-4 の実装：** Worker は AI の出力を項目ごとに検査し、マスク済みの文のみ保存する（`block` なら分析は `blocked` で、何も保存しない）。編集も同じ検査を通すが、HTML 除去は AI の出力にのみ適用する（[security-design.md §7](security-design.md)）。**モックは入力を使わない**（`canary_leak` のシナリオのみ、渡されたシステムプロンプトからカナリアを取り出す）。
 
 ## 8. 操作カタログ（サーバー側許可リスト）
 

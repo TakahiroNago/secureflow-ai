@@ -142,9 +142,11 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   check('the analysis opens a workflow', /^\/workflows\/[0-9a-f-]{36}$/.test(new URL(page.url()).pathname), page.url());
   await page.getByRole('button', { name: '編集' }).first().click({ timeout: 5000 });
   await page.getByLabel('タイトル').fill('<b>画面から編集</b>');
+  await page.getByLabel('説明').fill('<img src=x onerror="window.pwned=1"><script>window.pwned=1</script>');
   await page.getByRole('button', { name: '保存' }).click();
   await page.getByRole('heading', { name: '1. <b>画面から編集</b>' }).waitFor({ timeout: 10000 }).catch(() => {});
   check('an edit is saved, and drawn as text', await page.getByRole('heading', { name: '1. <b>画面から編集</b>' }).isVisible());
+  check('markup is never markup in a page', (await page.locator('main img, section img').count()) === 0 && (await page.evaluate(() => window.pwned)) === undefined);
   await page.getByRole('link', { name: 'ダッシュボード' }).click();
   await page.getByText('今月の分析回数').waitFor({ timeout: 10000 }).catch(() => {});
   check('the dashboard counts it', (await page.locator('dt:text-is("ワークフロー数") + dd').textContent()) === '1');
