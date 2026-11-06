@@ -133,6 +133,12 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(10)->by($user instanceof User ? $user->id : (string) $request->ip());
         });
 
+        RateLimiter::for('scan-preview', function (Request $request): Limit {
+            $user = $request->user();
+
+            return Limit::perMinute(10)->by($user instanceof User ? $user->id : (string) $request->ip());
+        });
+
         RateLimiter::for('account-password', function (Request $request): Limit {
             $user = $request->user();
 

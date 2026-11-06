@@ -2,7 +2,9 @@
 
 namespace App\Support\Http;
 
+use App\Domain\Security\InputBlockedException;
 use App\Domain\Workflow\WorkflowConflictException;
+use App\Http\Resources\ScanStatus;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\QueryException;
@@ -67,6 +69,7 @@ final class ProblemDetails
             $exception instanceof AuthenticationException => self::response(
                 401, 'UNAUTHENTICATED', 'Unauthenticated', 'ログインしてください。',
             ),
+            $exception instanceof InputBlockedException => self::inputBlocked($exception),
             $exception instanceof ValidationException => self::response(
                 422, 'VALIDATION_FAILED', 'Validation failed', '入力内容を確認してください。', $exception->errors(),
             ),
@@ -92,11 +95,22 @@ final class ProblemDetails
             $exception instanceof RedisException,
             $exception instanceof QueryException,
             $exception instanceof PDOException => self::unavailable($request),
-            ! $exception instanceof HttpExceptionInterface && $request->is('api/v1/auth/*', 'api/v1/account/*', 'api/v1/analyses*', 'api/v1/workflows*', 'sanctum/*') => self::response(
+            ! $exception instanceof HttpExceptionInterface && $request->is('api/v1/auth/*', 'api/v1/account/*', 'api/v1/analyses*', 'api/v1/workflows*', 'api/v1/security/*', 'sanctum/*') => self::response(
                 500, 'INTERNAL_ERROR', 'Internal server error', 'サーバーでエラーが発生しました。',
             ),
             default => null,
         };
+    }
+
+    /**
+     * No masked text: the surroundings of a secret are not to be sent back either (docs/api-design.md §3.3).
+     */
+    private static function inputBlocked(InputBlockedException $exception): JsonResponse
+    {
+        $response = self::response(422, 'INPUT_BLOCKED', 'Input blocked', $exception->detail());
+        $response->setData([...(array) $response->getData(true), 'scan' => ScanStatus::ofResult($exception->result)]);
+
+        return $response;
     }
 
     /**

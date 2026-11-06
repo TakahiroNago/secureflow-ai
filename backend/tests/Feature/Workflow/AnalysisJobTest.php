@@ -42,7 +42,13 @@ function analysisRow(User $user, array $attributes = []): AiAnalysisRequest
 {
     return app(OrganizationContext::class)->run($user->organization_id, function () use ($user, $attributes) {
         $analysis = new AiAnalysisRequest;
-        $analysis->forceFill(['user_id' => $user->id, 'status' => 'queued', 'input_char_count' => 5, ...$attributes])->save();
+        $analysis->forceFill([
+            'user_id' => $user->id,
+            'status' => 'queued',
+            'input_char_count' => 5,
+            'input_scan_id' => insertScan(appDb(), $user->organization_id),
+            ...$attributes,
+        ])->save();
 
         return $analysis;
     });
@@ -91,8 +97,8 @@ it('creates a draft workflow with its first revision and tasks', function () {
             ->and($workflow->source_input_masked)->toBeNull()
             ->and($revision->revision_no)->toBe(1)
             ->and($revision->change_type)->toBe('ai_generated')
-            ->and($revision->scan_id)->toBeNull()
-            ->and($revision->scan_decision)->toBeNull()
+            ->and($revision->scan_id)->not->toBeNull()
+            ->and($revision->scan_decision)->toBe('allow')
             ->and(PlanHasher::matches($revision->plan_snapshot, $revision->plan_hash))->toBeTrue()
             ->and($task->derived_permissions)->toBe(['ai.text.read'])
             ->and($task->policy_decision)->toBe('allowed');

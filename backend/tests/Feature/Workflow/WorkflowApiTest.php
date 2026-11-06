@@ -28,7 +28,7 @@ function generatedWorkflow(User $user): string
 {
     $analysis = app(OrganizationContext::class)->run($user->organization_id, function () use ($user) {
         $analysis = new AiAnalysisRequest;
-        $analysis->forceFill(['user_id' => $user->id, 'status' => 'queued', 'input_char_count' => 1])->save();
+        $analysis->forceFill(['user_id' => $user->id, 'status' => 'queued', 'input_char_count' => 1, 'input_scan_id' => insertScan(appDb(), $user->organization_id)])->save();
 
         return $analysis;
     });
@@ -126,13 +126,14 @@ it('refuses list parameters outside the design', function (string $query) {
     loggedIn($this, $this->member)->send('GET', WORKFLOWS.$query)->assertStatus(422);
 })->with(['?status=unknown', '?limit=0', '?limit=101', '?limit=x', '?other=1']);
 
-it('shows the tasks, the revision and that it is not scanned', function () {
+it('shows the tasks, the revision and what the scan said', function () {
     $response = loggedIn($this, $this->member)->send('GET', WORKFLOWS.'/'.$this->id)->assertOk();
 
     $response->assertJsonPath('data.status', 'draft')
         ->assertJsonPath('data.current_revision.no', 1)
         ->assertJsonPath('data.current_revision.plan_hash', currentHash($this->id))
-        ->assertJsonPath('data.scan.status', 'not_scanned')
+        ->assertJsonPath('data.scan.status', 'scanned')
+        ->assertJsonPath('data.scan.decision', 'allow')
         ->assertJsonPath('data.can_edit', true)
         ->assertJsonPath('data.tasks.0.position', 1)
         ->assertJsonPath('data.tasks.0.derived_permissions', ['ai.text.read'])
@@ -181,7 +182,8 @@ it('makes a new revision for an edit, with a new hash and the server\'s permissi
     expect($revision->plan_hash)->not->toBe($before)
         ->and($revision->change_type)->toBe('user_edit')
         ->and($revision->created_by)->toBe($this->member->id)
-        ->and($revision->scan_decision)->toBeNull()
+        ->and($revision->scan_decision)->toBe('allow')
+        ->and($revision->scan_id)->not->toBeNull()
         ->and(PlanHasher::matches(json_decode($revision->plan_snapshot, true), $revision->plan_hash))->toBeTrue()
         ->and(DB::table('workflows')->where('id', $this->id)->value('current_revision_id'))->toBe($revision->id);
 });

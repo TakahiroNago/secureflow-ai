@@ -19,6 +19,15 @@ enum Severity: string
         };
     }
 
+    public static function higher(?self $a, ?self $b): ?self
+    {
+        if ($a === null || $b === null) {
+            return $a ?? $b;
+        }
+
+        return $a->rank() >= $b->rank() ? $a : $b;
+    }
+
     public function rank(): int
     {
         return match ($this) {

@@ -1,7 +1,7 @@
 # SecureFlow AI — API設計書
 
-- 版：v1.6（2026-11-06）
-- 状態：確定（v1.6：工程1-7 のダッシュボードを反映。v1.5：工程1-6 の分析とワークフローの API を反映。v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.7（2026-11-06）
+- 状態：確定（v1.7：工程2-3 の入力検査の組み込みを反映。v1.6：工程1-7 のダッシュボードを反映。v1.5：工程1-6 の分析とワークフローの API を反映。v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -191,7 +191,8 @@ IP 単位の制限は、NAT 配下など同じ送信元 IP を共有する利用
 | `executed` | 完了した実行の数。**単位はワークフローである**（承認と実行の単位に合わせる。要件の「タスク数」をこの単位で表示する） |
 | `pending_approval` | `pending` のワークフロー数 |
 | `analyses_this_month` | 今月（UTC）の分析の依頼数 |
-| `security`、`ai_usage`、`self_test` | 工程2-3、2-8、3-3 までは値を `null` で返し、`available_from_step` を付ける。**0 を返さない。**「警告0件」は安全であるように読めるためである |
+| `security` | 工程2-3 から実数を返す。`warnings` は全体判定が `warn` の検査の数、`findings` は検出の合計（`security_scans.findings_count`）。集計の範囲は他の項目と同じ（member は自分のみ）。**0 は「検出しなかった」ことのみを意味し、安全であることを意味しない** |
+| `ai_usage`、`self_test` | 工程2-8、3-3 までは値を `null` で返し、`available_from_step` を付ける。**0 を返さない。**「0件」は実績がないことと区別できないため |
 | `recent_operations` | 最新10件。`auth.login`、`auth.logout`、`workflow.created`、`workflow.updated` のみ。member は自分の操作のみ。**IP アドレス、metadata、ハッシュを返さない。** システムチェーンを含まない |
 
 `ai-usage/summary` は工程2-8 で実装する。
@@ -200,11 +201,18 @@ IP 単位の制限は、NAT 配下など同じ送信元 IP を共有する利用
 
 | メソッド | パス | 権限 | 説明 |
 |---|---|---|---|
-| POST | `/api/v1/security/scan-preview` | admin, member | AIを呼ばずに検査のみ。マスク済みテキストと検出結果を返す（送信前確認用）。scanは記録、本文は保存しない |
+| POST | `/api/v1/security/scan-preview` | admin, member | AIを呼ばずに検査のみ。`data` にマスク済みテキストと検出結果を返す（送信前確認用）。`block` もエラーではなく 200 で返す。検査の結果は記録するが、本文も抜粋も保存しない。この結果は分析の許可にならず、`POST /analyses` は必ず検査し直す |
 | POST | `/api/v1/analyses` | admin, member | 分析要求。202 で `analysis_id` を返す。入力検査の全体判定が `block`（認証・秘密情報の検出、インジェクション High/Critical、マスキング失敗）の場合は 422 `INPUT_BLOCKED` |
-| GET | `/api/v1/analyses/{id}` | 本人 | `status`、`workflow_id`、`scan` 要約、`error_code` |
+| GET | `/api/v1/analyses/{id}` | 本人 | `status`、`workflow_id`、入力の `scan`（`masked_input` は含まない）、`error_code` |
 
-**工程2-3 までの動作（工程1-6）：** 入力検査がないため、`scan` は `{ "status": "not_scanned", "decision": null, "limitations_notice": "..." }` を返し、`INPUT_BLOCKED` は発生しない。入力は保存せず、文字数のみ記録する。本文の検証の失敗の応答に入力を含めない。`error_code` は `AI_UNAVAILABLE`、`AI_INVALID_OUTPUT`、`USER_INACTIVE`、`ANALYSIS_FAILED`、`ANALYSIS_STALE`。
+**`scan` の形（工程2-3）：** `status`（`scanned` / `not_scanned`）、`decision`、`block_reason`、`max_severity`、`masking_status`、`findings`、`findings_count`、`limitations_notice` を常に返す。`masked_input` は分析の受け付け（202）と確認の応答のみ。`not_scanned` は工程2-3 より前の行にのみ現れ、`decision` は `null` である。
+
+- `findings` は最大100件で、処理を止める検出を先に並べる。実際の件数は `findings_count` である。
+- `field` は検出した項目（`tasks.2.steps.1`、`title`。単一の入力では `null`）である。
+- `position_start`・`position_end` は文字単位で、`block` では入力された文の位置、それ以外ではマスク済みの文の位置である。
+- `error_code`：`AI_UNAVAILABLE`、`AI_INVALID_OUTPUT`、`AI_OUTPUT_BLOCKED`（AI の出力が検査で停止。何も保存しない）、`USER_INACTIVE`、`ANALYSIS_FAILED`、`ANALYSIS_STALE`。
+
+**編集（§3.4）にも同じ検査を行う。** `block` は 422 `INPUT_BLOCKED` で、何も保存しない。個人情報はマスクして保存し、応答にはマスク済みの内容を返す。マスキングで上限の長さを超える場合は 422 `VALIDATION_FAILED` で、`errors` に項目名を返す（切り詰めない）。権限のない要求、古いリビジョン、編集できない状態は検査の前に拒否し、検査の記録を残さない。
 
 `POST /analyses` リクエスト：
 

@@ -2,6 +2,8 @@
 
 use App\Models\Approval;
 use App\Models\Organization;
+use App\Models\SecurityFinding;
+use App\Models\SecurityScan;
 use App\Models\Workflow;
 use App\Models\WorkflowExecution;
 use App\Models\WorkflowRevision;
@@ -17,7 +19,7 @@ use Illuminate\Foundation\Testing\DatabaseTransactions;
 
 uses(DatabaseTransactions::class);
 
-const TENANT_MODELS = [Workflow::class, WorkflowRevision::class, WorkflowTask::class, Approval::class, WorkflowExecution::class];
+const TENANT_MODELS = [Workflow::class, SecurityScan::class, SecurityFinding::class, WorkflowRevision::class, WorkflowTask::class, Approval::class, WorkflowExecution::class];
 
 function organizationWithEverything(): array
 {
@@ -26,6 +28,7 @@ function organizationWithEverything(): array
     $admin = userIn($org->id, 'admin');
     $workflow = workflowOf($creator);
     $revision = insertRevision(appDb(), $workflow);
+    insertFinding(appDb(), $org->id, (string) appDb()->table('workflow_revisions')->where('id', $revision)->value('scan_id'));
     insertTask(appDb(), $workflow);
     $approval = insertApproval(appDb(), $workflow, $revision, $admin->id);
     insertExecution(appDb(), $workflow, $revision, $approval);

@@ -42,7 +42,7 @@ function fullOrganization(): array
 
     $analysis = app(OrganizationContext::class)->run($org->id, function () use ($owner) {
         $analysis = new AiAnalysisRequest;
-        $analysis->forceFill(['user_id' => $owner->id, 'status' => 'queued', 'input_char_count' => 1])->save();
+        $analysis->forceFill(['user_id' => $owner->id, 'status' => 'queued', 'input_char_count' => 1, 'input_scan_id' => insertScan(appDb(), $owner->organization_id)])->save();
 
         return $analysis;
     });

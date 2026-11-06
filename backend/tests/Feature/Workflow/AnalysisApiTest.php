@@ -9,11 +9,10 @@ use App\Models\OrganizationSetting;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
-use Illuminate\Support\Facades\Schema;
 use Tests\Support\FailingAuditWriter;
 
 /*
-| docs/api-design.md §3.3. No input is stored in any form before masking exists (step 2-1).
+| docs/api-design.md §3.3. What the scan does with the input is in tests/Feature/Security/InputScanApiTest.php.
 */
 
 uses(DatabaseTransactions::class);
@@ -26,44 +25,17 @@ beforeEach(function () {
     $this->member = userIn($this->org->id);
 });
 
-it('accepts an analysis, queues it and says it is not scanned', function () {
+it('accepts an analysis, queues it and says what the scan decided', function () {
     loggedIn($this, $this->member)->send('POST', ANALYSES, ['input' => '毎週の売上報告を作成してください。'])
         ->assertStatus(202)
         ->assertJsonPath('data.status', 'queued')
         ->assertJsonPath('data.workflow_id', null)
-        ->assertJsonPath('data.scan.status', 'not_scanned')
-        ->assertJsonPath('data.scan.decision', null)
+        ->assertJsonPath('data.scan.status', 'scanned')
+        ->assertJsonPath('data.scan.decision', 'allow')
         ->assertJson(fn ($json) => $json->whereType('data.scan.limitations_notice', 'string')->etc());
 
     Queue::assertPushed(AnalyzeWorkflowJob::class);
     expect(DB::table('ai_analysis_requests')->value('input_char_count'))->toBe(17);
-});
-
-it('stores the input nowhere: not in the row, not in the job, not in the log', function () {
-    $secret = 'sk-very-secret-value-in-the-input';
-    $lines = captureLogs();
-
-    $id = loggedIn($this, $this->member)->send('POST', ANALYSES, ['input' => $secret])->assertStatus(202)->json('data.id');
-
-    $row = DB::table('ai_analysis_requests')->where('id', $id)->first();
-
-    expect($row->input_masked)->toBeNull()
-        ->and(json_encode($row))->not->toContain($secret);
-
-    Queue::assertPushed(AnalyzeWorkflowJob::class, fn (AnalyzeWorkflowJob $job) => ! str_contains(serialize($job), $secret));
-
-    foreach ($lines as $line) {
-        expect($line->message.json_encode($line->context))->not->toContain($secret);
-    }
-
-    foreach (Schema::getTables() as $table) {
-        if (in_array($table['name'], ['migrations'], true)) {
-            continue;
-        }
-        foreach (ownerDb()->table($table['name'])->limit(50)->get() as $stored) {
-            expect(json_encode($stored))->not->toContain($secret);
-        }
-    }
 });
 
 it('does not repeat the input in an error', function (array $body) {

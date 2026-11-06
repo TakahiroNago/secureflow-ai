@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router'
 import { fetchAnalysis } from './workflowApi'
 import { analysisErrorMessage, apiErrorMessage } from './labels'
+import { ScanPanel } from './ScanPanel'
 
 const POLL_INTERVAL_MS = 1000
 
@@ -48,6 +49,9 @@ export function AnalysisPage() {
         <p role="alert" className="mt-2 text-sm text-red-700">
           {analysisErrorMessage(analysis.data.error_code)}
         </p>
+        <div className="mt-3">
+          <ScanPanel scan={analysis.data.scan} />
+        </div>
         <Link className="mt-3 inline-block text-sm underline" to="/analyses/new">
           入力へ戻る
         </Link>
@@ -63,6 +67,11 @@ export function AnalysisPage() {
       <p role="status" className="mt-2 text-sm text-slate-600">
         {gaveUp ? '時間がかかっています。後でワークフローの一覧をご確認ください。' : 'ワークフローを作成しています…'}
       </p>
+      {analysis.data !== undefined && (
+        <div className="mt-3">
+          <ScanPanel scan={analysis.data.scan} />
+        </div>
+      )}
       <Link className="mt-3 inline-block text-sm underline" to="/workflows">
         一覧へ戻る
       </Link>

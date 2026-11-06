@@ -10,6 +10,7 @@ const problemSchema = z.object({
   code: z.string(),
   detail: z.string().optional(),
   errors: z.record(z.string(), z.array(z.string())).optional(),
+  scan: z.unknown().optional(),
 })
 
 export class ApiError extends Error {
@@ -18,11 +19,13 @@ export class ApiError extends Error {
   readonly detail: string | undefined
   readonly fieldErrors: Record<string, string[]>
   readonly retryAfterSeconds: number | undefined
+  /** The scan that stopped this request, still to be checked by whoever reads it. */
+  readonly scan: unknown
 
   constructor(
     status: number,
     code: string,
-    options: { detail?: string | undefined; fieldErrors?: Record<string, string[]> | undefined; retryAfterSeconds?: number | undefined } = {},
+    options: { detail?: string | undefined; fieldErrors?: Record<string, string[]> | undefined; retryAfterSeconds?: number | undefined; scan?: unknown } = {},
   ) {
     super(code)
     this.name = 'ApiError'
@@ -31,6 +34,7 @@ export class ApiError extends Error {
     this.detail = options.detail
     this.fieldErrors = options.fieldErrors ?? {}
     this.retryAfterSeconds = options.retryAfterSeconds
+    this.scan = options.scan
   }
 }
 
@@ -54,6 +58,7 @@ async function toApiError(response: Response): Promise<ApiError> {
     detail: problem.success ? problem.data.detail : undefined,
     fieldErrors: problem.success ? problem.data.errors : undefined,
     retryAfterSeconds: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
+    scan: problem.success ? problem.data.scan : undefined,
   })
 }
 

@@ -17,6 +17,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $status
  * @property string|null $input_masked
  * @property int $input_char_count
+ * @property string|null $input_scan_id
+ * @property string|null $output_scan_id
  * @property string|null $workflow_id
  * @property string|null $error_code
  * @property CarbonInterface|null $started_at
@@ -33,6 +35,8 @@ class AiAnalysisRequest extends Model
     public const STATUS_PROCESSING = 'processing';
 
     public const STATUS_SUCCEEDED = 'succeeded';
+
+    public const STATUS_BLOCKED = 'blocked';
 
     public const STATUS_FAILED = 'failed';
 

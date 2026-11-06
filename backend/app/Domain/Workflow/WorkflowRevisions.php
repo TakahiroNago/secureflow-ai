@@ -2,6 +2,7 @@
 
 namespace App\Domain\Workflow;
 
+use App\Models\SecurityScan;
 use App\Models\User;
 use App\Models\Workflow;
 use App\Models\WorkflowRevision;
@@ -10,8 +11,8 @@ use App\Security\Policy\ActionCatalog;
 use App\Security\Policy\PolicyDecision;
 
 /**
- * A revision is the immutable record of the tasks as they are now (docs/database-design.md §2). It is not
- * scanned before step 2-3: scan_id and scan_decision stay NULL, which later steps refuse.
+ * A revision is the immutable record of the tasks as they are now (docs/database-design.md §2), and of the
+ * scan of exactly that text.
  */
 final class WorkflowRevisions
 {
@@ -22,9 +23,11 @@ final class WorkflowRevisions
     /**
      * Inside the caller's transaction, with the workflow row locked.
      *
+     * @param  string  $id  Chosen by the caller, because the scan names the revision it is for.
+     *
      * @throws InvalidPlanException
      */
-    public function record(Workflow $workflow, int $revisionNo, string $changeType, User $user): WorkflowRevision
+    public function record(string $id, Workflow $workflow, int $revisionNo, string $changeType, User $user, SecurityScan $scan): WorkflowRevision
     {
         $tasks = WorkflowTask::query()->where('workflow_id', $workflow->id)->orderBy('position')->get();
 
@@ -50,12 +53,15 @@ final class WorkflowRevisions
 
         $revision = new WorkflowRevision;
         $revision->forceFill([
+            'id' => $id,
             'workflow_id' => $workflow->id,
             'revision_no' => $revisionNo,
             'plan_snapshot' => $snapshot,
             'plan_hash' => PlanHasher::hash($snapshot),
             'hash_version' => PlanHasher::HASH_VERSION,
             'policy_version' => ActionCatalog::VERSION,
+            'scan_id' => $scan->id,
+            'scan_decision' => $scan->decision,
             'change_type' => $changeType,
             'created_by' => $user->id,
         ])->save();

@@ -240,14 +240,23 @@ it('requires the enum columns', function (Closure $statement) {
     'policy decision' => [fn (Connection $db) => insertTask($db, $this->workflow, ['policy_decision' => null])],
 ]);
 
-// ---- Not scanned yet (security_scans arrives in step 2-3) --------------------------------------
+// ---- The scan of a revision (step 2-3; older rows are in MigrationTest) ---------------------------
 
-it('stores an unscanned revision with neither a scan nor a decision', function () {
-    $revision = insertRevision(appDb(), $this->workflow);
+it('refuses a new revision with no scan', function () {
+    expectDbError(fn (Connection $db) => insertRevision($db, $this->workflow, ['scan_id' => null, 'scan_decision' => null]), '23514');
+});
 
-    $row = appDb()->table('workflow_revisions')->where('id', $revision)->first();
+it('refuses a revision whose decision is not what its scan decided', function () {
+    $scan = insertScan(appDb(), $this->workflow->organization_id, ['decision' => 'block', 'block_reason' => 'SECRET_DETECTED']);
 
-    expect($row->scan_id)->toBeNull()->and($row->scan_decision)->toBeNull();
+    expectDbError(fn (Connection $db) => insertRevision($db, $this->workflow, ['scan_id' => $scan, 'scan_decision' => 'allow']), '23503');
+});
+
+it('refuses a revision that points at the scan of another organization', function () {
+    $other = insertOrganization(appDb());
+    $scan = insertScan(appDb(), $other);
+
+    expectDbError(fn (Connection $db) => insertRevision($db, $this->workflow, ['scan_id' => $scan, 'scan_decision' => 'allow']), '23503');
 });
 
 it('refuses half of a scan result', function (array $values) {

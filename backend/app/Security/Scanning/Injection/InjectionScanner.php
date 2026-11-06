@@ -56,10 +56,13 @@ final class InjectionScanner
         private readonly float $deadlineSeconds = self::DEADLINE_SECONDS,
     ) {}
 
-    public function scan(#[SensitiveParameter] string $text): InjectionResult
+    /**
+     * @param  float|null  $deadlineSeconds  What is left of a longer scan, when this is part of one.
+     */
+    public function scan(#[SensitiveParameter] string $text, ?float $deadlineSeconds = null): InjectionResult
     {
         try {
-            return $this->run($text);
+            return $this->run($text, $deadlineSeconds ?? $this->deadlineSeconds);
         } catch (ScanFailure $failure) {
             return self::failed($failure->reason);
         } catch (Throwable) {
@@ -67,14 +70,20 @@ final class InjectionScanner
         }
     }
 
-    private function run(string $text): InjectionResult
+    /** Null until the rules have been read, and when they could not be. */
+    public function rulesetVersion(): ?string
+    {
+        return $this->rules?->version;
+    }
+
+    private function run(string $text, float $deadlineSeconds): InjectionResult
     {
         if (strlen($text) > self::MAX_CHARACTERS && mb_strlen($text, 'UTF-8') > self::MAX_CHARACTERS) {
             throw new ScanFailure(ScanFailure::TOO_LONG);
         }
 
         $this->rules ??= InjectionRuleSet::load($this->rulesPath);
-        $deadline = new ScanDeadline($this->deadlineSeconds);
+        $deadline = new ScanDeadline($deadlineSeconds);
         $normalized = $this->normalizer->normalize($text);
 
         $hits = [
@@ -132,6 +141,8 @@ final class InjectionScanner
 
     /**
      * "1gn0re" reads as "ignore". Only words that mix letters and digits change, so "2026" stays a number.
+     * A match counts only where it covers a changed word: a part number elsewhere in the text does not make
+     * the rest of the text a disguise.
      *
      * @return list<InjectionHit>
      */
@@ -147,14 +158,23 @@ final class InjectionScanner
             return [];
         }
 
+        $words = array_filter(Pattern::matches(self::MIXED_WORD, $text->text), fn (array $word) => strtr($word[0], self::LEET) !== $word[0]);
         $hits = [];
 
         foreach ($this->ruleList() as $rule) {
             $deadline->check();
 
             foreach (Pattern::matches($rule->pattern, $changed) as [$match, $offset]) {
-                [$start, $stop] = $text->sourceSpan($offset, $offset + strlen($match));
-                $hits[] = new InjectionHit($rule->id, $rule->category, $rule->severity, $start, $stop, true);
+                $end = $offset + strlen($match);
+
+                foreach ($words as [$word, $wordOffset]) {
+                    if ($offset < $wordOffset + strlen($word) && $wordOffset < $end) {
+                        [$start, $stop] = $text->sourceSpan($offset, $end);
+                        $hits[] = new InjectionHit($rule->id, $rule->category, $rule->severity, $start, $stop, true);
+
+                        break;
+                    }
+                }
             }
         }
 

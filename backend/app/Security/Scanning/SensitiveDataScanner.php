@@ -32,10 +32,13 @@ final class SensitiveDataScanner
         private readonly float $deadlineSeconds = self::DEADLINE_SECONDS,
     ) {}
 
-    public function scan(#[SensitiveParameter] string $text): ScanResult
+    /**
+     * @param  float|null  $deadlineSeconds  What is left of a longer scan, when this is part of one.
+     */
+    public function scan(#[SensitiveParameter] string $text, ?float $deadlineSeconds = null): ScanResult
     {
         try {
-            return $this->run($text);
+            return $this->run($text, $deadlineSeconds ?? $this->deadlineSeconds);
         } catch (ScanFailure $failure) {
             return self::failed($failure->reason);
         } catch (Throwable) {
@@ -43,13 +46,13 @@ final class SensitiveDataScanner
         }
     }
 
-    private function run(string $text): ScanResult
+    private function run(string $text, float $deadlineSeconds): ScanResult
     {
         if (strlen($text) > self::MAX_CHARACTERS && mb_strlen($text, 'UTF-8') > self::MAX_CHARACTERS) {
             throw new ScanFailure(ScanFailure::TOO_LONG);
         }
 
-        $deadline = new ScanDeadline($this->deadlineSeconds);
+        $deadline = new ScanDeadline($deadlineSeconds);
         $normalized = $this->normalizer->normalize($text);
         $detections = $this->resolved($this->detected($normalized, $deadline));
 

@@ -1,7 +1,7 @@
 # SecureFlow AI — データベース設計書
 
-- 版：v1.8（2026-11-06）
-- 状態：確定（v1.8：工程1-6 の分析の依頼とキューのテーブルを反映。v1.7：工程1-5 のワークフローのテーブルの判断を反映。v1.6：工程1-3 の監査ログハッシュチェーンを反映。v1.5：テスト専用 app ロールを追加。v1.4：テスト専用 owner ロールとコマンド制限を追加。v1.3：工程1-1 の設計レビューを反映。v1.2：列挙列の NOT NULL 方針を明記。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.9（2026-11-06）
+- 状態：確定（v1.9：工程2-3 の入力検査の組み込みを反映。v1.8：工程1-6 の分析の依頼とキューのテーブルを反映。v1.7：工程1-5 のワークフローのテーブルの判断を反映。v1.6：工程1-3 の監査ログハッシュチェーンを反映。v1.5：テスト専用 app ロールを追加。v1.4：テスト専用 owner ロールとコマンド制限を追加。v1.3：工程1-1 の設計レビューを反映。v1.2：列挙列の NOT NULL 方針を明記。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - DBMS：PostgreSQL 18.6（インフラ要件。`compose.yaml` でタグを固定する）
 
 ---
@@ -87,10 +87,10 @@ security_test_runs 1─* security_test_results
 | id | uuid | PK | |
 | organization_id / user_id | uuid | FK NOT NULL | |
 | status | varchar(16) | CHECK IN ('queued','processing','succeeded','blocked','failed') | |
-| input_masked | text | NULL | マスク済み入力。**処理完了時に NULL 化**。入力検査で block となった場合はレコードを作成しない（スキャン結果のみ保存）。**工程2-3 まではマスキングがないため常に NULL で、入力を保存しない** |
+| input_masked | text | NULL | マスク済み入力。**処理完了時に NULL 化**（CHECK で強制：`queued`・`processing` 以外は NULL）。入力検査で block となった場合はレコードを作成しない（スキャン結果のみ保存） |
 | input_char_count | integer | NOT NULL | |
-| input_scan_id | uuid | NULL（FK は工程2-3） | |
-| output_scan_id | uuid | NULL（FK は工程2-3） | |
+| input_scan_id | uuid | NULL、複合 FK。**新規行は必須**（CHECK NOT VALID：工程2-3 より前の行は変更しない） | |
+| output_scan_id | uuid | NULL、複合 FK。`succeeded` の新規行は必須（CHECK NOT VALID） | |
 | workflow_id | uuid | FK NULL, UNIQUE, CHECK（`status = 'succeeded'` と同時に NOT NULL） | 成功時に設定 |
 | error_code | varchar(64) | NULL | 内部情報を含まないコード |
 | started_at / heartbeat_at / finished_at | timestamptz | NULL | 停滞回収用 |
@@ -104,7 +104,7 @@ security_test_runs 1─* security_test_results
 | organization_id | uuid | FK NOT NULL | |
 | created_by | uuid | FK users NOT NULL | |
 | title | varchar(200) | NOT NULL | |
-| source_input_masked | text | NULL（工程1-6で変更） | 生成元のマスク済み入力（原文は保存しない）。**NULL は保存していないことを表す。** 工程2-3 まではマスキングがないため常に NULL。ダミーの文字列は入れない |
+| source_input_masked | text | NULL（工程1-6で変更） | 生成元のマスク済み入力（原文は保存しない）。**NULL は保存していないことを表す**（工程2-3 より前の行） |
 | status | varchar(16) | CHECK IN ('draft','pending','approved','running','completed','rejected','failed') | |
 | current_revision_id | uuid | FK workflow_revisions NULL（DEFERRABLE） | |
 | max_severity | varchar(8) | CHECK IN ('low','medium','high','critical') NULL | 最新検査の最大 severity（表示・承認時のリスク確認用。処理の流れは scan_decision で決まる） |
@@ -125,8 +125,8 @@ security_test_runs 1─* security_test_results
 | plan_hash | char(64) | NOT NULL | SHA-256（16進小文字） |
 | hash_version | smallint | NOT NULL | 正規化仕様のバージョン |
 | policy_version | varchar(32) | NOT NULL | 適用した ActionCatalog のバージョン |
-| scan_id | uuid | NULL（工程2-3 で FK と新規行の NOT NULL を追加） | このリビジョン内容の検査。**NULL は未検査を意味する。** `security_scans` は工程2-3 で作成する |
-| scan_decision | varchar(8) | NULL, CHECK IN ('allow','warn','block')、CHECK（`scan_id` と同時に NULL または NOT NULL） | **NULL を allow として扱わない。** 工程2-5・2-6 は未検査のリビジョンの提出・承認・実行を拒否する。検査済みに見えるダミーの検査結果は作らない |
+| scan_id | uuid | NULL、複合 FK。**新規行は必須**（CHECK NOT VALID：工程2-3 より前の行は変更しない） | このリビジョン内容の検査。**NULL は未検査を意味する。** |
+| scan_decision | varchar(8) | NULL, CHECK IN ('allow','warn','block')、CHECK（`scan_id` と同時に NULL または NOT NULL） | **NULL を allow として扱わない。** 工程2-5・2-6 は未検査のリビジョンの提出・承認・実行を拒否する。検査済みに見えるダミーの検査結果は作らない。外部キーに含めるため、検査の判定と異なる値は保存できない |
 | change_type | varchar(16) | CHECK IN ('ai_generated','user_edit','reopen') | |
 | created_by | uuid | FK users NULL | AI生成時はリクエストユーザー |
 | created_at | timestamptz | NOT NULL | |
@@ -214,9 +214,9 @@ security_test_runs 1─* security_test_results
 | ruleset_version | varchar(32) | NOT NULL | |
 | max_severity | varchar(8) | NULL | |
 | decision | varchar(8) | CHECK IN ('allow','warn','block') | 全検出の action から算出（severity からは導出しない） |
-| block_reason | varchar(32) | NULL | `SECRET_DETECTED` / `INJECTION_HIGH` / `MASK_FAILED` / `CANARY_LEAK` 等 |
+| block_reason | varchar(32) | NULL、CHECK（`decision = block` と同時に NOT NULL） | `SECRET_DETECTED` / `INJECTION_HIGH` / `MASK_FAILED` / `CANARY_LEAK` 等 |
 | masking_status | varchar(16) | CHECK IN ('not_required','masked','failed') | `failed` の場合 decision は必ず block（fail closed。CHECK制約で強制） |
-| findings_count | integer | NOT NULL | |
+| findings_count | integer | NOT NULL | 実際の検出数。`security_findings` に保存するのは1回の検査につき最大100行（処理を止める検出を優先） |
 | duration_ms | integer | NOT NULL | |
 | created_at | timestamptz | NOT NULL | |
 
@@ -231,14 +231,17 @@ security_test_runs 1─* security_test_results
 | severity | varchar(8) | CHECK IN ('low','medium','high','critical') | 重大度 |
 | action | varchar(16) | CHECK IN ('record','mask_continue','warn','block') | 処理動作（severity とは独立に、ルールごとに定義） |
 | message | varchar(300) | NOT NULL | 定型文（入力内容を含めない） |
-| masked_excerpt | varchar(200) | NULL | **マスク済みテキストからの抜粋のみ**（最大80文字）。category が `secret` / `masking` の場合は常に NULL（周辺文脈も残さない） |
-| position_start / position_end | integer | NULL | マスク済みテキスト上の位置 |
+| masked_excerpt | varchar(200) | NULL | **マスク済みテキストからの抜粋のみ**（最大80文字。CHECK で強制）。category が `secret` / `masking` の場合、`action` が `block` の場合は常に NULL（CHECK で強制。周辺文脈も残さない）。同じ検査に `block` があれば全検出で NULL、確認（scan-preview）でも NULL とする（アプリで保証） |
+| field_path | varchar(64) | NULL | 検出した項目（`tasks.2.steps.1`、`title`）。単一の入力では NULL。工程2-3 で追加 |
+| position_start / position_end | integer | NULL | `block` では入力された文の位置（マスク済みの文がないため）、それ以外ではマスク済みテキスト上の位置 |
 | status | varchar(16) | CHECK IN ('open','acknowledged','resolved','false_positive') DEFAULT 'open' | 対策状況 |
 | status_note | varchar(500) | NULL | |
 | status_changed_by / status_changed_at | uuid / timestamptz | NULL | 変更は監査ログにも記録 |
 | created_at / updated_at | timestamptz | NOT NULL | |
 
 インデックス：`(organization_id, status, severity)`、`(organization_id, created_at DESC)`
+
+**工程2-3 の決定：** 新規行のみ検査を必須とするため、`workflow_revisions`・`ai_analysis_requests` の必須の制約は `NOT VALID` とする。工程2-3 より前の行は未検査のまま変更しない。`security_scans` は改変拒否（トリガーと権限）で、行がある間は `down` を中断する。**`ai_analysis_requests` の `NOT VALID` の制約は行の更新にも適用されるため、適用の前に `queued`・`processing` の行がないことを確認する。**
 
 ### 3.12 audit_logs（不変・ハッシュチェーン）
 
@@ -507,7 +510,8 @@ PHP の検証器（`AuditChainVerifier`）は `audit_append()` の補助関数�
 
 | テーブル | secureflow_app の権限 |
 |---|---|
-| organizations, organization_settings, users, security_findings, security_test_runs | SELECT, INSERT, UPDATE |
+| organizations, organization_settings, users, security_test_runs | SELECT, INSERT, UPDATE |
+| security_findings | SELECT, INSERT。UPDATE は `status`, `status_note`, `status_changed_by`, `status_changed_at`, `updated_at` のみ |
 | ai_analysis_requests | SELECT, INSERT。UPDATE は `status`, `input_masked`, `input_scan_id`, `output_scan_id`, `workflow_id`, `error_code`, `started_at`, `heartbeat_at`, `finished_at`, `updated_at` のみ |
 | workflows | SELECT, INSERT。UPDATE は `title`, `status`, `current_revision_id`, `max_severity`, `lock_version`, `submitted_at`, `updated_at` のみ |
 | workflow_tasks | SELECT, INSERT, DELETE。UPDATE は `position`, `title`, `description`, `action_type`, `steps`, `priority`, `target_data`, `impact_summary`, `derived_permissions`, `ai_claimed_permissions`, `policy_decision`, `updated_at` のみ |

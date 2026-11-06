@@ -37,6 +37,8 @@ it('grants the application role exactly the designed table privileges', function
     'ai_analysis_requests' => ['ai_analysis_requests', ['SELECT', 'INSERT']],
     'jobs' => ['jobs', ['SELECT', 'INSERT', 'UPDATE', 'DELETE']],
     'failed_jobs' => ['failed_jobs', ['SELECT', 'INSERT', 'DELETE']],
+    'security_scans' => ['security_scans', ['SELECT', 'INSERT']],
+    'security_findings' => ['security_findings', ['SELECT', 'INSERT']],
 ]);
 
 it('grants UPDATE only on the columns that may change', function (string $table, array $expected) {
@@ -58,6 +60,8 @@ it('grants UPDATE only on the columns that may change', function (string $table,
     'workflow_executions' => ['workflow_executions', ['status', 'started_at', 'heartbeat_at', 'finished_at', 'result', 'error_code', 'updated_at']],
     'workflow_revisions' => ['workflow_revisions', []],
     'approvals' => ['approvals', []],
+    'security_scans' => ['security_scans', []],
+    'security_findings' => ['security_findings', ['status', 'status_note', 'status_changed_by', 'status_changed_at', 'updated_at']],
     'ai_analysis_requests' => ['ai_analysis_requests', ['status', 'input_masked', 'input_scan_id', 'output_scan_id', 'workflow_id', 'error_code', 'started_at', 'heartbeat_at', 'finished_at', 'updated_at']],
 ]);
 

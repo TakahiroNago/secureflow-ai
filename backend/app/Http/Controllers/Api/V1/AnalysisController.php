@@ -17,7 +17,7 @@ final class AnalysisController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        return (new AnalysisResource($analyses->request($user, $request->inputCharCount())))
+        return AnalysisResource::accepted($analyses->request($user, $request->inputText()))
             ->response()
             ->setStatusCode(202);
     }

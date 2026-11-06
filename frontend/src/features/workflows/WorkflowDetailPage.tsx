@@ -2,8 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { ApiError } from '../../api/client'
-import { addTask, deleteTask, fetchWorkflow, updateTask, updateTitle, type Task, type TaskFields, type Workflow } from './workflowApi'
-import { apiErrorMessage, PRIORITY_LABELS, STATUS_LABELS } from './labels'
+import { addTask, blockedScan, deleteTask, fetchWorkflow, updateTask, updateTitle, type Task, type TaskFields, type Workflow } from './workflowApi'
+import { apiErrorMessage, PRIORITY_LABELS, scanLabel, SEVERITY_LABELS, STATUS_LABELS } from './labels'
+import { ScanPanel } from './ScanPanel'
 import { TaskForm } from './TaskForm'
 import { UnscannedNotice } from './UnscannedNotice'
 
@@ -58,6 +59,7 @@ export function WorkflowDetailPage() {
   }
 
   const current = workflow.data
+  const blocked = blockedScan(change.error)
   const revisionNo = current.current_revision?.no ?? 0
   const editable = current.can_edit && current.current_revision !== null
 
@@ -109,17 +111,20 @@ export function WorkflowDetailPage() {
         <dt className="text-slate-500">リビジョン</dt>
         <dd>{revisionNo}</dd>
         <dt className="text-slate-500">検査</dt>
-        <dd>{current.scan.status === 'not_scanned' ? '未検査' : (current.scan.decision ?? '検査済み')}</dd>
+        <dd>{scanLabel(current.scan)}</dd>
+        <dt className="text-slate-500">これまでの最大の重大度</dt>
+        <dd>{current.max_severity === null ? 'なし' : SEVERITY_LABELS[current.max_severity]}</dd>
       </dl>
 
-      <UnscannedNotice />
-      <p className="text-xs text-slate-500">{current.scan.limitations_notice}</p>
+      {current.scan.status === 'not_scanned' && <UnscannedNotice />}
+      <ScanPanel scan={current.scan} />
 
       {change.isError && (
         <p role="alert" className="text-sm text-red-700">
           {apiErrorMessage(change.error)}
         </p>
       )}
+      {blocked !== null && <ScanPanel scan={blocked} />}
 
       <ol className="space-y-3">
         {current.tasks.map((task) => (

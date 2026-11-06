@@ -37,7 +37,7 @@ function executedWorkflow(User $creator, User $admin, string $status = 'complete
 function analysisFor(User $user, array $attributes = []): void
 {
     app(OrganizationContext::class)->run($user->organization_id, function () use ($user, $attributes) {
-        (new AiAnalysisRequest)->forceFill(['user_id' => $user->id, 'status' => 'queued', 'input_char_count' => 1, ...$attributes])->save();
+        (new AiAnalysisRequest)->forceFill(['user_id' => $user->id, 'status' => 'queued', 'input_char_count' => 1, 'input_scan_id' => insertScan(appDb(), $user->organization_id), ...$attributes])->save();
     });
 }
 
@@ -121,8 +121,7 @@ it('counts this month only, in UTC', function () {
 it('says that what does not exist yet does not exist: null, never 0', function (string $role) {
     $summary = summaryOf(userIn($this->org->id, $role));
 
-    expect($summary['security'])->toBe(['warnings' => null, 'findings' => null, 'available_from_step' => '2-3'])
-        ->and($summary['ai_usage'])->toBe(['tokens' => null, 'estimated_cost' => null, 'available_from_step' => '2-8'])
+    expect($summary['ai_usage'])->toBe(['tokens' => null, 'estimated_cost' => null, 'available_from_step' => '2-8'])
         ->and($summary['self_test'])->toBe(['latest' => null, 'available_from_step' => '3-3']);
 })->with(['admin', 'member', 'auditor']);
 
@@ -202,7 +201,7 @@ it('answers each role over HTTP with its own numbers', function (string $who, in
     loggedIn($this, $this->{$who})->send('GET', DASHBOARD)
         ->assertOk()
         ->assertJsonPath('data.workflows.total', $total)
-        ->assertJsonPath('data.security.warnings', null);
+        ->assertJsonPath('data.ai_usage.tokens', null);
 })->with([
     'member' => ['member', 4],
     'admin' => ['admin', 6],

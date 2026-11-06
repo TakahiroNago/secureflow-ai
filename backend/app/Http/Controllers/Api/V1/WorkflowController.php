@@ -77,7 +77,7 @@ final class WorkflowController extends Controller
     public static function resource(Workflow $workflow): WorkflowResource
     {
         $fresh = Workflow::query()
-            ->with(['currentRevision', 'creator', 'tasks' => fn ($query) => $query->orderBy('position')])
+            ->with(['currentRevision.scan.findings', 'creator', 'tasks' => fn ($query) => $query->orderBy('position')])
             ->findOrFail($workflow->id);
 
         return new WorkflowResource($fresh);
