@@ -1,7 +1,7 @@
 # SecureFlow AI — API設計書
 
-- 版：v1.4（2026-11-06）
-- 状態：確定（v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.5（2026-11-06）
+- 状態：確定（v1.5：工程1-6 の分析とワークフローの API を反映。v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -16,7 +16,7 @@
 | 成功レスポンス | `{ "data": ..., "meta": { ... } }` |
 | エラーレスポンス | RFC 9457 Problem Details（下記） |
 | ページング | カーソル方式 `?cursor=...&limit=20`（limit最大100） |
-| 楽観ロック | 編集系は `If-Match: "<revision_no>"` 必須。不一致は 409 `REVISION_CONFLICT` |
+| 楽観ロック | 編集系は `If-Match: "<revision_no>"` 必須。ない場合と形式が違う場合は 428 `PRECONDITION_REQUIRED`、不一致は 409 `REVISION_CONFLICT` |
 | 認可の失敗 | 別の組織・別の member のリソース、存在しないリソースはすべて同じ 404 `NOT_FOUND`（存在を明かさない）。ロール不足は 403 `FORBIDDEN`（承認は `APPROVER_ROLE_REQUIRED`、`SELF_APPROVAL_FORBIDDEN`）。工程1-5 |
 | 冪等性 | 実行APIは `Idempotency-Key` ヘッダ必須（UUID推奨、最大100文字） |
 | 時刻 | ISO 8601（UTC） |
@@ -49,6 +49,7 @@
 | 415 | Content-Type 不正 |
 | 419 | CSRF トークンの不一致（`CSRF_TOKEN_MISMATCH`）。**ログイン済みのセッションとログイン API の検証の失敗に限る。セッションの不在・期限切れの応答には使わない**（§3.1.2 の注） |
 | 422 | バリデーションエラー、入力検査による停止（`INPUT_BLOCKED`） |
+| 428 | 編集系の `If-Match` がない（`PRECONDITION_REQUIRED`） |
 | 429 | レート制限、AI利用上限超過 |
 | 500 / 503 | 内部エラー（`INTERNAL_ERROR`） / AIプロバイダ利用不可、DB・監査・Redis を利用できない、認証情報を検証できない障害（`SERVICE_UNAVAILABLE`。[security-design.md §16.5.1](security-design.md)。詳細は返さない。**障害を `AUTH_FAILED` として返し続けない**） |
 
@@ -190,6 +191,8 @@ IP 単位の制限は、NAT 配下など同じ送信元 IP を共有する利用
 | POST | `/api/v1/analyses` | admin, member | 分析要求。202 で `analysis_id` を返す。入力検査の全体判定が `block`（認証・秘密情報の検出、インジェクション High/Critical、マスキング失敗）の場合は 422 `INPUT_BLOCKED` |
 | GET | `/api/v1/analyses/{id}` | 本人 | `status`、`workflow_id`、`scan` 要約、`error_code` |
 
+**工程2-3 までの動作（工程1-6）：** 入力検査がないため、`scan` は `{ "status": "not_scanned", "decision": null, "limitations_notice": "..." }` を返し、`INPUT_BLOCKED` は発生しない。入力は保存せず、文字数のみ記録する。本文の検証の失敗の応答に入力を含めない。`error_code` は `AI_UNAVAILABLE`、`AI_INVALID_OUTPUT`、`USER_INACTIVE`、`ANALYSIS_FAILED`、`ANALYSIS_STALE`。
+
 `POST /analyses` リクエスト：
 
 ```json
@@ -253,7 +256,9 @@ IP 単位の制限は、NAT 配下など同じ送信元 IP を共有する利用
 | POST | `/api/v1/workflows/{id}/reopen` | 所有者 | Rejected/Failed→Draft（新リビジョン） |
 | GET | `/api/v1/workflows/{id}/history` | 所有者 / admin / auditor | リビジョン・承認・実行の時系列 |
 
-編集可能な項目：`title`, `description`, `action_type`（ActionCatalogの値のみ）, `steps`, `priority`, `target_data`, `impact_summary`。`derived_permissions`・`policy_decision` はクライアントから受け付けない（サーバー導出）。ユーザー編集内容にも入力検査（マスキング・認証情報検出・インジェクション検出）を適用し、全体判定が `block` の場合は編集を保存せず 422 `INPUT_BLOCKED` を返す。
+編集可能な項目：`title`, `description`, `action_type`（ActionCatalogの値のみ）, `steps`, `priority`, `target_data`, `impact_summary`。`derived_permissions`・`policy_decision` はクライアントから受け付けない（サーバー導出）。ユーザー編集内容にも入力検査（マスキング・認証情報検出・インジェクション検出）を適用し、全体判定が `block` の場合は編集を保存せず 422 `INPUT_BLOCKED` を返す（**工程2-3 から。それまでは未検査で保存する。** [threat-model.md R-24](threat-model.md)）。
+
+工程1-6 の補足：タスクは1〜10件で、最後のタスクの削除と11件目の追加は 422。タイトルの変更は編集できない状態（Running、Completed、Rejected、Failed）では 409。`history` はリビジョンの内容（`plan_snapshot`）を返さない。提出・reopen は工程2-5。
 
 提出（submit）時、組織内に承認可能な admin（作成者以外の有効な admin）がいない場合も提出は受け付けるが、レスポンスに `"approver_available": false` を含め、画面に「承認可能な管理者がいないため、このワークフローは承認・実行できません」と表示する。
 

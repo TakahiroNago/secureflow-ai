@@ -48,6 +48,20 @@ for name in names:
         if marked[service]['environment'].get(name) != sentinels[name]:
             fails.append(f'{name}: a value set in the environment does not reach {service}')
 
+# docs/architecture.md §10: AI calls < the job's limit = the worker's limit < retry_after.
+job = open('backend/app/Jobs/AnalyzeWorkflowJob.php', encoding='utf-8').read()
+queue = open('backend/config/queue.php', encoding='utf-8').read()
+job_limit = int(re.search(r'public int \$timeout = (\d+);', job)[1])
+retry_after = int(re.search(r"'database' => \[.*?'retry_after' => (\d+),", queue, re.S)[1])
+worker = plain['worker']['command']
+worker_limit = next((int(arg.split('=')[1]) for arg in worker if arg.startswith('--timeout=')), None)
+if worker_limit != job_limit:
+    fails.append(f'worker --timeout is {worker_limit}, the job says {job_limit}')
+if not job_limit < retry_after:
+    fails.append(f'retry_after {retry_after} must be above the job limit {job_limit}')
+if worker[2:4] != ['queue:work', 'database']:
+    fails.append(f'the worker must use the database queue: {worker[2:4]}')
+
 for line in fails:
     print('  [FAIL]', line)
 print(f'{len(names)} variables, {len(SERVICES)} services, {len(fails)} failures')

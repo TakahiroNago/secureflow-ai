@@ -7,6 +7,7 @@ use App\Support\Organization\BelongsToOrganization;
 use Carbon\CarbonInterface;
 use Database\Factories\WorkflowFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -27,6 +28,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $max_severity
  * @property int $lock_version
  * @property CarbonInterface|null $submitted_at
+ * @property CarbonInterface|null $created_at
+ * @property CarbonInterface|null $updated_at
+ * @property-read User $creator
+ * @property-read WorkflowRevision|null $currentRevision
+ * @property-read Collection<int, WorkflowTask> $tasks
  */
 #[Fillable(['title', 'source_input_masked'])]
 class Workflow extends Model

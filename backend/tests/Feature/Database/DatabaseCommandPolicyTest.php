@@ -93,7 +93,7 @@ it('allows rollback on the development side through the managed procedure', func
     );
 
     expect($result->successful())->toBeTrue()
-        ->and($result->output())->toContain('DROP TABLE workflow_executions')
+        ->and($result->output())->toContain('DROP TABLE failed_jobs')
         ->and(testTablesExist())->toBeTrue();
 });
 

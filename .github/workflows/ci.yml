@@ -166,6 +166,9 @@ jobs:
       - name: Authentication over real HTTP (sessions in Redis, CSRF, lock, rate limit)
         run: bash scripts/test-auth-flow.sh
 
+      - name: An analysis and an edit over real HTTP, with the real worker
+        run: bash scripts/test-workflow-flow.sh
+
       - name: Login screen in real browsers (AUTH-E2E-01)
         run: bash scripts/test-login-browser.sh
 

@@ -8,8 +8,8 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 
 /**
- * For scripts/test-worker-redis-failure.sh only. The application has no jobs yet (step 1-6), and this
- * shows what the worker does to one. Its side effect is a line per run in a file of the container.
+ * For scripts/test-worker-failure.sh only: a job that takes as long as it is told, to show what the worker's
+ * time limit does to it. Its side effect is a line per run in a file of the container.
  */
 final class QueueProbeJob implements ShouldQueue
 {

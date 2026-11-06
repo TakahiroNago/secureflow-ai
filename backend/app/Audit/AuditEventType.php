@@ -17,6 +17,9 @@ enum AuditEventType: string
     case VerificationFailed = 'audit.verification_failed';
     case EventsSuppressed = 'audit.events_suppressed';
     case AvailabilityChecked = 'audit.availability_checked';
+    case WorkflowCreated = 'workflow.created';
+    case WorkflowUpdated = 'workflow.updated';
+    case AnalysisFailed = 'analysis.failed';
 
     /**
      * Anything else in metadata is dropped before recording.
@@ -30,6 +33,9 @@ enum AuditEventType: string
             self::VerificationFailed => ['chain_id', 'first_broken_seq', 'reason_code'],
             self::EventsSuppressed => ['suppressed_count', 'window_started_at'],
             self::AvailabilityChecked => ['outage_id'],
+            self::WorkflowCreated => ['revision_no'],
+            self::WorkflowUpdated => ['revision_no', 'change'],
+            self::AnalysisFailed => ['reason_code', 'analysis_id'],
             default => [],
         };
     }
@@ -37,7 +43,7 @@ enum AuditEventType: string
     public function severity(): ?string
     {
         return match ($this) {
-            self::LoginFailed, self::PasswordChangeFailed => 'low',
+            self::LoginFailed, self::PasswordChangeFailed, self::AnalysisFailed => 'low',
             self::Locked => 'medium',
             self::EventsSuppressed => 'high',
             self::VerificationFailed => 'critical',

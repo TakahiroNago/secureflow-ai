@@ -34,6 +34,14 @@ final readonly class AuditEntry
     }
 
     /**
+     * @param  array<string, string|int|bool>  $metadata
+     */
+    public static function byUserOn(AuditEventType $type, User $user, string $resourceType, string $resourceId, array $metadata = []): self
+    {
+        return new self($type, $user->organization_id, 'user', $user->id, 'success', $resourceType, $resourceId, self::allowed($type, $metadata));
+    }
+
+    /**
      * An attempt with no authenticated actor. A null target means no organization: the system chain.
      *
      * @param  array<string, string|int|bool>  $metadata

@@ -6,7 +6,11 @@ AI業務自動化・セキュリティ管理プラットフォーム（AI Automa
 
 AI が業務内容を分析・提案し、セキュリティレイヤーが処理内容と権限を検証し、重要な操作は人間の承認を経て実行する Web アプリケーションです。
 
-**現在の状態：Phase 1 実装中（工程1-4 まで完了）。** 認証、セッション、認証イベントの監査ログ（ハッシュチェーン）が動作します。AI 出力の検証の基盤もありますが、モック AI のみで、API と画面には接続していません。ワークフロー・承認・実行と、認証以外の監査記録は以降の工程で実装します。工程2-8 までは本番相当の環境では起動しません。計画は [docs/development-roadmap.md](docs/development-roadmap.md) を参照してください。
+**現在の状態：Phase 1 実装中（工程1-6 まで完了）。** 認証、監査ログ（ハッシュチェーン）に加えて、業務内容の入力からワークフローの生成、編集、保存までが動作します。AI はモックのみです。提出・承認・実行は以降の工程で実装します。工程2-8 までは本番相当の環境では起動しません。
+
+> **入力検査は工程2-3 まで未実装です。機密情報や個人情報を入力しないでください。** 分析の入力は保存しませんが、編集したタスクの内容はそのまま保存します（[threat-model.md R-24](docs/threat-model.md)）。
+
+計画は [docs/development-roadmap.md](docs/development-roadmap.md) を参照してください。
 
 ---
 
@@ -240,6 +244,10 @@ bash scripts/test-worker-healthcheck.sh # worker / scheduler のソース・プ�
 # 認証の通し確認（実際の HTTP、Redis のセッション）。ユーザーを作成するため、既定のプロジェクトでは
 # 実行を拒否します。複数環境の手順で作った使い捨ての環境でマイグレーション後に実行してください
 bash scripts/test-auth-flow.sh
+bash scripts/test-workflow-flow.sh      # 分析と編集の通し確認（実際の worker）
+
+# worker、Redis、PostgreSQL の実際の障害。コンテナを止めるため、プロジェクト名の明示が必要です
+SECUREFLOW_ALLOW_FAILURE_INJECTION=<プロジェクト名> bash scripts/test-worker-failure.sh
 ```
 
 `test` サービスは外部に出られない内部ネットワーク上で動くため、`composer audit` / `npm audit` はネットワークに出られるコンテナで実行します：

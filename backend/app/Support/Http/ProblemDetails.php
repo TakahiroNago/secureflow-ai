@@ -79,6 +79,9 @@ final class ProblemDetails
             $exception instanceof WorkflowConflictException => self::response(
                 409, $exception->problemCode, 'Conflict', $exception->detail,
             ),
+            $exception instanceof PreconditionRequiredException => self::response(
+                428, 'PRECONDITION_REQUIRED', 'Precondition required', 'If-Match ヘッダに現在のリビジョン番号を指定してください。',
+            ),
             $exception instanceof HttpExceptionInterface && $exception->getStatusCode() === 403 && $request->is('api/v1/*') => self::forbidden($exception),
             // Laravel has already turned a missing model into this, so the message names no model or id.
             $exception instanceof HttpExceptionInterface && $exception->getStatusCode() === 404 && $request->is('api/v1/*') => self::response(
@@ -89,7 +92,7 @@ final class ProblemDetails
             $exception instanceof RedisException,
             $exception instanceof QueryException,
             $exception instanceof PDOException => self::unavailable($request),
-            ! $exception instanceof HttpExceptionInterface && $request->is('api/v1/auth/*', 'api/v1/account/*', 'sanctum/*') => self::response(
+            ! $exception instanceof HttpExceptionInterface && $request->is('api/v1/auth/*', 'api/v1/account/*', 'api/v1/analyses*', 'api/v1/workflows*', 'sanctum/*') => self::response(
                 500, 'INTERNAL_ERROR', 'Internal server error', 'サーバーでエラーが発生しました。',
             ),
             default => null,

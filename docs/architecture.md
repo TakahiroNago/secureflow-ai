@@ -1,7 +1,7 @@
 # SecureFlow AI — アーキテクチャ設計書
 
-- 版：v1.6（2026-11-06）
-- 状態：確定（v1.6：環境変数を Compose からコンテナへ渡す条件を明記。v1.5：工程1-4 の AI の起動条件と再試行を反映。v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.7（2026-11-06）
+- 状態：確定（v1.7：工程1-6 のキューの方式、時間制限、停滞回収を反映。v1.6：環境変数を Compose からコンテナへ渡す条件を明記。v1.5：工程1-4 の AI の起動条件と再試行を反映。v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - 関連：[database-design.md](database-design.md) / [api-design.md](api-design.md) / [security-design.md](security-design.md) / [threat-model.md](threat-model.md) / [test-strategy.md](test-strategy.md) / [development-roadmap.md](development-roadmap.md)
 
 ---
@@ -164,6 +164,7 @@ User ─POST /analyses─▶ API
   3. 判定 block → AIを呼ばず、scan/findings と監査ログのみ記録して 422 `INPUT_BLOCKED` で返す
      warn → 続行（以降の画面で警告表示・承認時に確認必須）／ allow → 続行（検出は記録）
   4. ai_analysis_requests にマスク済みテキストを保存し、AnalyzeWorkflowJob を投入（202）
+     ※ 工程2-3 までは検査もマスキングもなく、入力を保存しない（文字数のみ記録）。モック AI は入力を使わない
 Worker
   5. PromptBuilder：固定システムプロンプト（秘密情報なし・カナリア含む）＋
      ランダム境界文字列で囲んだマスク済み入力（「データとして扱え」と明示）
@@ -228,14 +229,33 @@ Draft ──submit──▶ Pending ──approve──▶ Approved ──execut
 
 | ジョブ | キュー | 再試行 | 一意性 | 障害時 |
 |---|---|---|---|---|
-| AnalyzeWorkflowJob | `ai` | AI呼び出しはGateway内で最大2回。ジョブ自体は1回 | `ShouldBeUnique`（analysis_request_id） | `failed` に遷移、監査ログ |
+| AnalyzeWorkflowJob | `ai` | AI呼び出しはGateway内で最大2回。ジョブ自体は1回 | `queued → processing` の条件付き UPDATE（DB で判定。`ShouldBeUnique` は使わない） | `failed` に遷移、監査ログ `analysis.failed` |
 | ExecuteWorkflowJob | `execution` | **自動再試行しない**（承認は1回限り消費） | `ShouldBeUnique`（execution_id）＋DB一意制約 | Failed、reopen→再承認が必要 |
 | RunSecuritySelfTestJob | `selftest` | なし | 同時に1件のみ | run を failed |
 | 停滞回収（scheduler、毎分） | — | — | — | heartbeatがタイムアウトした Running 実行・processing 分析を Failed 化し監査ログ |
 
-ジョブには ID のみを渡す（本文をRedisに載せない）。ジョブ投入はDBコミット後（`afterCommit`）。
+ジョブには ID のみを渡す（本文をキューに載せない）。
 
-**既知の制約：Redis キューのジョブの消失と二重実行（2026-11-05 に再現済み。隔離した環境、`scripts/test-worker-redis-failure.sh`、テスト用のジョブ）：** 次の現象は未検証の懸念ではなく、**再現を確認した既知の制約である。** 工程1-3の時点で業務のジョブと `failed_jobs` テーブルはない（工程1-6で導入する）。`queue:work --tries=1`、`retry_after=90`、Redis は `appendonly no`。
+**キューの方式（工程1-6で決定）：DB キューとする。** `QUEUE_CONNECTION=database`、`queue:work database --queue=ai --tries=1`。
+
+| 方式 | 消失 | 古いデータからの復活 | 投入とコミットの整合 |
+|---|---|---|---|
+| Redis AOF | `everysec` で最大1秒分 | 減るが残る | ずれが残る |
+| **DB キュー（採用）** | なし | なし | 業務データと同じトランザクション |
+| Outbox + Redis | なし | 残る | 整合するが中継処理が必要 |
+
+- **投入はトランザクションの中で行う（`after_commit=false`）。** 行とジョブは一緒にコミットされ、一緒にロールバックされる。
+- 全ての API は既に DB に依存しているため、新しい障害点を増やさない。
+- **業務の状態は DB の行を正とする。** `failed_jobs` の記録だけで業務の失敗と判断しない。
+- 二重に取り出されても、条件付き UPDATE により処理は1回のみ行われる。AI 呼び出しの間はトランザクションを開かない。
+
+**時間制限（工程1-6で決定）：** AI 呼び出しの最長（`AiGateway::worstCaseSeconds()`、既定値で93秒）< ジョブと worker の `--timeout`（120秒）< `retry_after`（180秒）。`retry_after` は関係を崩さないよう環境変数にしない。`scripts/test-compose-env.sh` が CI で関係を確認する。
+
+**停滞回収（工程1-6で実装）：** `analysis:recover` を毎分実行する。`processing` のまま180秒を超えた行と `queued` のまま15分を超えた行を `ANALYSIS_STALE` で `failed` にする。組織をまたいで読むのはこのコマンドのみで、各行の処理はその組織の文脈の中で行う。回収の後に元の処理が戻っても、行のロックの下で状態を確認するため何も保存しない。
+
+**以下は工程1-3 で Redis キューについて確認した記録である。工程1-6 で DB キューへ移行したため、業務のジョブには適用されない。** 検証は `scripts/test-worker-failure.sh`（AUDIT-WORKER-01）に置き換えた。
+
+**既知の制約：Redis キューのジョブの消失と二重実行（2026-11-05 に再現済み。隔離した環境、当時の `scripts/test-worker-redis-failure.sh`、テスト用のジョブ）：** 次の現象は未検証の懸念ではなく、**再現を確認した既知の制約である。** 工程1-3の時点で業務のジョブと `failed_jobs` テーブルはない（工程1-6で導入する）。`queue:work --tries=1`、`retry_after=90`、Redis は `appendonly no`。
 
 | 状況 | ジョブ | 副作用 | 記録 |
 |---|---|---|---|

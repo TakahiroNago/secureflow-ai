@@ -15,17 +15,17 @@ final class AiTaskSchema
 
     private const MAX_TASKS = 10;
 
-    private const MIN_STEPS = 1;
+    public const MIN_STEPS = 1;
 
-    private const MAX_STEPS = 10;
+    public const MAX_STEPS = 10;
 
     private const MAX_REQUESTED_PERMISSIONS = 20;
 
-    private const PRIORITIES = ['low', 'medium', 'high'];
+    public const PRIORITIES = ['low', 'medium', 'high'];
 
-    private const TEXT_LIMITS = ['title' => 100, 'description' => 1000, 'target_data' => 500, 'impact_summary' => 1000];
+    public const TEXT_LIMITS = ['title' => 100, 'description' => 1000, 'target_data' => 500, 'impact_summary' => 1000];
 
-    private const STEP_LIMIT = 200;
+    public const STEP_LIMIT = 200;
 
     private const PERMISSION_LIMIT = 50;
 
@@ -110,19 +110,35 @@ final class AiTaskSchema
 
     private static function assertText(mixed $value, int $limit, string $position): void
     {
+        $problem = self::textProblem($value, $limit);
+
+        if ($problem !== null) {
+            throw new InvalidAiOutputException($problem, $position);
+        }
+    }
+
+    /**
+     * The same rules for what the AI wrote and what a user typed.
+     *
+     * @return string|null why the text is not acceptable, with nothing of the text in it
+     */
+    public static function textProblem(mixed $value, int $limit): ?string
+    {
         if (! is_string($value)) {
-            throw new InvalidAiOutputException('not_a_string', $position);
+            return 'not_a_string';
         }
         if (mb_strlen($value, 'UTF-8') > $limit) {
-            throw new InvalidAiOutputException('too_long', $position);
+            return 'too_long';
         }
         // Control characters other than a line feed and a tab.
         if (preg_match('/[^\P{Cc}\n\t]/u', $value) === 1) {
-            throw new InvalidAiOutputException('control_character', $position);
+            return 'control_character';
         }
         // Includes the empty string. Spaces of every kind and invisible characters do not count as text.
         if (preg_match('/[^\s\p{Z}\p{Cf}]/u', $value) !== 1) {
-            throw new InvalidAiOutputException('blank', $position);
+            return 'blank';
         }
+
+        return null;
     }
 }

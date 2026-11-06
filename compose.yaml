@@ -49,7 +49,7 @@ x-laravel-env: &laravel-env
   REDIS_PASSWORD: ${REDIS_PASSWORD:?}
   SESSION_DRIVER: redis
   CACHE_STORE: redis
-  QUEUE_CONNECTION: redis
+  QUEUE_CONNECTION: database
   AI_PROVIDER: mock
   AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-30}
   AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-2000}
@@ -176,7 +176,8 @@ services:
     <<: *php-service
     environment:
       <<: *laravel-env
-    command: ["php", "artisan", "queue:work", "redis", "--sleep=3", "--tries=1", "--max-time=3600"]
+    # The time limit stays above AiGateway::worstCaseSeconds() and below retry_after (scripts/test-compose-env.sh).
+    command: ["php", "artisan", "queue:work", "database", "--queue=ai", "--sleep=1", "--tries=1", "--timeout=120", "--max-time=3600"]
     networks: [data]
     healthcheck:
       # Liveness: the code is mounted, Laravel boots and PID 1 is the real worker. It does not look

@@ -40,7 +40,10 @@ return [
             'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => env('DB_QUEUE_TABLE', 'jobs'),
             'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            // Above AnalyzeWorkflowJob::$timeout, or a job still running would be picked up again. Fixed for
+            // that reason (docs/architecture.md §10). scripts/test-compose-env.sh checks the relation.
+            'retry_after' => 180,
+            // In the transaction on purpose: the job commits together with the row it is for.
             'after_commit' => false,
         ],
 
