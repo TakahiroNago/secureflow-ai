@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\AccountPasswordController;
 use App\Http\Controllers\Api\V1\AnalysisController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\WorkflowController;
 use App\Http\Controllers\Api\V1\WorkflowTaskController;
 use App\Http\Controllers\HealthController;
@@ -36,6 +37,10 @@ Route::prefix('v1')->middleware('json.body')->group(function (): void {
         Route::patch('/account/password', [AccountPasswordController::class, 'update'])
             ->middleware('throttle:account-password')
             ->name('account.password');
+
+        Route::get('/dashboard/summary', [DashboardController::class, 'summary'])
+            ->middleware('can:viewAny,'.Workflow::class)
+            ->name('dashboard.summary');
 
         Route::post('/analyses', [AnalysisController::class, 'store'])
             ->middleware(['throttle:analyses', 'can:create,'.Workflow::class])

@@ -94,16 +94,42 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   await page.getByLabel('メールアドレス').fill(email);
   await page.getByLabel('パスワード').fill(password);
   await page.getByRole('button', { name: 'ログイン' }).click();
-  await page.getByText('ようこそ').first().waitFor({ timeout: 10000 }).catch(() => {});
+  const dashboard = page.getByRole('heading', { name: 'ダッシュボード' });
+  await dashboard.waitFor({ timeout: 10000 }).catch(() => {});
   // The reported failure: the welcome screen shows for a moment, then the login screen comes back.
   await page.waitForTimeout(3000);
-  check('after logging in, it stays on the welcome screen', new URL(page.url()).pathname === '/', page.url());
-  check('the welcome screen is showing', await page.getByText('ようこそ').first().isVisible());
+  check('after logging in, it stays on the dashboard', new URL(page.url()).pathname === '/', page.url());
+  check('the dashboard is showing', await dashboard.isVisible());
   check('auth/me answered 200 every time', me.length > 0 && me.every((s) => s === 200), JSON.stringify(me));
 
   await page.reload();
   await page.waitForTimeout(1500);
-  check('reloading keeps the login', new URL(page.url()).pathname === '/' && await page.getByText('ようこそ').first().isVisible(), page.url());
+  check('reloading keeps the login', new URL(page.url()).pathname === '/' && await dashboard.isVisible(), page.url());
+
+  // From the input to an edit, on the real screens with the real worker, and back to the numbers.
+  const problems = [];
+  page.on('pageerror', (e) => problems.push(String(e)));
+  await page.getByRole('link', { name: 'ワークフロー', exact: true }).click();
+  await page.getByRole('link', { name: '新しく作成' }).click();
+  check('the input screen warns', (await page.getByRole('alert').textContent()).includes('機密情報や個人情報を入力しないでください'));
+  await page.getByLabel('依頼内容').fill('週次の報告を作成する');
+  await page.getByRole('button', { name: '分析する' }).click();
+  await page.getByRole('button', { name: '編集' }).first().waitFor({ timeout: 30000 }).catch(() => {});
+  check('the analysis opens a workflow', /^\/workflows\/[0-9a-f-]{36}$/.test(new URL(page.url()).pathname), page.url());
+  await page.getByRole('button', { name: '編集' }).first().click({ timeout: 5000 });
+  await page.getByLabel('タイトル').fill('<b>画面から編集</b>');
+  await page.getByRole('button', { name: '保存' }).click();
+  await page.getByRole('heading', { name: '1. <b>画面から編集</b>' }).waitFor({ timeout: 10000 }).catch(() => {});
+  check('an edit is saved, and drawn as text', await page.getByRole('heading', { name: '1. <b>画面から編集</b>' }).isVisible());
+  await page.getByRole('link', { name: 'ダッシュボード' }).click();
+  await page.getByText('今月の分析回数').waitFor({ timeout: 10000 }).catch(() => {});
+  check('the dashboard counts it', (await page.locator('dt:text-is("ワークフロー数") + dd').textContent()) === '1');
+  check('what does not exist yet is not a zero', (await page.locator('dt:text-is("セキュリティ警告") + dd').textContent()) === '未実装');
+  await page.locator('.recharts-bar-rectangle').first().waitFor({ timeout: 5000 }).catch(() => {});
+  check('the chart is drawn', (await page.locator('.recharts-bar-rectangle').count()) > 0);
+  check('nothing failed on the page', problems.length === 0, problems.join('; '));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.screenshot({ path: `dashboard-${name}.png`, fullPage: true });
 
   await page.getByRole('button', { name: 'ログアウト' }).click({ timeout: 5000 }).catch(() => check('there is a logout button', false, 'none'));
   await page.getByRole('heading', { name: 'ログイン' }).waitFor({ timeout: 10000 }).catch(() => {});
@@ -118,3 +144,7 @@ process.exit(fails ? 1 : 0);
 JS
 
 in_image --network "$NET" -e PORT="$NGINX_PORT" "$IMAGE" node run.mjs
+status=$?
+# To look at the screens: BROWSER_SCREENSHOTS=<directory>
+[ -z "${BROWSER_SCREENSHOTS:-}" ] || cp "$work"/dashboard-*.png "$BROWSER_SCREENSHOTS"/
+exit "$status"

@@ -79,7 +79,7 @@ describe('route guard', () => {
 
     expect(await screen.findByRole('heading', { name: 'ログイン' })).toBeInTheDocument()
     expect(window.location.pathname).toBe('/login')
-    expect(screen.queryByText('ようこそ')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'ダッシュボード' })).not.toBeInTheDocument()
   })
 
   it('shows nothing protected while the session is being checked', () => {
@@ -87,7 +87,7 @@ describe('route guard', () => {
 
     render(<App />)
 
-    expect(screen.queryByText('ようこそ')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'ダッシュボード' })).not.toBeInTheDocument()
     expect(screen.getAllByText('確認中').length).toBeGreaterThan(0)
   })
 
@@ -97,7 +97,7 @@ describe('route guard', () => {
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: 'ログイン' })).toBeInTheDocument()
-    expect(screen.queryByText('ようこそ')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'ダッシュボード' })).not.toBeInTheDocument()
   })
 
   it('fails closed when the server cannot be reached', async () => {
@@ -110,15 +110,15 @@ describe('route guard', () => {
     expect(await screen.findByRole('heading', { name: 'ログイン' })).toBeInTheDocument()
   })
 
-  it('shows the home page to a logged-in user, and sends them away from the login page', async () => {
+  it('shows the dashboard to a logged-in user, and sends them away from the login page', async () => {
     server({ 'GET /api/v1/auth/me': () => json({ data: user }) })
     window.history.pushState({}, '', '/login')
 
     render(<App />)
 
-    expect(await screen.findByText('ようこそ')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'ダッシュボード' })).toBeInTheDocument()
     expect(window.location.pathname).toBe('/')
-    expect(screen.getByText('Example Org')).toBeInTheDocument()
+    expect(screen.getByText('Example User（メンバー）・Example Org', { exact: false })).toBeInTheDocument()
   })
 
   it('returns to the login page when the session has expired', async () => {
@@ -126,7 +126,7 @@ describe('route guard', () => {
     server({ 'GET /api/v1/auth/me': () => (expired ? problem(401, 'UNAUTHENTICATED') : json({ data: user })) })
 
     render(<App />)
-    await screen.findByText('ようこそ')
+    await screen.findByRole('heading', { name: 'ダッシュボード' })
 
     expired = true
     window.dispatchEvent(new Event('visibilitychange'))
@@ -149,7 +149,7 @@ describe('login', () => {
     await screen.findByRole('heading', { name: 'ログイン' })
     fillAndSubmit()
 
-    expect(await screen.findByText('ようこそ')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'ダッシュボード' })).toBeInTheDocument()
     expect(window.location.pathname).toBe('/')
 
     const [call] = callsTo(spy, 'POST /api/v1/auth/login')
@@ -232,7 +232,7 @@ describe('login', () => {
     await screen.findByRole('heading', { name: 'ログイン' })
     fillAndSubmit()
 
-    expect(await screen.findByText('ようこそ')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'ダッシュボード' })).toBeInTheDocument()
     expect(attempts).toBe(2)
     expect(callsTo(spy, 'GET /sanctum/csrf-cookie')).toHaveLength(1)
   })
@@ -291,7 +291,7 @@ describe('home page', () => {
 
     const { container } = render(<App />)
 
-    expect(await screen.findByText(payload)).toBeInTheDocument()
+    expect(await screen.findByText(payload, { exact: false })).toBeInTheDocument()
     expect(container.querySelector('img')).toBeNull()
   })
 })
