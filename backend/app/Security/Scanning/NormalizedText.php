@@ -15,6 +15,7 @@ final class NormalizedText
      * @param  list<string>  $characters
      * @param  list<int>  $sourceStarts  Where each character came from in the original, in characters.
      * @param  list<int>  $sourceEnds
+     * @param  array<int, bool>  $disguised  Characters that were made to look like something else.
      */
     public function __construct(
         public readonly string $text,
@@ -23,12 +24,31 @@ final class NormalizedText
         private readonly array $sourceEnds,
         public readonly int $sourceLength,
         public readonly int $removedInvisible,
+        private readonly array $disguised = [],
     ) {
         $byte = 0;
         foreach ($this->characters as $index => $character) {
             $this->indexAtByte[$byte] = $index;
             $byte += strlen($character);
         }
+    }
+
+    /**
+     * Whether a match was disguised where it is: a letter written in full width or as a look-alike, or an
+     * invisible character inside it. Full width elsewhere in the text is no reason to suspect this match.
+     */
+    public function isDisguised(int $byteStart, int $byteEnd): bool
+    {
+        $first = $this->indexAtByte[$byteStart];
+        $last = ($this->indexAtByte[$byteEnd] ?? count($this->characters)) - 1;
+
+        for ($index = $first; $index <= $last; $index++) {
+            if ($this->disguised[$index] ?? false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

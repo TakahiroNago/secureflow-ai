@@ -45,7 +45,7 @@
 | 工程 | 内容 | 完了条件 | テスト方法 |
 |---|---|---|---|
 | 2-1 | Normalizer、PII/Secret 検出器（ルールごとの severity・action 定義）、Masker、マスキング後再検査（fail closed）。**検査の部品のみで、API と処理への組み込みは工程2-3** | コーパスで目標検出率・誤検知・誤停止が目標内。個人情報は mask_continue、認証・秘密情報は block。マスキング失敗で停止 | Unit、コーパス評価、ST-36、ST-03, 04, 35（部品の部分） |
-| 2-2 | InjectionDetector（ルール・スコアリング） | 4段階判定が仕様どおり | Unit、ST-02, 13, 14, 15 |
+| 2-2 | InjectionDetector（ルール・スコアリング）。**検査の部品のみで、処理への組み込みは工程2-3、カナリアは工程2-4** | 4段階判定が仕様どおり。**検出率は調整用 99.2%、評価専用 3.6%（目標 90% は調整用のみ達成）** | Unit、コーパス評価、ST-02, 13, 14（部品の部分） |
 | 2-3 | InputScanner 統合、scan-preview API、全体判定（action から算出。D4・D14）、scans/findings 保存、限界文言、`workflow_revisions.scan_id`・`ai_analysis_requests` の検査の列の外部キーと新規行の必須化（工程1-5 の未検査の行は変更しない）、入力と編集内容のマスキングと保存（**工程1-6 の例外の解消**） | block 判定で AI 呼び出し0回。severity と action が別フィールドで返る。限界文言が常に返る | Feature、モック呼出回数検証、ST-39 |
 | 2-4 | OutputValidator 拡張（出力マスキング・カナリア・HTML除去・権限照合）、プロンプト構築 | 各モックシナリオで期待どおり | ST-10, 18, 19 |
 | 2-5 | 承認API・承認画面（ハッシュ照合・admin のみ・自己承認禁止・リスク確認・承認者不在表示）、submit / reopen、`workflow.submitted`・`workflow.reopened`・`approval.*` の監査記録 | 承認後編集で再承認要求、古いハッシュ 409、自己承認拒否、auditor・member の承認拒否、承認可能な admin 不在で実行不可、未検査のリビジョンの提出・承認の拒否 | ST-06, 09, 16, 17, 20, 21, 37, 38、AUTH-LOCK-03、E2E一部 |
