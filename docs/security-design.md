@@ -1,7 +1,7 @@
 # SecureFlow AI — セキュリティ設計書
 
-- 版：v1.5（2026-11-06）
-- 状態：確定（v1.5：工程1-4 の AI 出力の検証の詳細を反映。v1.4：工程1-3 の監査ログ設計を反映。v1.3：工程1-2 の認証設計を反映。v1.2：監査ログの権限とチェーン順序を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.6（2026-11-06）
+- 状態：確定（v1.6：工程1-5 の組織スコープ、未検査の扱い、監査の時期を反映。v1.5：工程1-4 の AI 出力の検証の詳細を反映。v1.4：工程1-3 の監査ログ設計を反映。v1.3：工程1-2 の認証設計を反映。v1.2：監査ログの権限とチェーン順序を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - 参照：OWASP Top 10、OWASP Top 10 for LLM Applications 2025、OWASP ASVS
 
 ---
@@ -272,7 +272,7 @@ AI出力スキーマ（概要）：
 4. 現在のタスクから再計算したハッシュ ＝ 承認ハッシュ ＝ リビジョンハッシュ
 5. 現行 ActionCatalog で全タスクを再照合し forbidden がない（ポリシーが承認後に厳格化された場合は実行拒否）
 6. 現行 `policy_version` が承認時と異なる場合は実行拒否し再承認を要求
-7. リビジョンの scan_decision が block でない
+7. リビジョンの scan_decision が allow または warn である（block と未検査（NULL）は拒否する。工程2-3 より前のリビジョンは未検査である）
 8. Idempotency-Key が未使用、または同一実行の再送
 9. 利用上限内
 
@@ -338,7 +338,7 @@ AI出力スキーマ（概要）：
 
 1. **全APIで**：認証 → 有効ユーザー確認 → 組織スコープ → Policy（所有者・ロール） → 入力検証。
 2. **UUIDは認可の代わりにしない。** UUIDv7は推測困難性を高めるが、アクセス可否は常に Policy が判定する。
-3. 組織スコープは Eloquent グローバルスコープで全クエリに強制。スコープを外すクエリ（`withoutGlobalScope`）は Semgrep ルールで検出し、許可箇所を限定する。
+3. 組織スコープは Eloquent グローバルスコープで全クエリに強制。スコープを外すクエリ（`withoutGlobalScope`）は Semgrep ルールで検出し、許可箇所を限定する。組織は `OrganizationContext` から取得する。認証後のミドルウェアが認証ユーザーの組織を設定し、ジョブは明示的に設定する。**リクエストのデータからは設定しない。文脈がないときはクエリを実行せず例外とする（fail closed）。** ルートモデルバインディングもスコープの中で行う。
 4. 別組織・別ユーザー（member）のリソースは 404（存在を秘匿）。ロール不足は 403。
 5. ロール別権限は [api-design.md §2](api-design.md)。承認権限は admin のみで、自分が作成したワークフローは対象外（§9.3）。auditor は参照専用で、いかなる状態変更（承認を含む）も行えない。
 6. フロントエンドの表示制御は UX 目的に限り、認可の根拠にしない。
@@ -378,9 +378,9 @@ AI出力スキーマ（概要）：
 | `security.scan` | 入力・出力・リビジョンの検査（最大 severity と全体判定 allow / warn / block 付き） |
 | `security.blocked` | 検査による処理停止（理由コード：`SECRET_DETECTED` / `INJECTION_HIGH` / `MASK_FAILED` / `CANARY_LEAK` 等） |
 | `ai.call` | AI呼び出し（成功・失敗・上限超過） |
-| `workflow.created` / `workflow.updated` / `workflow.submitted` / `workflow.reopened` | ワークフロー操作 |
-| `approval.approved` / `approval.rejected` / `approval.denied` | 承認（自己承認・ハッシュ不一致等の拒否を含む） |
-| `execution.started` / `execution.completed` / `execution.failed` / `execution.denied` | 実行 |
+| `workflow.created` / `workflow.updated` / `workflow.submitted` / `workflow.reopened` | ワークフロー操作（**その操作を追加する工程で同時に記録する。** 作成・編集は工程1-6、提出・reopen は工程2-5） |
+| `approval.approved` / `approval.rejected` / `approval.denied` | 承認（自己承認・ハッシュ不一致等の拒否を含む。工程2-5） |
+| `execution.started` / `execution.completed` / `execution.failed` / `execution.denied` | 実行（工程2-6） |
 | `authz.denied` | 403/404 となった認可拒否 |
 | `rate_limit.exceeded` | レート制限 |
 | `finding.status_changed` / `settings.updated` / `selftest.started` / `selftest.completed` | 管理操作 |
@@ -517,7 +517,7 @@ DB unavailable と Audit unavailable の状態は Redis に保持する。Redis 
 
 | 処理 | 動作 |
 |---|---|
-| 監査必須の成功操作（ログイン、パスワード変更、工程1-5以降の状態変更） | 503。業務処理もコミットしない |
+| 監査必須の成功操作（ログイン、パスワード変更、工程1-6以降の状態変更） | 503。業務処理もコミットしない |
 | 監査を必要としない書き込み | **工程1-3では、事前確認を通らない経路に存在しない。** 今後追加する場合は、この状態の扱いを設計時に定める |
 | 認証済みの読み取り API | 継続する（読み取りは影響を受けないと想定。未検証）。応答で「正常」と表明しない |
 | 他のクエリの `53100` | 個別の失敗として状態を変えないが、`metric=db.storage_error`（`storage_area`）の重大ログを出力し、ストレージの障害の疑いとして監視する |
@@ -821,7 +821,7 @@ Redis のクライアントは phpredis（`REDIS_CLIENT`）とする。
 | ログイン、パスワード変更 | 503 | 503 | 503 |
 | ログアウト | 204（セッションを破棄し、記録の失敗は重大ログ） | 204（同左） | 503（破棄できない） |
 | 認証済みの読み取り API | 503（ユーザーを読めない） | **通常どおり** | 503 |
-| 監査必須の状態変更 API（工程1-5以降） | 503 | 503 | 503 |
+| 監査必須の状態変更 API（工程1-6以降） | 503 | 503 | 503 |
 | `GET /api/health/live` | 200 | 200 | 200 |
 | `GET /api/health/ready` | 503 | `permanent_config` は **200**。`storage_scope=db_suspected` は **503**（DB 全体のストレージ障害の疑いのため） | 503 |
 | `audit:verify` | 終了コード 2 | 実行できる（検証の失敗の記録は失敗しうる） | 実行できる |

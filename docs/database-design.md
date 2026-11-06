@@ -1,7 +1,7 @@
 # SecureFlow AI — データベース設計書
 
-- 版：v1.6（2026-11-04）
-- 状態：確定（v1.6：工程1-3 の監査ログハッシュチェーンを反映。v1.5：テスト専用 app ロールを追加。v1.4：テスト専用 owner ロールとコマンド制限を追加。v1.3：工程1-1 の設計レビューを反映。v1.2：列挙列の NOT NULL 方針を明記。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.7（2026-11-06）
+- 状態：確定（v1.7：工程1-5 のワークフローのテーブルの判断を反映。v1.6：工程1-3 の監査ログハッシュチェーンを反映。v1.5：テスト専用 app ロールを追加。v1.4：テスト専用 owner ロールとコマンド制限を追加。v1.3：工程1-1 の設計レビューを反映。v1.2：列挙列の NOT NULL 方針を明記。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - DBMS：PostgreSQL 18.6（インフラ要件。`compose.yaml` でタグを固定する）
 
 ---
@@ -125,8 +125,8 @@ security_test_runs 1─* security_test_results
 | plan_hash | char(64) | NOT NULL | SHA-256（16進小文字） |
 | hash_version | smallint | NOT NULL | 正規化仕様のバージョン |
 | policy_version | varchar(32) | NOT NULL | 適用した ActionCatalog のバージョン |
-| scan_id | uuid | FK security_scans NOT NULL | このリビジョン内容の検査 |
-| scan_decision | varchar(8) | CHECK IN ('allow','warn','block') | |
+| scan_id | uuid | NULL（工程2-3 で FK と新規行の NOT NULL を追加） | このリビジョン内容の検査。**NULL は未検査を意味する。** `security_scans` は工程2-3 で作成する |
+| scan_decision | varchar(8) | NULL, CHECK IN ('allow','warn','block')、CHECK（`scan_id` と同時に NULL または NOT NULL） | **NULL を allow として扱わない。** 工程2-5・2-6 は未検査のリビジョンの提出・承認・実行を拒否する。検査済みに見えるダミーの検査結果は作らない |
 | change_type | varchar(16) | CHECK IN ('ai_generated','user_edit','reopen') | |
 | created_by | uuid | FK users NULL | AI生成時はリクエストユーザー |
 | created_at | timestamptz | NOT NULL | |
@@ -187,6 +187,20 @@ security_test_runs 1─* security_test_results
 | created_at / updated_at | timestamptz | NOT NULL | |
 
 部分一意インデックス：`UNIQUE (workflow_id) WHERE status IN ('queued','running')` — 1ワークフローの同時実行は1件のみ。
+
+### 3.9.1 組織とワークフローをまたぐ参照の防止（工程1-5）
+
+§3.5〜§3.9 の外部キーは複合とし、アプリケーションの不具合があっても別の組織やワークフローの行を指せないようにする。このために `users` に `UNIQUE (organization_id, id)` を追加する。
+
+| 外部キー | 防ぐこと |
+|---|---|
+| 子テーブルの `(organization_id, workflow_id)` → `workflows` | 別の組織のワークフローへの所属 |
+| `(organization_id, created_by / decided_by / requested_by)` → `users` | 別の組織のユーザーの記録 |
+| `workflows (id, current_revision_id)` → `workflow_revisions (workflow_id, id)`（DEFERRABLE） | 別のワークフローのリビジョンの指定 |
+| `approvals`・`workflow_executions` の `(workflow_id, workflow_revision_id)` → `workflow_revisions` | 別のワークフローのリビジョンの承認・実行 |
+| `workflow_executions (approval_id, workflow_revision_id)` → `approvals (id, workflow_revision_id)` | 別のリビジョンの承認による実行 |
+
+`approvals_require_admin` は対象のユーザー行を `FOR SHARE` でロックし、確認からコミットまでの間のロール変更を防ぐ。`down` は `workflow_revisions`・`approvals` に行がある場合に中断する。
 
 ### 3.10 security_scans（不変）
 
@@ -493,7 +507,10 @@ PHP の検証器（`AuditChainVerifier`）は `audit_append()` の補助関数�
 
 | テーブル | secureflow_app の権限 |
 |---|---|
-| organizations, organization_settings, users, ai_analysis_requests, workflows, workflow_tasks, workflow_executions, security_findings, security_test_runs | SELECT, INSERT, UPDATE（DELETEは workflow_tasks のみ） |
+| organizations, organization_settings, users, ai_analysis_requests, security_findings, security_test_runs | SELECT, INSERT, UPDATE |
+| workflows | SELECT, INSERT。UPDATE は `title`, `status`, `current_revision_id`, `max_severity`, `lock_version`, `submitted_at`, `updated_at` のみ |
+| workflow_tasks | SELECT, INSERT, DELETE。UPDATE は `position`, `title`, `description`, `action_type`, `steps`, `priority`, `target_data`, `impact_summary`, `derived_permissions`, `ai_claimed_permissions`, `policy_decision`, `updated_at` のみ |
+| workflow_executions | SELECT, INSERT。UPDATE は `status`, `started_at`, `heartbeat_at`, `finished_at`, `result`, `error_code`, `updated_at` のみ |
 | **approvals, workflow_revisions, security_scans, ai_usage_logs, security_test_results** | **SELECT, INSERT のみ** |
 | **audit_logs** | **SELECT のみ**（追記は `audit_append()` の EXECUTE を通じてのみ行う） |
 | **audit_chain_heads** | **SELECT のみ** |
