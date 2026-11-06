@@ -356,6 +356,29 @@ describe('detail', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
+  it('names what the AI asked for, and the action, in words', async () => {
+    server({
+      [detailKey]: () =>
+        json({
+          data: workflow({
+            scan: {
+              ...scan,
+              decision: 'warn',
+              findings: [
+                finding({ category: 'permission_mismatch', severity: 'medium', action: 'warn', message: '多くの権限', field: 'tasks.1.requested_permissions', position_start: null, position_end: null }),
+                finding({ category: 'forbidden_action', severity: 'high', action: 'warn', message: '禁止された操作の提案', field: 'tasks.2.action_type', position_start: null, position_end: null }),
+              ],
+              findings_count: 2,
+            },
+          }),
+        }),
+    })
+    open(detailPath)
+
+    expect(await screen.findByText('タスク 1 のAI が申告した権限')).toBeInTheDocument()
+    expect(screen.getByText('タスク 2 の操作')).toBeInTheDocument()
+  })
+
   it('keeps what was typed and shows the findings when an edit is refused', async () => {
     server({
       [detailKey]: () => json({ data: workflow() }),

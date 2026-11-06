@@ -70,10 +70,16 @@ final class InjectionScanner
         }
     }
 
-    /** Null until the rules have been read, and when they could not be. */
+    /** Null when the rules cannot be read. */
     public function rulesetVersion(): ?string
     {
-        return $this->rules?->version;
+        try {
+            $this->rules ??= InjectionRuleSet::load($this->rulesPath);
+        } catch (Throwable) {
+            return null;
+        }
+
+        return $this->rules->version;
     }
 
     private function run(string $text, float $deadlineSeconds): InjectionResult

@@ -79,8 +79,21 @@ it('NOT YET, step 2-4: passes with its text unchanged', function (MockScenario $
 })->with([
     'script_tag' => [MockScenario::ScriptTag, '<script>'],
     'secret_leak' => [MockScenario::SecretLeak, 'sk-'],
-    'canary_leak' => [MockScenario::CanaryLeak, MockAiProvider::CANARY],
 ]);
+
+it('AI-MOCK-01: repeats the canary it was given, as a model that repeats its prompt would', function () {
+    $canary = 'SF-CANARY-'.str_repeat('a', 32);
+    $answer = (new MockAiProvider(MockScenario::CanaryLeak))->generate(new AiRequest("before {$canary} after", '', 1, 1))->content;
+
+    expect($answer)->toContain($canary)->not->toContain('before');
+});
+
+it('AI-MOCK-01: does not take a canary from what a user typed', function () {
+    $typed = 'SF-CANARY-'.str_repeat('b', 32);
+    $answer = (new MockAiProvider(MockScenario::CanaryLeak))->generate(new AiRequest('no canary here', $typed, 1, 1))->content;
+
+    expect($answer)->not->toContain($typed);
+});
 
 it('AI-MOCK-01: what a user types cannot choose a scenario', function (string $input) {
     expect(mockAnswer(MockScenario::Normal, $input))->toBe(mockAnswer(MockScenario::Normal));
@@ -90,7 +103,10 @@ it('AI-MOCK-01: the provider reads no setting, environment or input to choose on
     $source = (string) file_get_contents(__DIR__.'/../../../app/Ai/Providers/MockAiProvider.php');
 
     expect($source)->not->toMatch('/\b(env|config|getenv|request)\(/')
-        ->and($source)->not->toContain('$request->')
+        ->and($source)->not->toContain('$request->input')
+        // Only to repeat the canary it was given, in the one scenario that does so.
+        ->and(preg_match_all('/\$request->\w+/', $source, $reads))->toBe(1)
+        ->and($reads[0])->toBe(['$request->systemPrompt'])
         ->and($source)->not->toContain('tryFrom')
         ->and($source)->not->toContain('MockScenario::from');
 });

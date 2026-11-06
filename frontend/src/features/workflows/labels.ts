@@ -34,7 +34,7 @@ export function scanLabel(scan: Scan): string {
   }
 }
 
-const FIELD_LABELS: Record<string, string> = { title: 'タイトル', description: '説明', target_data: '対象データ', impact_summary: '影響', steps: '手順' }
+const FIELD_LABELS: Record<string, string> = { title: 'タイトル', description: '説明', target_data: '対象データ', impact_summary: '影響', steps: '手順', requested_permissions: 'AI が申告した権限', action_type: '操作' }
 
 /** "tasks.2.steps.1" as the screen calls it. A name it does not know is shown as it is, as text. */
 export function fieldLabel(field: string): string {
@@ -56,7 +56,7 @@ export const ACTION_TYPES = ['text.analyze', 'text.summarize', 'report.draft', '
 const ANALYSIS_ERRORS: Record<string, string> = {
   AI_UNAVAILABLE: 'AI を利用できませんでした。しばらく待ってから再度お試しください。',
   AI_INVALID_OUTPUT: 'AI の応答が正しい形式ではなかったため、ワークフローを作成しませんでした。',
-  AI_OUTPUT_BLOCKED: 'AI の応答に秘密情報や攻撃と思われる内容が含まれていたため、ワークフローを作成しませんでした。',
+  AI_OUTPUT_BLOCKED: 'AI の応答に秘密情報や攻撃と思われる内容、またはシステムプロンプトの一部が含まれていたため、ワークフローを作成しませんでした。',
   USER_INACTIVE: 'このアカウントは無効です。',
   ANALYSIS_STALE: '処理が時間内に完了しませんでした。再度お試しください。',
   ANALYSIS_FAILED: '分析に失敗しました。再度お試しください。',

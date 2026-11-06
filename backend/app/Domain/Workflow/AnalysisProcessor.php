@@ -4,6 +4,7 @@ namespace App\Domain\Workflow;
 
 use App\Ai\AiGateway;
 use App\Ai\AiProviderException;
+use App\Ai\PromptBuilder;
 use App\Audit\AuditEntry;
 use App\Audit\AuditEventType;
 use App\Audit\AuditLogger;
@@ -12,9 +13,7 @@ use App\Models\AiAnalysisRequest;
 use App\Models\SecurityScan;
 use App\Models\User;
 use App\Security\Output\InvalidAiOutputException;
-use App\Security\Output\OutputValidator;
-use App\Security\Output\ValidatedTask;
-use App\Security\Scanning\InputScanner;
+use App\Security\Output\OutputScanner;
 use App\Security\Scanning\InputScanResult;
 use App\Support\Database\SingleAttemptTransaction;
 use App\Support\Http\ServiceUnavailableException;
@@ -39,15 +38,12 @@ final readonly class AnalysisProcessor
 
     public const ERROR_OUTPUT_BLOCKED = 'AI_OUTPUT_BLOCKED';
 
-    /** Step 2-4 builds the real prompt. Only the masked input is ever handed over, and the mock uses neither. */
-    private const PROMPT_UNTIL_STEP_2_4 = 'Propose tasks as JSON.';
-
     public function __construct(
         private AiGateway $gateway,
-        private OutputValidator $validator,
+        private PromptBuilder $prompts,
+        private OutputScanner $outputs,
         private WorkflowCreator $creator,
         private AuditLogger $audit,
-        private InputScanner $scanner,
         private ScanRecorder $recorder,
     ) {}
 
@@ -73,23 +69,16 @@ final readonly class AnalysisProcessor
         }
 
         try {
-            $tasks = $this->validator->validate($this->gateway->generate(self::PROMPT_UNTIL_STEP_2_4, (string) $analysis->input_masked)->content);
-            $result = $this->scanner->scanFields(PlanText::fields(array_map(self::textOf(...), $tasks)));
+            $prompt = $this->prompts->build((string) $analysis->input_masked);
+            $scanned = $this->outputs->scan($this->gateway->generate($prompt->systemPrompt, $prompt->input)->content, $prompt->canary);
 
-            if ($result->blocks()) {
-                $this->block($analysisId, $user, $result);
+            if ($scanned->result->blocks()) {
+                $this->block($analysisId, $user, $scanned->result);
 
                 return;
             }
 
-            $maskedFields = $result->maskedFields ?? [];
-
-            // Masking made what the AI wrote too long for the plan. Cutting it could change what it says.
-            if (PlanText::tooLong($maskedFields) !== []) {
-                throw new InvalidAiOutputException('masked_too_long');
-            }
-
-            $this->creator->create($analysis, $user, self::maskedTasks($tasks, $maskedFields), $result);
+            $this->creator->create($analysis, $user, $scanned->tasks, $scanned->result);
         } catch (AiProviderException) {
             $this->fail($analysisId, self::ERROR_AI_UNAVAILABLE);
         } catch (InvalidAiOutputException|InvalidPlanException) {
@@ -157,43 +146,11 @@ final readonly class AnalysisProcessor
                 'finished_at' => now(),
             ])->save();
         });
-    }
 
-    /**
-     * @return array{title: string, description: string, steps: list<string>, target_data: string, impact_summary: string}
-     */
-    private static function textOf(ValidatedTask $task): array
-    {
-        return [
-            'title' => $task->title,
-            'description' => $task->description,
-            'steps' => $task->steps,
-            'target_data' => $task->targetData,
-            'impact_summary' => $task->impactSummary,
-        ];
-    }
-
-    /**
-     * @param  list<ValidatedTask>  $tasks
-     * @param  array<string, string>  $maskedFields
-     * @return list<ValidatedTask>
-     */
-    private static function maskedTasks(array $tasks, array $maskedFields): array
-    {
-        $masked = PlanText::withMasked(array_map(self::textOf(...), $tasks), $maskedFields);
-
-        return array_map(fn (ValidatedTask $task, array $text) => new ValidatedTask(
-            $text['title'],
-            $text['description'],
-            $task->actionType,
-            $text['steps'],
-            $task->priority,
-            $task->requestedPermissions,
-            $text['target_data'],
-            $text['impact_summary'],
-            $task->decision,
-            $task->permissions,
-        ), $tasks, $masked);
+        if ($result->blockReason === InputScanResult::REASON_CANARY) {
+            // Someone may have got the prompt out of the model, which is worth looking at soon. The canary is not here.
+            Log::error('security.canary_leak', ['metric' => 'security.canary_leak', 'analysis_id' => $analysisId]);
+        }
     }
 
     private function record(string $analysisId, string $errorCode): void

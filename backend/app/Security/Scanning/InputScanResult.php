@@ -10,6 +10,8 @@ use LogicException;
  */
 final readonly class InputScanResult
 {
+    public const REASON_CANARY = 'CANARY_LEAK';
+
     public const REASON_MASK_FAILED = 'MASK_FAILED';
 
     public const REASON_SECRET = 'SECRET_DETECTED';
