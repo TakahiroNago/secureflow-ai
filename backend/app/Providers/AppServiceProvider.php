@@ -13,8 +13,10 @@ use App\Domain\Auth\RedisPendingFingerprintStore;
 use App\Domain\Auth\RedisRetiredSessions;
 use App\Domain\Auth\RetiredSessions;
 use App\Http\Middleware\StartSessionUnlessRetired;
+use App\Models\AiAnalysisRequest;
 use App\Models\User;
 use App\Models\Workflow;
+use App\Policies\AnalysisPolicy;
 use App\Policies\WorkflowPolicy;
 use App\Support\Database\DatabaseCommandPolicy;
 use App\Support\Database\SingleConnectPostgresConnection;
@@ -102,6 +104,7 @@ class AppServiceProvider extends ServiceProvider
         });
 
         Gate::policy(Workflow::class, WorkflowPolicy::class);
+        Gate::policy(AiAnalysisRequest::class, AnalysisPolicy::class);
 
         // Cookie sessions only. There is no personal_access_tokens table, and a bearer token must
         // simply be unauthenticated rather than reach a query on a table that does not exist.
@@ -122,6 +125,12 @@ class AppServiceProvider extends ServiceProvider
                 Limit::perMinute(5)->by(hash('sha256', mb_strtolower(is_string($email) ? $email : '').'|'.$ip)),
                 Limit::perMinute(config()->integer('audit.login_ip_limit_per_minute'))->by('ip|'.$this->addressKey($ip)),
             ];
+        });
+
+        RateLimiter::for('analyses', function (Request $request): Limit {
+            $user = $request->user();
+
+            return Limit::perMinute(10)->by($user instanceof User ? $user->id : (string) $request->ip());
         });
 
         RateLimiter::for('account-password', function (Request $request): Limit {

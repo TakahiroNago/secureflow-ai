@@ -379,6 +379,7 @@ AI出力スキーマ（概要）：
 | `security.blocked` | 検査による処理停止（理由コード：`SECRET_DETECTED` / `INJECTION_HIGH` / `MASK_FAILED` / `CANARY_LEAK` 等） |
 | `ai.call` | AI呼び出し（成功・失敗・上限超過） |
 | `workflow.created` / `workflow.updated` / `workflow.submitted` / `workflow.reopened` | ワークフロー操作（**その操作を追加する工程で同時に記録する。** 作成・編集は工程1-6、提出・reopen は工程2-5） |
+| `analysis.failed` | 分析の失敗（理由コードと分析の ID のみ。工程1-6） |
 | `approval.approved` / `approval.rejected` / `approval.denied` | 承認（自己承認・ハッシュ不一致等の拒否を含む。工程2-5） |
 | `execution.started` / `execution.completed` / `execution.failed` / `execution.denied` | 実行（工程2-6） |
 | `authz.denied` | 403/404 となった認可拒否 |

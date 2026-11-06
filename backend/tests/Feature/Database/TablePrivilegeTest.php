@@ -34,6 +34,9 @@ it('grants the application role exactly the designed table privileges', function
     'workflow_executions' => ['workflow_executions', ['SELECT', 'INSERT']],
     'workflow_revisions' => ['workflow_revisions', ['SELECT', 'INSERT']],
     'approvals' => ['approvals', ['SELECT', 'INSERT']],
+    'ai_analysis_requests' => ['ai_analysis_requests', ['SELECT', 'INSERT']],
+    'jobs' => ['jobs', ['SELECT', 'INSERT', 'UPDATE', 'DELETE']],
+    'failed_jobs' => ['failed_jobs', ['SELECT', 'INSERT', 'DELETE']],
 ]);
 
 it('grants UPDATE only on the columns that may change', function (string $table, array $expected) {
@@ -55,6 +58,7 @@ it('grants UPDATE only on the columns that may change', function (string $table,
     'workflow_executions' => ['workflow_executions', ['status', 'started_at', 'heartbeat_at', 'finished_at', 'result', 'error_code', 'updated_at']],
     'workflow_revisions' => ['workflow_revisions', []],
     'approvals' => ['approvals', []],
+    'ai_analysis_requests' => ['ai_analysis_requests', ['status', 'input_masked', 'input_scan_id', 'output_scan_id', 'workflow_id', 'error_code', 'started_at', 'heartbeat_at', 'finished_at', 'updated_at']],
 ]);
 
 it('grants INSERT on no column of audit_logs: appends go through audit_append()', function () {

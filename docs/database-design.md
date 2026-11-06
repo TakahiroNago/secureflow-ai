@@ -1,7 +1,7 @@
 # SecureFlow AI — データベース設計書
 
-- 版：v1.7（2026-11-06）
-- 状態：確定（v1.7：工程1-5 のワークフローのテーブルの判断を反映。v1.6：工程1-3 の監査ログハッシュチェーンを反映。v1.5：テスト専用 app ロールを追加。v1.4：テスト専用 owner ロールとコマンド制限を追加。v1.3：工程1-1 の設計レビューを反映。v1.2：列挙列の NOT NULL 方針を明記。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.8（2026-11-06）
+- 状態：確定（v1.8：工程1-6 の分析の依頼とキューのテーブルを反映。v1.7：工程1-5 のワークフローのテーブルの判断を反映。v1.6：工程1-3 の監査ログハッシュチェーンを反映。v1.5：テスト専用 app ロールを追加。v1.4：テスト専用 owner ロールとコマンド制限を追加。v1.3：工程1-1 の設計レビューを反映。v1.2：列挙列の NOT NULL 方針を明記。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - DBMS：PostgreSQL 18.6（インフラ要件。`compose.yaml` でタグを固定する）
 
 ---
@@ -87,11 +87,11 @@ security_test_runs 1─* security_test_results
 | id | uuid | PK | |
 | organization_id / user_id | uuid | FK NOT NULL | |
 | status | varchar(16) | CHECK IN ('queued','processing','succeeded','blocked','failed') | |
-| input_masked | text | NULL | マスク済み入力。**処理完了時に NULL 化**。入力検査で block となった場合はレコードを作成しない（スキャン結果のみ保存） |
+| input_masked | text | NULL | マスク済み入力。**処理完了時に NULL 化**。入力検査で block となった場合はレコードを作成しない（スキャン結果のみ保存）。**工程2-3 まではマスキングがないため常に NULL で、入力を保存しない** |
 | input_char_count | integer | NOT NULL | |
-| input_scan_id | uuid | FK security_scans NULL | |
-| output_scan_id | uuid | FK security_scans NULL | |
-| workflow_id | uuid | FK NULL | 成功時に設定 |
+| input_scan_id | uuid | NULL（FK は工程2-3） | |
+| output_scan_id | uuid | NULL（FK は工程2-3） | |
+| workflow_id | uuid | FK NULL, UNIQUE, CHECK（`status = 'succeeded'` と同時に NOT NULL） | 成功時に設定 |
 | error_code | varchar(64) | NULL | 内部情報を含まないコード |
 | started_at / heartbeat_at / finished_at | timestamptz | NULL | 停滞回収用 |
 | created_at / updated_at | timestamptz | NOT NULL | |
@@ -104,7 +104,7 @@ security_test_runs 1─* security_test_results
 | organization_id | uuid | FK NOT NULL | |
 | created_by | uuid | FK users NOT NULL | |
 | title | varchar(200) | NOT NULL | |
-| source_input_masked | text | NOT NULL | 生成元のマスク済み入力（原文は保存しない） |
+| source_input_masked | text | NULL（工程1-6で変更） | 生成元のマスク済み入力（原文は保存しない）。**NULL は保存していないことを表す。** 工程2-3 まではマスキングがないため常に NULL。ダミーの文字列は入れない |
 | status | varchar(16) | CHECK IN ('draft','pending','approved','running','completed','rejected','failed') | |
 | current_revision_id | uuid | FK workflow_revisions NULL（DEFERRABLE） | |
 | max_severity | varchar(8) | CHECK IN ('low','medium','high','critical') NULL | 最新検査の最大 severity（表示・承認時のリスク確認用。処理の流れは scan_decision で決まる） |
@@ -475,7 +475,7 @@ PHP の検証器（`AuditChainVerifier`）は `audit_append()` の補助関数�
 
 ### 3.15 Laravel標準
 
-- `migrations`、`failed_jobs`（ペイロードはIDのみ。テーブルと権限はジョブを導入する工程1-6で追加する）。キュー・キャッシュ・セッション・レート制限は Redis。
+- `migrations`、`jobs`、`failed_jobs`（ペイロードはIDのみ。工程1-6で追加）。**キューは DB（[architecture.md §10](architecture.md)）。** キャッシュ・セッション・レート制限は Redis。
 - Sanctum SPA認証のため `personal_access_tokens` は作成しない。
 
 ## 4. DBロールと権限
@@ -507,14 +507,16 @@ PHP の検証器（`AuditChainVerifier`）は `audit_append()` の補助関数�
 
 | テーブル | secureflow_app の権限 |
 |---|---|
-| organizations, organization_settings, users, ai_analysis_requests, security_findings, security_test_runs | SELECT, INSERT, UPDATE |
+| organizations, organization_settings, users, security_findings, security_test_runs | SELECT, INSERT, UPDATE |
+| ai_analysis_requests | SELECT, INSERT。UPDATE は `status`, `input_masked`, `input_scan_id`, `output_scan_id`, `workflow_id`, `error_code`, `started_at`, `heartbeat_at`, `finished_at`, `updated_at` のみ |
 | workflows | SELECT, INSERT。UPDATE は `title`, `status`, `current_revision_id`, `max_severity`, `lock_version`, `submitted_at`, `updated_at` のみ |
 | workflow_tasks | SELECT, INSERT, DELETE。UPDATE は `position`, `title`, `description`, `action_type`, `steps`, `priority`, `target_data`, `impact_summary`, `derived_permissions`, `ai_claimed_permissions`, `policy_decision`, `updated_at` のみ |
 | workflow_executions | SELECT, INSERT。UPDATE は `status`, `started_at`, `heartbeat_at`, `finished_at`, `result`, `error_code`, `updated_at` のみ |
 | **approvals, workflow_revisions, security_scans, ai_usage_logs, security_test_results** | **SELECT, INSERT のみ** |
 | **audit_logs** | **SELECT のみ**（追記は `audit_append()` の EXECUTE を通じてのみ行う） |
 | **audit_chain_heads** | **SELECT のみ** |
-| failed_jobs | 工程1-6で追加（§3.15） |
+| jobs | SELECT, INSERT, UPDATE, DELETE（シーケンスの USAGE を含む。工程1-6） |
+| failed_jobs | SELECT, INSERT, DELETE（シーケンスの USAGE を含む。工程1-6） |
 
 | 関数 | secureflow_app の権限 |
 |---|---|

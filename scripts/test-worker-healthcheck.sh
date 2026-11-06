@@ -71,8 +71,8 @@ test_service() { # service artisan-command other-artisan-command
   probe "$c"; result "the other service's process does not satisfy the check" bad $?
 }
 
-test_service worker "queue:work redis" "schedule:work"
-test_service scheduler "schedule:work" "queue:work redis"
+test_service worker "queue:work database" "schedule:work"
+test_service scheduler "schedule:work" "queue:work database"
 
 echo
 echo "Result: $pass passed, $fail failed"

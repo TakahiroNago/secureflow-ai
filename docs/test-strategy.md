@@ -1,7 +1,7 @@
 # SecureFlow AI — テスト戦略
 
-- 版：v1.7（2026-11-06）
-- 状態：確定（v1.7：工程1-5 のワークフロー基盤のテストを追加。v1.6：AUDIT-LOAD-01 の測定結果を追加。v1.5：工程1-4 の AI 基盤のテストを追加。v1.4：工程1-3 の監査ログテストを追加。v1.3：工程1-2 の認証テストを追加。v1.2：工程1-1 の設計レビューと検査の修正を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.8（2026-11-06）
+- 状態：確定（v1.8：工程1-6 の分析とワークフロー API のテストを追加。v1.7：工程1-5 のワークフロー基盤のテストを追加。v1.6：AUDIT-LOAD-01 の測定結果を追加。v1.5：工程1-4 の AI 基盤のテストを追加。v1.4：工程1-3 の監査ログテストを追加。v1.3：工程1-2 の認証テストを追加。v1.2：工程1-1 の設計レビューと検査の修正を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -259,7 +259,7 @@ Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・�
 | AUDIT-SESSION-03 | 応答の到着順とセッションの Cookie（`scripts/test-session-cookie-order.sh`、`scripts/test-session-browser.sh`、Pest。使い捨ての環境） | 完了した `GET` の応答を止め、ログアウトまたはパスワード変更の応答より後に届ける。curl は到着順に Cookie を適用する。実ブラウザは Chromium、Firefox、WebKit で、中継のプロキシが応答を止める（アプリの変更なし）。古いIDが Redis に復活しない。最終の Cookie で `auth/me` が 401。`csrf-cookie` は廃止済みのIDに Cookie を返さない。Cookie を消さない再ログインは、`Sec-Fetch-Site` を送るブラウザで 200、送らないクライアントで 419 となり、Cookie を消すと 200。止めない重複の頻度も記録する。古いIDで送った `csrf-cookie` が変更の後に処理されても、新しいセッションの Cookie が変わらないことを確認する |
 | AUTH-E2E-01 | 実際のログイン画面（`scripts/test-login-browser.sh`、Vitest。使い捨ての環境と CI） | nginx が配信するビルド済みの画面を、Chromium、Firefox、WebKit で操作する。入力とクリックでログインし、「ようこそ」の画面に留まる。ログインの完了後に送った `auth/me` がすべて 200。再読み込みでログインが続く。ログアウトでログイン画面に戻り、再読み込みでも戻らない。ページの `Referrer-Policy` は `no-referrer` のまま |
 | AUDIT-CSRF-01 | 419 と 401 の区別 | Cookie なし、セッションの不在・期限切れ、ログインのないセッションは、状態を変更する要求でも 401。ログイン済みのセッションで CSRF トークンなしは 419。ログイン API の CSRF トークンなしは 419。並行試験で 419 が出る場合は注記として記録する |
-| AUDIT-WORKER-01 | Redis の障害と `worker`（`scripts/test-worker-redis-failure.sh`。使い捨ての環境） | テスト用のジョブで、待機中と実行中のジョブの Redis の停止と強制終了の後の動作、再実行、`failed_jobs` への記録、`worker` の再起動と復帰を確認する。**再現した現象は未検証事項ではなく既知の制約として** [architecture.md §10](architecture.md) に記録する |
+| AUDIT-WORKER-01 | キューの障害（`scripts/test-worker-failure.sh`。使い捨ての環境。工程1-6 で DB キュー向けに置き換えた） | [§19](#19-工程1-6-の分析とワークフロー-api-のテスト) を参照。Redis キューで再現した現象は [architecture.md §10](architecture.md) に記録している |
 | AUDIT-E2E-01 | 実際の HTTP での通し確認（`scripts/test-auth-flow.sh`） | 工程1-2 の「監査ログが0件」の確認を、イベントが記録され `audit:verify --all` が成功する確認に置き換える |
 
 **パスワード変更の障害テスト（AUDIT-PWCHG-01）：** 「注入」は `DatabaseTransactions` を使わない Pest のテストで、失敗する処理に差し替える。「実環境」は使い捨ての環境で実際の Redis を操作する（`scripts/` の通しテスト。実行前に確認を得る）。
@@ -479,3 +479,17 @@ Redis の停止（`docker compose stop`）と凍結（`docker compose pause`）�
 | ST-23 | 組織スコープ | 2組織×全モデル。文脈がなければクエリを実行しない。別の組織の行を読めず、更新できず、作成できず、移動できない。**全エンドポイントの確認は工程1-6** | `tests/Isolation/WorkflowIsolationTest.php` |
 | ST-12, 21, 23 | HTTP の応答 | 別の組織、別の member、存在しない ID の 404 の本文が `trace_id` を除いて同一である。UUID でない ID も 404。403、409 の RFC 9457 形式。応答に内部情報と内容を含めない | `tests/Feature/Workflow/WorkflowHttpTest.php` |
 | ST-34 | ルート | 全ルートの認証、組織の文脈、Policy を自動検査する。欠けたルートを実際に登録して検出できることも確認する。組織の文脈がルートモデルバインディングより先に設定される | `tests/Security/RouteAuthorizationTest.php` |
+
+## 19. 工程1-6 の分析とワークフロー API のテスト
+
+| ID | 対象 | 内容 | ファイル |
+|---|---|---|---|
+| WF-JOB-01 | 分析の処理 | Workflow、Revision #1、Tasks、監査記録が1つのトランザクションで保存される。権限は AI の申告でなくサーバーが導出する。再実行しても二重に作らない。他の処理が取得した行に触れない。ST-07（不正な出力で失敗し、何も保存しない）。監査を記録できなければ何も保存しない | `tests/Feature/Workflow/AnalysisJobTest.php` |
+| WF-QUEUE-01 | キュー | ジョブと行が一緒にコミット・ロールバックされる。ジョブは ID のみを持つ。実際の worker で処理される。時間制限の順序（AI の最長 < ジョブ < `retry_after`、停滞の判定 > ジョブ）。戻ってきたジョブが `failed_jobs` と業務の失敗を分けて記録する | 同上、`scripts/test-compose-env.sh` |
+| WF-REC-01 | 停滞回収 | 動作中のものを回収しない。全組織の停滞を回収する。回収の後に戻った処理は何も保存しない。成功は取り消されない | 同上 |
+| WF-API-01 | 分析の API | 入力をどこにも保存しない（行、ジョブ、ログ、全テーブル）。エラーに入力を含めない。長さの上限、未知の項目、10回/分。参照は依頼者本人のみ（admin も 404） | `tests/Feature/Workflow/AnalysisApiTest.php` |
+| WF-API-02 | ワークフローの API | 一覧の範囲、絞り込み、カーソル。編集で新しいリビジョンとハッシュ。古いリビジョンは変わらない。ST-09、ST-17。サーバーが決める項目を受け付けない。`If-Match` の 428 と 409。タスクの上限と下限。別のワークフローのタスクは 404。監査の失敗で変更が残らない | `tests/Feature/Workflow/WorkflowApiTest.php` |
+| ST-23, ST-34 | 全エンドポイント | リソースを取る全エンドポイント×別組織の3ロールが 404 で何も変えない。一覧とルート一覧を照合し、新しいエンドポイントの追加漏れを検出する | `tests/Isolation/EndpointIsolationTest.php` |
+| WF-UI-01 | 画面 | 常に警告を表示する。応答の検証。AI やユーザーの文字列をマークアップとして描画しない。`If-Match` と送信する項目。競合で入力を失わない。ポーリングの停止 | `frontend/src/features/workflows/workflows.test.tsx` |
+| WF-FLOW-01 | 実 HTTP と実 worker | 入力から編集まで。**入力が DB の全データとログに現れない**ことを `pg_dump` とログで確認する。チェーンの検証 | `scripts/test-workflow-flow.sh`（CI） |
+| AUDIT-WORKER-01 | 実際の障害（使い捨ての環境） | 待機中の Redis の強制終了でジョブが残り1回実行される。死んだ worker のジョブが戻ると行が失敗になる。ジョブのない停滞を実際の scheduler が回収する。PostgreSQL の再起動から回復する。時間制限を超えたジョブが止まる | `scripts/test-worker-failure.sh` |
