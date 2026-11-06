@@ -111,7 +111,31 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   page.on('pageerror', (e) => problems.push(String(e)));
   await page.getByRole('link', { name: 'ワークフロー', exact: true }).click();
   await page.getByRole('link', { name: '新しく作成' }).click();
-  check('the input screen warns', (await page.getByRole('alert').textContent()).includes('機密情報や個人情報を入力しないでください'));
+  const notComplete = page.getByText('検出は完全ではないため', { exact: false });
+  await notComplete.waitFor({ timeout: 10000 }).catch(() => {});
+  check('the input screen says detection is not complete', await notComplete.isVisible());
+
+  // Built here, so that the repository holds nothing shaped like a key for secret scanners to find.
+  const secret = 'gh' + 'p_' + 'A1b2C3d4'.repeat(4) + 'A1b2';
+  await page.getByLabel('依頼内容').fill('担当 user@example.com の件');
+  await page.getByRole('button', { name: '送信前に確認' }).click();
+  const masked = page.getByText('担当 [EMAIL_REDACTED] の件');
+  await masked.waitFor({ timeout: 10000 }).catch(() => {});
+  check('the check before sending shows the masked text', await masked.isVisible());
+  check('and what a scan cannot find', await page.getByText('検出されなかった情報が存在しないことは保証されません', { exact: false }).isVisible());
+
+  const typed = '😀前の文 ' + secret + ' 後の文';
+  await page.getByLabel('依頼内容').fill(typed);
+  await page.getByRole('button', { name: '分析する' }).click();
+  const stopped = page.getByText('検査により処理を停止しました', { exact: false });
+  await stopped.waitFor({ timeout: 10000 }).catch(() => {});
+  check('a secret stops the analysis', await stopped.isVisible());
+  check('and stays where it is, on this screen', new URL(page.url()).pathname === '/analyses/new', page.url());
+  check('what was typed is kept', (await page.getByLabel('依頼内容').inputValue()) === typed);
+  await page.getByRole('button', { name: '該当箇所を選択' }).click();
+  const selected = await page.getByLabel('依頼内容').evaluate((field) => field.value.slice(field.selectionStart, field.selectionEnd));
+  check('the place is selected', selected === secret, selected);
+
   await page.getByLabel('依頼内容').fill('週次の報告を作成する');
   await page.getByRole('button', { name: '分析する' }).click();
   await page.getByRole('button', { name: '編集' }).first().waitFor({ timeout: 30000 }).catch(() => {});
@@ -124,7 +148,9 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   await page.getByRole('link', { name: 'ダッシュボード' }).click();
   await page.getByText('今月の分析回数').waitFor({ timeout: 10000 }).catch(() => {});
   check('the dashboard counts it', (await page.locator('dt:text-is("ワークフロー数") + dd').textContent()) === '1');
-  check('what does not exist yet is not a zero', (await page.locator('dt:text-is("セキュリティ警告") + dd').textContent()) === '未実装');
+  check('what does not exist yet is not a zero', (await page.locator('dt:text-is("AI トークン") + dd').textContent()) === '未実装');
+  check('no warning was raised', (await page.locator('dt:text-is("セキュリティ警告") + dd').textContent()) === '0');
+  check('what the scans found is counted', Number(await page.locator('dt:text-is("検出されたリスク") + dd').textContent()) >= 2);
   await page.locator('.recharts-bar-rectangle').first().waitFor({ timeout: 5000 }).catch(() => {});
   check('the chart is drawn', (await page.locator('.recharts-bar-rectangle').count()) > 0);
   check('nothing failed on the page', problems.length === 0, problems.join('; '));

@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\AccountPasswordController;
 use App\Http\Controllers\Api\V1\AnalysisController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DashboardController;
+use App\Http\Controllers\Api\V1\SecurityController;
 use App\Http\Controllers\Api\V1\WorkflowController;
 use App\Http\Controllers\Api\V1\WorkflowTaskController;
 use App\Http\Controllers\HealthController;
@@ -41,6 +42,10 @@ Route::prefix('v1')->middleware('json.body')->group(function (): void {
         Route::get('/dashboard/summary', [DashboardController::class, 'summary'])
             ->middleware('can:viewAny,'.Workflow::class)
             ->name('dashboard.summary');
+
+        Route::post('/security/scan-preview', [SecurityController::class, 'scanPreview'])
+            ->middleware(['throttle:scan-preview', 'can:create,'.Workflow::class])
+            ->name('security.scan-preview');
 
         Route::post('/analyses', [AnalysisController::class, 'store'])
             ->middleware(['throttle:analyses', 'can:create,'.Workflow::class])

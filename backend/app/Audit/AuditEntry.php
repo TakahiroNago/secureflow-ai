@@ -36,9 +36,9 @@ final readonly class AuditEntry
     /**
      * @param  array<string, string|int|bool>  $metadata
      */
-    public static function byUserOn(AuditEventType $type, User $user, string $resourceType, string $resourceId, array $metadata = []): self
+    public static function byUserOn(AuditEventType $type, User $user, string $resourceType, string $resourceId, array $metadata = [], string $result = 'success'): self
     {
-        return new self($type, $user->organization_id, 'user', $user->id, 'success', $resourceType, $resourceId, self::allowed($type, $metadata));
+        return new self($type, $user->organization_id, 'user', $user->id, $result, $resourceType, $resourceId, self::allowed($type, $metadata));
     }
 
     /**

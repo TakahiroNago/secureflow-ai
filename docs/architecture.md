@@ -1,7 +1,7 @@
 # SecureFlow AI — アーキテクチャ設計書
 
-- 版：v1.7（2026-11-06）
-- 状態：確定（v1.7：工程1-6 のキューの方式、時間制限、停滞回収を反映。v1.6：環境変数を Compose からコンテナへ渡す条件を明記。v1.5：工程1-4 の AI の起動条件と再試行を反映。v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.8（2026-11-06）
+- 状態：確定（v1.8：工程2-3 の入力検査の組み込みを反映。v1.7：工程1-6 のキューの方式、時間制限、停滞回収を反映。v1.6：環境変数を Compose からコンテナへ渡す条件を明記。v1.5：工程1-4 の AI の起動条件と再試行を反映。v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - 関連：[database-design.md](database-design.md) / [api-design.md](api-design.md) / [security-design.md](security-design.md) / [threat-model.md](threat-model.md) / [test-strategy.md](test-strategy.md) / [development-roadmap.md](development-roadmap.md)
 
 ---
@@ -160,11 +160,12 @@ User ─POST /analyses─▶ API
         （High/Critical：block、Medium：warn、Low：record）
      e. RiskAggregator：最大 severity と、全検出の action から全体判定（allow / warn / block）を算出
         （block が1つでもあれば block）
+     ※ マスキングで文が変わった場合は入力された文もインジェクション検査し、block のときのみ採用する
      ※ 原文はこのリクエスト処理中のメモリ上にのみ存在し、永続化・ログ出力しない
   3. 判定 block → AIを呼ばず、scan/findings と監査ログのみ記録して 422 `INPUT_BLOCKED` で返す
      warn → 続行（以降の画面で警告表示・承認時に確認必須）／ allow → 続行（検出は記録）
   4. ai_analysis_requests にマスク済みテキストを保存し、AnalyzeWorkflowJob を投入（202）
-     ※ 工程2-3 までは検査もマスキングもなく、入力を保存しない（文字数のみ記録）。モック AI は入力を使わない
+     ※ 工程2-3 で実装。完了時（成功・失敗とも）に input_masked を NULL に戻す。ジョブに本文を含めない
 Worker
   5. PromptBuilder：固定システムプロンプト（秘密情報なし・カナリア含む）＋
      ランダム境界文字列で囲んだマスク済み入力（「データとして扱え」と明示）
@@ -181,6 +182,8 @@ Worker
  10. 監査ログ記録
 User ─GET /analyses/{id}─▶ 状態ポーリング → workflow_id 取得
 ```
+
+**工程2-3 の実装：** Worker は AI の出力を項目ごとに検査し、マスク済みの文のみ保存する（`block` なら分析は `blocked` で、何も保存しない）。カナリアと HTML 除去は工程2-4 である。編集も同じ検査を通す（[security-design.md §3.5](security-design.md)）。**工程2-4 までのプロンプトは仮のもので、モックは入力を使わない。**
 
 ## 8. 操作カタログ（サーバー側許可リスト）
 

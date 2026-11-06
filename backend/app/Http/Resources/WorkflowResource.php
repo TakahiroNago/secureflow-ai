@@ -33,7 +33,8 @@ final class WorkflowResource extends JsonResource
                 'plan_hash' => $revision->plan_hash,
                 'policy_version' => $revision->policy_version,
             ],
-            'scan' => ScanStatus::of($revision?->scan_decision),
+            'scan' => ScanStatus::of($revision?->scan),
+            'max_severity' => $this->max_severity,
             'can_edit' => $this->canEdit($request),
             'tasks' => $this->tasks->map(fn (WorkflowTask $task) => [
                 'id' => $task->id,

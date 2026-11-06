@@ -48,10 +48,61 @@ function userIn(string $organizationId, string $role = 'member', array $attribut
 }
 
 /**
+ * A scan that found nothing, for rows that have to point at one.
+ *
+ * @param  array<string, mixed>  $overrides
+ */
+function insertScan(Connection $db, string $organizationId, array $overrides = []): string
+{
+    $row = $overrides + [
+        'id' => (string) Str::uuid7(),
+        'organization_id' => $organizationId,
+        'target_type' => 'input',
+        'ruleset_version' => 'test',
+        'decision' => 'allow',
+        'masking_status' => 'not_required',
+        'findings_count' => 0,
+        'duration_ms' => 1,
+        'created_at' => now()->toIso8601String(),
+    ];
+    $db->table('security_scans')->insert($row);
+
+    return (string) $row['id'];
+}
+
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function insertFinding(Connection $db, string $organizationId, string $scanId, array $overrides = []): string
+{
+    $row = $overrides + [
+        'id' => (string) Str::uuid7(),
+        'organization_id' => $organizationId,
+        'scan_id' => $scanId,
+        'category' => 'pii',
+        'rule_id' => 'PII-EMAIL',
+        'severity' => 'medium',
+        'action' => 'mask_continue',
+        'message' => 'Example',
+        'created_at' => now()->toIso8601String(),
+        'updated_at' => now()->toIso8601String(),
+    ];
+    $db->table('security_findings')->insert($row);
+
+    return (string) $row['id'];
+}
+
+/**
+ * Scanned, unless the test says something about the scan itself.
+ *
  * @param  array<string, mixed>  $overrides
  */
 function insertRevision(Connection $db, Workflow $workflow, array $overrides = []): string
 {
+    if (! array_key_exists('scan_id', $overrides) && ! array_key_exists('scan_decision', $overrides)) {
+        $overrides += ['scan_id' => insertScan($db, $workflow->organization_id), 'scan_decision' => 'allow'];
+    }
+
     $row = $overrides + [
         'id' => (string) Str::uuid7(),
         'organization_id' => $workflow->organization_id,
@@ -146,7 +197,9 @@ function resetWorkflowTables(): void
     $db = ownerDb();
     $db->statement('ALTER TABLE workflow_revisions DISABLE TRIGGER USER');
     $db->statement('ALTER TABLE approvals DISABLE TRIGGER USER');
-    $db->statement('TRUNCATE ai_analysis_requests, jobs, failed_jobs, workflow_executions, approvals, workflow_tasks, workflow_revisions, workflows');
+    $db->statement('ALTER TABLE security_scans DISABLE TRIGGER USER');
+    $db->statement('TRUNCATE ai_analysis_requests, jobs, failed_jobs, workflow_executions, approvals, workflow_tasks, workflow_revisions, workflows, security_findings, security_scans');
+    $db->statement('ALTER TABLE security_scans ENABLE TRIGGER USER');
     $db->statement('ALTER TABLE workflow_revisions ENABLE TRIGGER USER');
     $db->statement('ALTER TABLE approvals ENABLE TRIGGER USER');
 }

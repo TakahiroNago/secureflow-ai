@@ -1,11 +1,30 @@
 import { z } from 'zod'
-import { apiRequest } from '../../api/client'
+import { ApiError, apiRequest } from '../../api/client'
 
 /* docs/api-design.md §3.3, §3.4. Everything here is untrusted until it has been parsed, and text is only ever drawn as text. */
 
+const severitySchema = z.enum(['low', 'medium', 'high', 'critical'])
+
+const findingSchema = z.object({
+  category: z.string(),
+  rule_id: z.string(),
+  severity: severitySchema,
+  action: z.enum(['record', 'mask_continue', 'warn', 'block']),
+  message: z.string(),
+  field: z.string().nullable(),
+  position_start: z.number().nullable(),
+  position_end: z.number().nullable(),
+})
+
 const scanSchema = z.object({
   status: z.enum(['not_scanned', 'scanned']),
-  decision: z.string().nullable(),
+  decision: z.enum(['allow', 'warn', 'block']).nullable(),
+  block_reason: z.string().nullable(),
+  max_severity: severitySchema.nullable(),
+  masking_status: z.string().nullable(),
+  masked_input: z.string().optional(),
+  findings: z.array(findingSchema),
+  findings_count: z.number(),
   limitations_notice: z.string(),
 })
 
@@ -52,6 +71,7 @@ const workflowSchema = z.object({
   created_by: personSchema,
   current_revision: z.object({ no: z.number(), plan_hash: z.string(), policy_version: z.string() }).nullable(),
   scan: scanSchema,
+  max_severity: severitySchema.nullable(),
   can_edit: z.boolean(),
   tasks: z.array(taskSchema),
 })
@@ -63,7 +83,10 @@ const listSchema = z.object({
 
 const analysisResponse = z.object({ data: analysisSchema }).transform((response) => response.data)
 const workflowResponse = z.object({ data: workflowSchema }).transform((response) => response.data)
+const scanResponse = z.object({ data: scanSchema }).transform((response) => response.data)
 
+export type Scan = z.infer<typeof scanSchema>
+export type Finding = z.infer<typeof findingSchema>
 export type Analysis = z.infer<typeof analysisSchema>
 export type WorkflowSummary = z.infer<typeof summarySchema>
 export type Workflow = z.infer<typeof workflowSchema>
@@ -71,6 +94,21 @@ export type Task = z.infer<typeof taskSchema>
 export type TaskFields = Pick<Task, 'title' | 'description' | 'action_type' | 'steps' | 'priority' | 'target_data' | 'impact_summary'>
 
 const revision = (no: number) => ({ 'If-Match': `"${String(no)}"` })
+
+export function previewScan(input: string): Promise<Scan> {
+  return apiRequest('POST', '/api/v1/security/scan-preview', scanResponse, { input })
+}
+
+/** The scan in a refusal, or null for any other error. */
+export function blockedScan(error: unknown): Scan | null {
+  if (!(error instanceof ApiError) || error.code !== 'INPUT_BLOCKED') {
+    return null
+  }
+
+  const parsed = scanSchema.safeParse(error.scan)
+
+  return parsed.success ? parsed.data : null
+}
 
 export function requestAnalysis(input: string): Promise<Analysis> {
   return apiRequest('POST', '/api/v1/analyses', analysisResponse, { input })

@@ -14,7 +14,39 @@ const user = (role = 'member') => ({
   organization: { id: '019a0000-0000-7000-8000-000000000002', name: 'Example Org' },
 })
 
-const scan = { status: 'not_scanned', decision: null, limitations_notice: '検出は完全ではありません。' }
+const NOTICE = '検出は完全ではありません。'
+
+const notScanned = { status: 'not_scanned', decision: null, block_reason: null, max_severity: null, masking_status: null, findings: [], findings_count: 0, limitations_notice: NOTICE }
+
+const scan = { ...notScanned, status: 'scanned', decision: 'allow', masking_status: 'not_required' }
+
+const finding = (overrides = {}) => ({
+  category: 'pii',
+  rule_id: 'PII-EMAIL',
+  severity: 'medium',
+  action: 'mask_continue',
+  message: 'メールアドレスを検出しマスキングしました',
+  field: null,
+  position_start: 3,
+  position_end: 19,
+  ...overrides,
+})
+
+const blockedBody = (overrides = {}) => ({
+  ...scan,
+  decision: 'block',
+  block_reason: 'SECRET_DETECTED',
+  max_severity: 'critical',
+  findings: [finding({ category: 'secret', rule_id: 'SEC-APIKEY', severity: 'critical', action: 'block', message: 'APIキー形式の文字列を検出しました', position_start: 2, position_end: 8 })],
+  findings_count: 1,
+  ...overrides,
+})
+
+const refused = (body: unknown) =>
+  new Response(JSON.stringify({ type: 'x', title: 'x', status: 422, code: 'INPUT_BLOCKED', detail: 'server text that is not shown', scan: body }), {
+    status: 422,
+    headers: { 'Content-Type': 'application/problem+json' },
+  })
 
 const task = (overrides = {}) => ({
   id: TASK_ID,
@@ -38,6 +70,7 @@ const workflow = (overrides = {}) => ({
   created_by: { id: 'u', name: 'Example User' },
   current_revision: { no: 3, plan_hash: 'a'.repeat(64), policy_version: '2026.11.1' },
   scan,
+  max_severity: null,
   can_edit: true,
   tasks: [task()],
   ...overrides,
@@ -92,11 +125,118 @@ afterEach(() => {
 })
 
 describe('new analysis', () => {
-  it('always warns that nothing is scanned', async () => {
+  it('says before anything is typed that detection is not complete, and does not claim nothing is scanned', async () => {
     server({})
     open('/analyses/new')
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('機密情報や個人情報を入力しないでください')
+    expect(await screen.findByText('検出は完全ではないため', { exact: false })).toBeInTheDocument()
+    expect(screen.queryByText('未実装', { exact: false })).not.toBeInTheDocument()
+  })
+
+  it('shows what would be kept, and what was found, before sending anything to the AI', async () => {
+    const spy = server({
+      'POST /api/v1/security/scan-preview': () =>
+        json({ data: { ...scan, masking_status: 'masked', masked_input: '担当 [EMAIL_REDACTED] の件', findings: [finding()], findings_count: 1, max_severity: 'medium' } }),
+    })
+    open('/analyses/new')
+
+    fireEvent.change(await screen.findByLabelText('依頼内容'), { target: { value: '担当 user@example.com の件' } })
+    fireEvent.click(screen.getByRole('button', { name: '送信前に確認' }))
+
+    expect(await screen.findByText('担当 [EMAIL_REDACTED] の件')).toBeInTheDocument()
+    expect(screen.getByText('マスキング済み')).toBeInTheDocument()
+    expect(screen.getByText('重大度：中')).toBeInTheDocument()
+    expect(screen.getByText('処理：マスキングして続行')).toBeInTheDocument()
+    expect(screen.getByText(NOTICE)).toBeInTheDocument()
+    expect(callsTo(spy, 'POST /api/v1/analyses')).toHaveLength(0)
+  })
+
+  it('does not call a clean result safe, and always shows the notice', async () => {
+    server({ 'POST /api/v1/security/scan-preview': () => json({ data: { ...scan, masked_input: '普通の文' } }) })
+    open('/analyses/new')
+
+    fireEvent.change(await screen.findByLabelText('依頼内容'), { target: { value: '普通の文' } })
+    fireEvent.click(screen.getByRole('button', { name: '送信前に確認' }))
+
+    expect(await screen.findByText('検出なし')).toBeInTheDocument()
+    expect(screen.getByText(NOTICE)).toBeInTheDocument()
+    expect(screen.queryByText('安全', { exact: false })).not.toBeInTheDocument()
+  })
+
+  it('forgets a preview as soon as the text changes', async () => {
+    server({ 'POST /api/v1/security/scan-preview': () => json({ data: { ...scan, masked_input: '前の結果' } }) })
+    open('/analyses/new')
+
+    const field = await screen.findByLabelText('依頼内容')
+    fireEvent.change(field, { target: { value: 'x' } })
+    fireEvent.click(screen.getByRole('button', { name: '送信前に確認' }))
+    expect(await screen.findByText('前の結果')).toBeInTheDocument()
+
+    fireEvent.change(field, { target: { value: 'xy' } })
+    await waitFor(() => {
+      expect(screen.queryByText('前の結果')).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows why it stopped, keeps the text, and selects the place, counting characters as the server does', async () => {
+    server({ 'POST /api/v1/analyses': () => refused(blockedBody()) })
+    open('/analyses/new')
+
+    const field = await screen.findByLabelText<HTMLTextAreaElement>('依頼内容')
+    // The first character takes two UTF-16 units.
+    fireEvent.change(field, { target: { value: '😀あSECRET後' } })
+    fireEvent.click(screen.getByRole('button', { name: '分析する' }))
+
+    expect(await screen.findByText('検査により処理を停止しました', { exact: false })).toBeInTheDocument()
+    expect(screen.getByText('APIキー形式の文字列を検出しました')).toBeInTheDocument()
+    expect(screen.getByText('重大度：重大')).toBeInTheDocument()
+    expect(screen.getByText('処理：停止')).toBeInTheDocument()
+    expect(screen.queryByText('server text that is not shown')).not.toBeInTheDocument()
+    expect(field).toHaveValue('😀あSECRET後')
+
+    fireEvent.click(screen.getByRole('button', { name: '該当箇所を選択' }))
+    expect(field.value.slice(field.selectionStart, field.selectionEnd)).toBe('SECRET')
+  })
+
+  it('offers no selection when the scan did not stop: the positions are of the masked text', async () => {
+    server({ 'POST /api/v1/security/scan-preview': () => json({ data: { ...scan, masked_input: 'x', findings: [finding()], findings_count: 1 } }) })
+    open('/analyses/new')
+
+    fireEvent.change(await screen.findByLabelText('依頼内容'), { target: { value: 'x' } })
+    fireEvent.click(screen.getByRole('button', { name: '送信前に確認' }))
+
+    await screen.findByText('メールアドレスを検出しマスキングしました')
+    expect(screen.queryByRole('button', { name: '該当箇所を選択' })).not.toBeInTheDocument()
+  })
+
+  it('says how many more findings there are than are shown', async () => {
+    server({ 'POST /api/v1/security/scan-preview': () => json({ data: { ...scan, masked_input: 'x', findings: [finding()], findings_count: 150 } }) })
+    open('/analyses/new')
+
+    fireEvent.change(await screen.findByLabelText('依頼内容'), { target: { value: 'x' } })
+    fireEvent.click(screen.getByRole('button', { name: '送信前に確認' }))
+
+    expect(await screen.findByText('ほかに 149 件の検出があります', { exact: false })).toBeInTheDocument()
+  })
+
+  it('says when the AI wrote something that stopped the analysis', async () => {
+    server({ [`GET /api/v1/analyses/${ANALYSIS_ID}`]: () => json({ data: analysis({ status: 'blocked', error_code: 'AI_OUTPUT_BLOCKED' }) }) })
+    open(`/analyses/${ANALYSIS_ID}`)
+
+    expect(await screen.findByText('AI の応答に秘密情報や攻撃と思われる内容', { exact: false })).toBeInTheDocument()
+    expect(screen.getByText(NOTICE)).toBeInTheDocument()
+  })
+
+  it('draws a masked text and a message as text, never as markup', async () => {
+    const attack = '<img src=x onerror="window.pwned=1">'
+    server({ 'POST /api/v1/security/scan-preview': () => json({ data: { ...scan, masked_input: attack, findings: [finding({ message: attack, field: attack })], findings_count: 1 } }) })
+    open('/analyses/new')
+
+    fireEvent.change(await screen.findByLabelText('依頼内容'), { target: { value: 'x' } })
+    fireEvent.click(screen.getByRole('button', { name: '送信前に確認' }))
+
+    expect((await screen.findAllByText(attack)).length).toBeGreaterThan(1)
+    expect(document.querySelector('img')).toBeNull()
   })
 
   it('sends the input, waits, and opens the workflow it created', async () => {
@@ -193,13 +333,76 @@ describe('detail', () => {
   const detailKey = `GET /api/v1/workflows/${WORKFLOW_ID}`
   const putKey = `PUT /api/v1/workflows/${WORKFLOW_ID}/tasks/${TASK_ID}`
 
-  it('shows that it is not scanned, with the notice', async () => {
-    server({ [detailKey]: () => json({ data: workflow() }) })
+  it('warns only about a revision from before scanning', async () => {
+    server({ [detailKey]: () => json({ data: workflow({ scan: notScanned }) }) })
     open(detailPath)
 
-    expect(await screen.findByText('未検査')).toBeInTheDocument()
-    expect(screen.getByText('検出は完全ではありません。')).toBeInTheDocument()
-    expect(screen.getByRole('alert')).toHaveTextContent('入力検査は未実装です')
+    expect((await screen.findAllByText('未検査')).length).toBeGreaterThan(0)
+    expect(screen.getByText(NOTICE)).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('提出、承認、実行はできません')
+  })
+
+  it('shows what the scan found, with no warning about scanning, and the notice', async () => {
+    server({
+      [detailKey]: () =>
+        json({ data: workflow({ max_severity: 'high', scan: { ...scan, decision: 'warn', max_severity: 'medium', findings: [finding({ severity: 'medium', action: 'warn', message: '攻撃の可能性', field: 'tasks.2.steps.1' })], findings_count: 1 } }) }),
+    })
+    open(detailPath)
+
+    expect((await screen.findAllByText('警告あり')).length).toBeGreaterThan(0)
+    expect(screen.getByText('タスク 2 の手順 1')).toBeInTheDocument()
+    expect(screen.getByText('高')).toBeInTheDocument()
+    expect(screen.getByText(NOTICE)).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('keeps what was typed and shows the findings when an edit is refused', async () => {
+    server({
+      [detailKey]: () => json({ data: workflow() }),
+      [putKey]: () => refused(blockedBody({ findings: [finding({ severity: 'critical', action: 'block', message: 'APIキー形式の文字列を検出しました', field: 'tasks.1.description' })] })),
+    })
+    open(detailPath)
+
+    fireEvent.click(await screen.findByRole('button', { name: '編集' }))
+    fireEvent.change(screen.getByLabelText('説明'), { target: { value: '入力した内容' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    expect(await screen.findByText('検査により処理を停止しました', { exact: false })).toBeInTheDocument()
+    expect(screen.getByText('APIキー形式の文字列を検出しました')).toBeInTheDocument()
+    expect(screen.getByText('タスク 1 の説明')).toBeInTheDocument()
+    expect(screen.getByLabelText('説明')).toHaveValue('入力した内容')
+  })
+
+  it('says that masking made a text too long, and nothing else from the server', async () => {
+    server({
+      [detailKey]: () => json({ data: workflow() }),
+      [putKey]: () =>
+        new Response(JSON.stringify({ type: 'x', title: 'x', status: 422, code: 'VALIDATION_FAILED', errors: { 'tasks.1.title': ['マスキング後の文字数が上限を超えます。短くしてください。'] } }), {
+          status: 422,
+          headers: { 'Content-Type': 'application/problem+json' },
+        }),
+    })
+    open(detailPath)
+
+    fireEvent.click(await screen.findByRole('button', { name: '編集' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    expect(await screen.findByText('マスキング後の文字数が上限を超えます', { exact: false })).toBeInTheDocument()
+  })
+
+  it('shows the masked text the server kept after a save, not what was typed', async () => {
+    server({
+      [detailKey]: () => json({ data: workflow() }),
+      [putKey]: () => json({ data: workflow({ tasks: [task({ description: '担当 [EMAIL_REDACTED]' })] }) }),
+    })
+    open(detailPath)
+
+    fireEvent.click(await screen.findByRole('button', { name: '編集' }))
+    fireEvent.change(screen.getByLabelText('説明'), { target: { value: '担当 user@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    expect(await screen.findByText('担当 [EMAIL_REDACTED]')).toBeInTheDocument()
+    expect(screen.queryByText('担当 user@example.com')).not.toBeInTheDocument()
   })
 
   it('draws what the AI or a user wrote as text, never as markup', async () => {
@@ -233,7 +436,7 @@ describe('detail', () => {
     server({ [detailKey]: () => json({ data: workflow({ can_edit: false }) }) })
     open(detailPath)
 
-    await screen.findByText('未検査')
+    await screen.findAllByText('検出なし')
     expect(screen.queryByRole('button', { name: '編集' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'タスクを追加' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '名前を変更' })).not.toBeInTheDocument()

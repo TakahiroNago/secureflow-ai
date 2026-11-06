@@ -4,9 +4,11 @@ namespace App\Domain\Dashboard;
 
 use App\Domain\Workflow\WorkflowStatus;
 use App\Models\AiAnalysisRequest;
+use App\Models\SecurityScan;
 use App\Models\User;
 use App\Models\Workflow;
 use App\Models\WorkflowExecution;
+use App\Security\Scanning\ScanDecision;
 use App\Support\Organization\OrganizationContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -15,8 +17,8 @@ use Illuminate\Support\Facades\DB;
 /**
  * docs/api-design.md §3.2. A member counts their own work, an admin or auditor the whole organization.
  *
- * What does not exist yet is null, never 0: "0 warnings" would read as "safe" when nothing has looked.
- * Counts of approvals and executions are real zeros, because those tables exist.
+ * What does not exist yet is null, never 0: "0 usage" would read as "none" when nothing has counted.
+ * Counts of scans, approvals and executions are real zeros, because those tables exist.
  */
 final readonly class DashboardSummary
 {
@@ -44,7 +46,7 @@ final readonly class DashboardSummary
             'executed' => $this->executed($user),
             'pending_approval' => $byStatus[WorkflowStatus::Pending->value],
             'analyses_this_month' => $this->analysesThisMonth($user),
-            'security' => ['warnings' => null, 'findings' => null, 'available_from_step' => '2-3'],
+            'security' => $this->security($user),
             'ai_usage' => ['tokens' => null, 'estimated_cost' => null, 'available_from_step' => '2-8'],
             'self_test' => ['latest' => null, 'available_from_step' => '3-3'],
             'recent_operations' => $this->recentOperations($user),
@@ -81,6 +83,21 @@ final readonly class DashboardSummary
             ->where('status', 'completed')
             ->when($this->isMember($user), fn ($query) => $query->whereIn('workflow_id', Workflow::query()->where('created_by', $user->id)->select('id')))
             ->count();
+    }
+
+    /**
+     * What the scans found. A zero says nothing was recognized, not that nothing is there.
+     *
+     * @return array{warnings: int, findings: int}
+     */
+    private function security(User $user): array
+    {
+        $scans = fn () => SecurityScan::query()->when($this->isMember($user), fn ($query) => $query->where('user_id', $user->id));
+
+        return [
+            'warnings' => $scans()->where('decision', ScanDecision::Warn->value)->count(),
+            'findings' => (int) $scans()->sum('findings_count'),
+        ];
     }
 
     /**

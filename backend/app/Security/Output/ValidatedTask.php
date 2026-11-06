@@ -5,7 +5,7 @@ namespace App\Security\Output;
 use App\Security\Policy\PolicyDecision;
 
 /**
- * A task that has the right shape and a known action. Its text is still what the AI wrote: masking, the
+ * A task that has the right shape and a known action. The scan of its text comes next (step 2-3), and the
  * canary check and removing markup come in step 2-4.
  */
 final readonly class ValidatedTask

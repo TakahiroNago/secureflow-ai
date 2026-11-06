@@ -20,6 +20,8 @@ enum AuditEventType: string
     case WorkflowCreated = 'workflow.created';
     case WorkflowUpdated = 'workflow.updated';
     case AnalysisFailed = 'analysis.failed';
+    case SecurityScan = 'security.scan';
+    case SecurityBlocked = 'security.blocked';
 
     /**
      * Anything else in metadata is dropped before recording.
@@ -36,6 +38,8 @@ enum AuditEventType: string
             self::WorkflowCreated => ['revision_no'],
             self::WorkflowUpdated => ['revision_no', 'change'],
             self::AnalysisFailed => ['reason_code', 'analysis_id'],
+            self::SecurityScan => ['target_type', 'decision', 'max_severity', 'findings_count'],
+            self::SecurityBlocked => ['reason_code'],
             default => [],
         };
     }
@@ -44,7 +48,7 @@ enum AuditEventType: string
     {
         return match ($this) {
             self::LoginFailed, self::PasswordChangeFailed, self::AnalysisFailed => 'low',
-            self::Locked => 'medium',
+            self::Locked, self::SecurityBlocked => 'medium',
             self::EventsSuppressed => 'high',
             self::VerificationFailed => 'critical',
             default => null,
