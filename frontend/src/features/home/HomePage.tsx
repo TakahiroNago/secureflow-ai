@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { useCurrentUser, useLogout } from '../auth/useAuth'
 
 /** A placeholder after login. The dashboard comes in step 1-7. */
@@ -32,6 +32,9 @@ export function HomePage() {
           <dd className="inline">{user.organization.name}</dd>
         </div>
       </dl>
+      <Link className="mt-4 mr-3 inline-block rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white" to="/workflows">
+        ワークフロー
+      </Link>
       <button
         type="button"
         className="mt-4 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium disabled:opacity-50"
