@@ -5,7 +5,9 @@ use App\Audit\AuditWriter;
 use App\Domain\Auth\PendingFingerprintStore;
 use App\Domain\Auth\RetiredSessions;
 use App\Models\User;
+use App\Models\Workflow;
 use App\Support\Database\TestDatabaseGuard;
+use App\Support\Organization\OrganizationContext;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Connection;
 use Illuminate\Database\QueryException;
@@ -27,6 +29,127 @@ use Tests\TestCase;
 
 pest()->extend(TestCase::class)->in('Feature');
 pest()->extend(TestCase::class)->group('security')->in('Security');
+pest()->extend(TestCase::class)->group('isolation')->in('Isolation');
+pest()->extend(TestCase::class)->group('concurrency')->in('Concurrency');
+
+/** A workflow created by this user, in this user's organization. */
+function workflowOf(User $creator, array $attributes = []): Workflow
+{
+    return app(OrganizationContext::class)->run(
+        $creator->organization_id,
+        fn () => Workflow::factory()->create(['created_by' => $creator->id, ...$attributes]),
+    );
+}
+
+/** Read back, as a logged-in user would be: the factory does not know the database defaults. */
+function userIn(string $organizationId, string $role = 'member', array $attributes = []): User
+{
+    return User::factory()->create(['organization_id' => $organizationId, 'role' => $role, ...$attributes])->refresh();
+}
+
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function insertRevision(Connection $db, Workflow $workflow, array $overrides = []): string
+{
+    $row = $overrides + [
+        'id' => (string) Str::uuid7(),
+        'organization_id' => $workflow->organization_id,
+        'workflow_id' => $workflow->id,
+        'revision_no' => 1,
+        'plan_snapshot' => '{}',
+        'plan_hash' => str_repeat('a', 64),
+        'hash_version' => 1,
+        'policy_version' => '2026.11.1',
+        'change_type' => 'ai_generated',
+        'created_at' => now()->toIso8601String(),
+    ];
+    $db->table('workflow_revisions')->insert($row);
+
+    return (string) $row['id'];
+}
+
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function insertTask(Connection $db, Workflow $workflow, array $overrides = []): string
+{
+    $row = $overrides + [
+        'id' => (string) Str::uuid7(),
+        'organization_id' => $workflow->organization_id,
+        'workflow_id' => $workflow->id,
+        'position' => 1,
+        'title' => 'Title',
+        'description' => 'Description',
+        'action_type' => 'text.analyze',
+        'steps' => '[]',
+        'priority' => 'low',
+        'target_data' => 'Target',
+        'impact_summary' => 'Impact',
+        'derived_permissions' => '["ai.text.read"]',
+        'ai_claimed_permissions' => '[]',
+        'policy_decision' => 'allowed',
+        'created_at' => now()->toIso8601String(),
+        'updated_at' => now()->toIso8601String(),
+    ];
+    $db->table('workflow_tasks')->insert($row);
+
+    return (string) $row['id'];
+}
+
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function insertApproval(Connection $db, Workflow $workflow, string $revisionId, string $decidedBy, array $overrides = []): string
+{
+    $row = $overrides + [
+        'id' => (string) Str::uuid7(),
+        'organization_id' => $workflow->organization_id,
+        'workflow_id' => $workflow->id,
+        'workflow_revision_id' => $revisionId,
+        'plan_hash' => str_repeat('a', 64),
+        'decision' => 'approved',
+        'decided_by' => $decidedBy,
+        'acknowledged_risks' => true,
+        'created_at' => now()->toIso8601String(),
+    ];
+    $db->table('approvals')->insert($row);
+
+    return (string) $row['id'];
+}
+
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function insertExecution(Connection $db, Workflow $workflow, string $revisionId, string $approvalId, array $overrides = []): string
+{
+    $row = $overrides + [
+        'id' => (string) Str::uuid7(),
+        'organization_id' => $workflow->organization_id,
+        'workflow_id' => $workflow->id,
+        'approval_id' => $approvalId,
+        'workflow_revision_id' => $revisionId,
+        'idempotency_key' => (string) Str::uuid7(),
+        'requested_by' => $workflow->created_by,
+        'status' => 'queued',
+        'created_at' => now()->toIso8601String(),
+        'updated_at' => now()->toIso8601String(),
+    ];
+    $db->table('workflow_executions')->insert($row);
+
+    return (string) $row['id'];
+}
+
+/** Empties the workflow tables. Test database only: the owner switches the triggers off. */
+function resetWorkflowTables(): void
+{
+    $db = ownerDb();
+    $db->statement('ALTER TABLE workflow_revisions DISABLE TRIGGER USER');
+    $db->statement('ALTER TABLE approvals DISABLE TRIGGER USER');
+    $db->statement('TRUNCATE workflow_executions, approvals, workflow_tasks, workflow_revisions, workflows');
+    $db->statement('ALTER TABLE workflow_revisions ENABLE TRIGGER USER');
+    $db->statement('ALTER TABLE approvals ENABLE TRIGGER USER');
+}
 
 /**
  * A browser. Laravel skips the CSRF check while the environment is "testing", so this switches to

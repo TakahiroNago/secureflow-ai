@@ -28,6 +28,33 @@ it('grants the application role exactly the designed table privileges', function
     'audit_logs' => ['audit_logs', ['SELECT']],
     'audit_chain_heads' => ['audit_chain_heads', ['SELECT']],
     'migrations' => ['migrations', []],
+    // UPDATE on these is column by column: see the next test.
+    'workflows' => ['workflows', ['SELECT', 'INSERT']],
+    'workflow_tasks' => ['workflow_tasks', ['SELECT', 'INSERT', 'DELETE']],
+    'workflow_executions' => ['workflow_executions', ['SELECT', 'INSERT']],
+    'workflow_revisions' => ['workflow_revisions', ['SELECT', 'INSERT']],
+    'approvals' => ['approvals', ['SELECT', 'INSERT']],
+]);
+
+it('grants UPDATE only on the columns that may change', function (string $table, array $expected) {
+    $rows = appDb()->select(
+        "SELECT column_name FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = ?
+           AND has_column_privilege(current_user, table_name::text, column_name::text, 'UPDATE')
+         ORDER BY column_name",
+        [$table],
+    );
+
+    $expected = array_values($expected);
+    sort($expected);
+
+    expect(array_map(fn (object $row) => $row->column_name, $rows))->toBe($expected);
+})->with([
+    'workflows' => ['workflows', ['title', 'status', 'current_revision_id', 'max_severity', 'lock_version', 'submitted_at', 'updated_at']],
+    'workflow_tasks' => ['workflow_tasks', ['position', 'title', 'description', 'action_type', 'steps', 'priority', 'target_data', 'impact_summary', 'derived_permissions', 'ai_claimed_permissions', 'policy_decision', 'updated_at']],
+    'workflow_executions' => ['workflow_executions', ['status', 'started_at', 'heartbeat_at', 'finished_at', 'result', 'error_code', 'updated_at']],
+    'workflow_revisions' => ['workflow_revisions', []],
+    'approvals' => ['approvals', []],
 ]);
 
 it('grants INSERT on no column of audit_logs: appends go through audit_append()', function () {

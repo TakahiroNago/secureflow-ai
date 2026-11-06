@@ -1,0 +1,411 @@
+[
+ {
+  "name": "one task",
+  "plan": {
+   "hash_version": 1,
+   "organization_id": "0193a000-0000-7000-8000-000000000001",
+   "workflow_id": "0193a000-0000-7000-8000-000000000002",
+   "revision_no": 1,
+   "policy_version": "2026.11.1",
+   "tasks": [
+    {
+     "position": 1,
+     "title": "Title",
+     "description": "Description",
+     "action_type": "report.draft",
+     "steps": [
+      "one",
+      "two"
+     ],
+     "priority": "medium",
+     "target_data": "Target",
+     "impact_summary": "Impact",
+     "permissions": [
+      "ai.text.read",
+      "report.draft.write"
+     ],
+     "policy_decision": "allowed"
+    }
+   ]
+  },
+  "canonical": "{\"hash_version\":1,\"organization_id\":\"0193a000-0000-7000-8000-000000000001\",\"policy_version\":\"2026.11.1\",\"revision_no\":1,\"tasks\":[{\"action_type\":\"report.draft\",\"description\":\"Description\",\"impact_summary\":\"Impact\",\"permissions\":[\"ai.text.read\",\"report.draft.write\"],\"policy_decision\":\"allowed\",\"position\":1,\"priority\":\"medium\",\"steps\":[\"one\",\"two\"],\"target_data\":\"Target\",\"title\":\"Title\"}],\"workflow_id\":\"0193a000-0000-7000-8000-000000000002\"}",
+  "hash": "6aca2a4ac7a4881a037c34f1597683a79e2012d4cbd2f19a86d74619c7a4166e"
+ },
+ {
+  "name": "no tasks",
+  "plan": {
+   "hash_version": 1,
+   "organization_id": "0193a000-0000-7000-8000-000000000001",
+   "workflow_id": "0193a000-0000-7000-8000-000000000002",
+   "revision_no": 1,
+   "policy_version": "2026.11.1",
+   "tasks": []
+  },
+  "canonical": "{\"hash_version\":1,\"organization_id\":\"0193a000-0000-7000-8000-000000000001\",\"policy_version\":\"2026.11.1\",\"revision_no\":1,\"tasks\":[],\"workflow_id\":\"0193a000-0000-7000-8000-000000000002\"}",
+  "hash": "e5ca7c1f8cbede2af5b638d2a08ea758704b3a4ff1b55f4e28779d57c34f0d7c"
+ },
+ {
+  "name": "empty steps and permissions",
+  "plan": {
+   "hash_version": 1,
+   "organization_id": "0193a000-0000-7000-8000-000000000001",
+   "workflow_id": "0193a000-0000-7000-8000-000000000002",
+   "revision_no": 1,
+   "policy_version": "2026.11.1",
+   "tasks": [
+    {
+     "position": 1,
+     "title": "Title",
+     "description": "Description",
+     "action_type": "report.draft",
+     "steps": [],
+     "priority": "medium",
+     "target_data": "Target",
+     "impact_summary": "Impact",
+     "permissions": [],
+     "policy_decision": "allowed"
+    }
+   ]
+  },
+  "canonical": "{\"hash_version\":1,\"organization_id\":\"0193a000-0000-7000-8000-000000000001\",\"policy_version\":\"2026.11.1\",\"revision_no\":1,\"tasks\":[{\"action_type\":\"report.draft\",\"description\":\"Description\",\"impact_summary\":\"Impact\",\"permissions\":[],\"policy_decision\":\"allowed\",\"position\":1,\"priority\":\"medium\",\"steps\":[],\"target_data\":\"Target\",\"title\":\"Title\"}],\"workflow_id\":\"0193a000-0000-7000-8000-000000000002\"}",
+  "hash": "3e71a1514e8fadd360f49d4b4076dc46e8c5bed00a7d34e3fcda5077d34affdc"
+ },
+ {
+  "name": "a later revision of the same content",
+  "plan": {
+   "hash_version": 1,
+   "organization_id": "0193a000-0000-7000-8000-000000000001",
+   "workflow_id": "0193a000-0000-7000-8000-000000000002",
+   "revision_no": 2,
+   "policy_version": "2026.11.1",
+   "tasks": [
+    {
+     "position": 1,
+     "title": "Title",
+     "description": "Description",
+     "action_type": "report.draft",
+     "steps": [
+      "one",
+      "two"
+     ],
+     "priority": "medium",
+     "target_data": "Target",
+     "impact_summary": "Impact",
+     "permissions": [
+      "ai.text.read",
+      "report.draft.write"
+     ],
+     "policy_decision": "allowed"
+    }
+   ]
+  },
+  "canonical": "{\"hash_version\":1,\"organization_id\":\"0193a000-0000-7000-8000-000000000001\",\"policy_version\":\"2026.11.1\",\"revision_no\":2,\"tasks\":[{\"action_type\":\"report.draft\",\"description\":\"Description\",\"impact_summary\":\"Impact\",\"permissions\":[\"ai.text.read\",\"report.draft.write\"],\"policy_decision\":\"allowed\",\"position\":1,\"priority\":\"medium\",\"steps\":[\"one\",\"two\"],\"target_data\":\"Target\",\"title\":\"Title\"}],\"workflow_id\":\"0193a000-0000-7000-8000-000000000002\"}",
+  "hash": "b7c5047c0e88e031cb5ce5cad8c41a08df5e24c1a265e1baafd1a2351ab516ca"
+ },
+ {
+  "name": "tasks out of order",
+  "plan": {
+   "hash_version": 1,
+   "organization_id": "0193a000-0000-7000-8000-000000000001",
+   "workflow_id": "0193a000-0000-7000-8000-000000000002",
+   "revision_no": 1,
+   "policy_version": "2026.11.1",
+   "tasks": [
+    {
+     "position": 2,
+     "title": "Second",
+     "description": "Description",
+     "action_type": "report.draft",
+     "steps": [
+      "one",
+      "two"
+     ],
+     "priority": "medium",
+     "target_data": "Target",
+     "impact_summary": "Impact",
+     "permissions": [
+      "ai.text.read",
+      "report.draft.write"
+     ],
+     "policy_decision": "allowed"
+    },
+    {
+     "position": 1,
+     "title": "First",
+     "description": "Description",
+     "action_type": "report.draft",
+     "steps": [
+      "one",
+      "two"
+     ],
+     "priority": "medium",
+     "target_data": "Target",
+     "impact_summary": "Impact",
+     "permissions": [
+      "ai.text.read",
+      "report.draft.write"
+     ],
+     "policy_decision": "allowed"
+    }
+   ]
+  },
+  "canonical": "{\"hash_version\":1,\"organization_id\":\"0193a000-0000-7000-8000-000000000001\",\"policy_version\":\"2026.11.1\",\"revision_no\":1,\"tasks\":[{\"action_type\":\"report.draft\",\"description\":\"Description\",\"impact_summary\":\"Impact\",\"permissions\":[\"ai.text.read\",\"report.draft.write\"],\"policy_decision\":\"allowed\",\"position\":1,\"priority\":\"medium\",\"steps\":[\"one\",\"two\"],\"target_data\":\"Target\",\"title\":\"First\"},{\"action_type\":\"report.draft\",\"description\":\"Description\",\"impact_summary\":\"Impact\",\"permissions\":[\"ai.text.read\",\"report.draft.write\"],\"policy_decision\":\"allowed\",\"position\":2,\"priority\":\"medium\",\"steps\":[\"one\",\"two\"],\"target_data\":\"Target\",\"title\":\"Second\"}],\"workflow_id\":\"0193a000-0000-7000-8000-000000000002\"}",
+  "hash": "a96d87d5ac13d2537bbbbdc97632769f86a2be2bf12d726f86e55a1c1967f3e1"
+ },
+ {
+  "name": "permissions out of order, steps kept in order",
+  "plan": {
+   "hash_version": 1,
+   "organization_id": "0193a000-0000-7000-8000-000000000001",
+   "workflow_id": "0193a000-0000-7000-8000-000000000002",
+   "revision_no": 1,
+   "policy_version": "2026.11.1",
+   "tasks": [
+    {
+     "position": 1,
+     "title": "Title",
+     "description": "Description",
+     "action_type": "report.draft",
+     "steps": [
+      "z",
+      "a"
+     ],
+     "priority": "medium",
+     "target_data": "Target",
+     "impact_summary": "Impact",
+     "permissions": [
+      "z.write",
+      "a.read",
+      "M.read"
+     ],
+     "policy_decision": "allowed"
+    }
+   ]
+  },
+  "canonical": "{\"hash_version\":1,\"organization_id\":\"0193a000-0000-7000-8000-000000000001\",\"policy_version\":\"2026.11.1\",\"revision_no\":1,\"tasks\":[{\"action_type\":\"report.draft\",\"description\":\"Description\",\"impact_summary\":\"Impact\",\"permissions\":[\"M.read\",\"a.read\",\"z.write\"],\"policy_decision\":\"allowed\",\"position\":1,\"priority\":\"medium\",\"steps\":[\"z\",\"a\"],\"target_data\":\"Target\",\"title\":\"Title\"}],\"workflow_id\":\"0193a000-0000-7000-8000-000000000002\"}",
+  "hash": "3b879771c82bdeac5ef739672c947f945f02d9f7dd72477b5dfe16b84a055bfa"
+ },
+ {
+  "name": "decomposed characters become NFC",
+  "plan": {
+   "hash_version": 1,
+   "organization_id": "0193a000-0000-7000-8000-000000000001",
+   "workflow_id": "0193a000-0000-7000-8000-000000000002",
+   "revision_no": 1,
+   "policy_version": "2026.11.1",
+   "tasks": [
+    {
+     "position": 1,
+     "title": "e\u0301 \u30ab\u3099",
+     "description": "Description",
+     "action_type": "report.draft",
+     "steps": [
+      "one",
+      "two"
+     ],
+     "priority": "medium",
+     "target_data": "Target",
+     "impact_summary": "Impact",
+     "permissions": [
+      "ai.text.read",
+      "report.draft.write"
+     ],
+     "policy_decision": "allowed"
+    }
+   ]
+  },
+  "canonical": "{\"hash_version\":1,\"organization_id\":\"0193a000-0000-7000-8000-000000000001\",\"policy_version\":\"2026.11.1\",\"revision_no\":1,\"tasks\":[{\"action_type\":\"report.draft\",\"description\":\"Description\",\"impact_summary\":\"Impact\",\"permissions\":[\"ai.text.read\",\"report.draft.write\"],\"policy_decision\":\"allowed\",\"position\":1,\"priority\":\"medium\",\"steps\":[\"one\",\"two\"],\"target_data\":\"Target\",\"title\":\"\u00e9 \u30ac\"}],\"workflow_id\":\"0193a000-0000-7000-8000-000000000002\"}",
+  "hash": "e009cfe28d5d2e38f0f1e01869173dc8903d9abb27d2a42e483695774e5bc6ac"
+ },
+ {
+  "name": "line endings become LF",
+  "plan": {
+   "hash_version": 1,
+   "organization_id": "0193a000-0000-7000-8000-000000000001",
+   "workflow_id": "0193a000-0000-7000-8000-000000000002",
+   "revision_no": 1,
+   "policy_version": "2026.11.1",
+   "tasks": [
+    {
+     "position": 1,
+     "title": "Title",
+     "description": "a\r\nb\rc\nd",
+     "action_type": "report.draft",
+     "steps": [
+      "one",
+      "two"
+     ],
+     "priority": "medium",
+     "target_data": "Target",
+     "impact_summary": "Impact",
+     "permissions": [
+      "ai.text.read",
+      "report.draft.write"
+     ],
+     "policy_decision": "allowed"
+    }
+   ]
+  },
+  "canonical": "{\"hash_version\":1,\"organization_id\":\"0193a000-0000-7000-8000-000000000001\",\"policy_version\":\"2026.11.1\",\"revision_no\":1,\"tasks\":[{\"action_type\":\"report.draft\",\"description\":\"a\\nb\\nc\\nd\",\"impact_summary\":\"Impact\",\"permissions\":[\"ai.text.read\",\"report.draft.write\"],\"policy_decision\":\"allowed\",\"position\":1,\"priority\":\"medium\",\"steps\":[\"one\",\"two\"],\"target_data\":\"Target\",\"title\":\"Title\"}],\"workflow_id\":\"0193a000-0000-7000-8000-000000000002\"}",
+  "hash": "b09523f996afc6cb59a8d2666e92146f627c55eab350e99bb6472df1133cef36"
+ },
+ {
+  "name": "nothing is trimmed",
+  "plan": {
+   "hash_version": 1,
+   "organization_id": "0193a000-0000-7000-8000-000000000001",
+   "workflow_id": "0193a000-0000-7000-8000-000000000002",
+   "revision_no": 1,
+   "policy_version": "2026.11.1",
+   "tasks": [
+    {
+     "position": 1,
+     "title": "  spaced  ",
+     "description": "\n",
+     "action_type": "report.draft",
+     "steps": [
+      "one",
+      "two"
+     ],
+     "priority": "medium",
+     "target_data": "Target",
+     "impact_summary": "Impact",
+     "permissions": [
+      "ai.text.read",
+      "report.draft.write"
+     ],
+     "policy_decision": "allowed"
+    }
+   ]
+  },
+  "canonical": "{\"hash_version\":1,\"organization_id\":\"0193a000-0000-7000-8000-000000000001\",\"policy_version\":\"2026.11.1\",\"revision_no\":1,\"tasks\":[{\"action_type\":\"report.draft\",\"description\":\"\\n\",\"impact_summary\":\"Impact\",\"permissions\":[\"ai.text.read\",\"report.draft.write\"],\"policy_decision\":\"allowed\",\"position\":1,\"priority\":\"medium\",\"steps\":[\"one\",\"two\"],\"target_data\":\"Target\",\"title\":\"  spaced  \"}],\"workflow_id\":\"0193a000-0000-7000-8000-000000000002\"}",
+  "hash": "764ad241f18a9336cf54fcd4a9e3241987337085f47b653f32e965cd6518201b"
+ },
+ {
+  "name": "quotes, slashes and control characters",
+  "plan": {
+   "hash_version": 1,
+   "organization_id": "0193a000-0000-7000-8000-000000000001",
+   "workflow_id": "0193a000-0000-7000-8000-000000000002",
+   "revision_no": 1,
+   "policy_version": "2026.11.1",
+   "tasks": [
+    {
+     "position": 1,
+     "title": "\"a\"/\\b",
+     "description": "\t\b\f\u0001\u001f\u007f",
+     "action_type": "report.draft",
+     "steps": [
+      "one",
+      "two"
+     ],
+     "priority": "medium",
+     "target_data": "Target",
+     "impact_summary": "Impact",
+     "permissions": [
+      "ai.text.read",
+      "report.draft.write"
+     ],
+     "policy_decision": "allowed"
+    }
+   ]
+  },
+  "canonical": "{\"hash_version\":1,\"organization_id\":\"0193a000-0000-7000-8000-000000000001\",\"policy_version\":\"2026.11.1\",\"revision_no\":1,\"tasks\":[{\"action_type\":\"report.draft\",\"description\":\"\\t\\b\\f\\u0001\\u001f\u007f\",\"impact_summary\":\"Impact\",\"permissions\":[\"ai.text.read\",\"report.draft.write\"],\"policy_decision\":\"allowed\",\"position\":1,\"priority\":\"medium\",\"steps\":[\"one\",\"two\"],\"target_data\":\"Target\",\"title\":\"\\\"a\\\"/\\\\b\"}],\"workflow_id\":\"0193a000-0000-7000-8000-000000000002\"}",
+  "hash": "fbb4bf5c1867d2b1a51b29961c27e53db4abbe41898feca3d60a917e4357d15b"
+ },
+ {
+  "name": "unicode is not escaped",
+  "plan": {
+   "hash_version": 1,
+   "organization_id": "0193a000-0000-7000-8000-000000000001",
+   "workflow_id": "0193a000-0000-7000-8000-000000000002",
+   "revision_no": 1,
+   "policy_version": "2026.11.1",
+   "tasks": [
+    {
+     "position": 1,
+     "title": "\u65e5\u672c\u8a9e \ud83d\ude00",
+     "description": "line\u2028para\u2029end",
+     "action_type": "report.draft",
+     "steps": [
+      "one",
+      "two"
+     ],
+     "priority": "medium",
+     "target_data": "Target",
+     "impact_summary": "Impact",
+     "permissions": [
+      "ai.text.read",
+      "report.draft.write"
+     ],
+     "policy_decision": "allowed"
+    }
+   ]
+  },
+  "canonical": "{\"hash_version\":1,\"organization_id\":\"0193a000-0000-7000-8000-000000000001\",\"policy_version\":\"2026.11.1\",\"revision_no\":1,\"tasks\":[{\"action_type\":\"report.draft\",\"description\":\"line\u2028para\u2029end\",\"impact_summary\":\"Impact\",\"permissions\":[\"ai.text.read\",\"report.draft.write\"],\"policy_decision\":\"allowed\",\"position\":1,\"priority\":\"medium\",\"steps\":[\"one\",\"two\"],\"target_data\":\"Target\",\"title\":\"\u65e5\u672c\u8a9e \ud83d\ude00\"}],\"workflow_id\":\"0193a000-0000-7000-8000-000000000002\"}",
+  "hash": "c6652df9fb96955b6bd43c2dae2d0bad88d618dc9d03fa01acc46e4a0760621d"
+ },
+ {
+  "name": "uppercase ids become lowercase",
+  "plan": {
+   "hash_version": 1,
+   "organization_id": "0193A000-0000-7000-8000-000000000001",
+   "workflow_id": "0193a000-0000-7000-8000-000000000002",
+   "revision_no": 1,
+   "policy_version": "2026.11.1",
+   "tasks": [
+    {
+     "position": 1,
+     "title": "Title",
+     "description": "Description",
+     "action_type": "report.draft",
+     "steps": [
+      "one",
+      "two"
+     ],
+     "priority": "medium",
+     "target_data": "Target",
+     "impact_summary": "Impact",
+     "permissions": [
+      "ai.text.read",
+      "report.draft.write"
+     ],
+     "policy_decision": "allowed"
+    }
+   ]
+  },
+  "canonical": "{\"hash_version\":1,\"organization_id\":\"0193a000-0000-7000-8000-000000000001\",\"policy_version\":\"2026.11.1\",\"revision_no\":1,\"tasks\":[{\"action_type\":\"report.draft\",\"description\":\"Description\",\"impact_summary\":\"Impact\",\"permissions\":[\"ai.text.read\",\"report.draft.write\"],\"policy_decision\":\"allowed\",\"position\":1,\"priority\":\"medium\",\"steps\":[\"one\",\"two\"],\"target_data\":\"Target\",\"title\":\"Title\"}],\"workflow_id\":\"0193a000-0000-7000-8000-000000000002\"}",
+  "hash": "6aca2a4ac7a4881a037c34f1597683a79e2012d4cbd2f19a86d74619c7a4166e"
+ },
+ {
+  "name": "forbidden action",
+  "plan": {
+   "hash_version": 1,
+   "organization_id": "0193a000-0000-7000-8000-000000000001",
+   "workflow_id": "0193a000-0000-7000-8000-000000000002",
+   "revision_no": 1,
+   "policy_version": "2026.11.1",
+   "tasks": [
+    {
+     "position": 1,
+     "title": "Title",
+     "description": "Description",
+     "action_type": "shell.exec",
+     "steps": [
+      "one",
+      "two"
+     ],
+     "priority": "medium",
+     "target_data": "Target",
+     "impact_summary": "Impact",
+     "permissions": [
+      "system.shell"
+     ],
+     "policy_decision": "forbidden"
+    }
+   ]
+  },
+  "canonical": "{\"hash_version\":1,\"organization_id\":\"0193a000-0000-7000-8000-000000000001\",\"policy_version\":\"2026.11.1\",\"revision_no\":1,\"tasks\":[{\"action_type\":\"shell.exec\",\"description\":\"Description\",\"impact_summary\":\"Impact\",\"permissions\":[\"system.shell\"],\"policy_decision\":\"forbidden\",\"position\":1,\"priority\":\"medium\",\"steps\":[\"one\",\"two\"],\"target_data\":\"Target\",\"title\":\"Title\"}],\"workflow_id\":\"0193a000-0000-7000-8000-000000000002\"}",
+  "hash": "0811529dd4e6467aa3d80eaffd37cb7db50c23188d33f40dd52213e2a037dfca"
+ }
+]
