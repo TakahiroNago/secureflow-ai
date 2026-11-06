@@ -6,7 +6,7 @@ AI業務自動化・セキュリティ管理プラットフォーム（AI Automa
 
 AI が業務内容を分析・提案し、セキュリティレイヤーが処理内容と権限を検証し、重要な操作は人間の承認を経て実行する Web アプリケーションです。
 
-**現在の状態：Phase 1 実装中（工程1-2 認証まで）。** AIワークフロー・承認・監査ログ等は以降の工程で実装します。計画は [docs/development-roadmap.md](docs/development-roadmap.md) を参照してください。
+**現在の状態：Phase 1 実装中（工程1-4 まで完了）。** 認証、セッション、認証イベントの監査ログ（ハッシュチェーン）が動作します。AI 出力の検証の基盤もありますが、モック AI のみで、API と画面には接続していません。ワークフロー・承認・実行と、認証以外の監査記録は以降の工程で実装します。工程2-8 までは本番相当の環境では起動しません。計画は [docs/development-roadmap.md](docs/development-roadmap.md) を参照してください。
 
 ---
 
@@ -41,7 +41,7 @@ migrate（owner ロール：マイグレーション専用・都度実行）
 backend/    Laravel API（app/, config/, routes/, tests/）
 frontend/   React + TypeScript + Vite + Tailwind CSS
 docker/     nginx / php / postgres の設定と初期化スクリプト
-scripts/    init-env.sh（.env 生成）、add-test-roles.sh（既存環境の更新）、verify-infra.sh（基盤検証）、check-published-ports.sh（公開ポート検査）、test-*.sh（検査の負のテストと認証の通し確認）、build-password-list.sh（漏洩パスワード辞書の再作成）
+scripts/    init-env.sh（.env 生成）、add-test-roles.sh（既存環境の更新）、verify-infra.sh（基盤検証）、check-published-ports.sh（公開ポート検査）、test-*.sh（検査の負のテストと認証の通し確認）、test-audit-load.py（負荷と障害の測定。使い捨ての環境でのみ）、build-password-list.sh（漏洩パスワード辞書の再作成）
 docs/       要件定義・設計書
 .github/    GitHub Actions（CI）
 ```
