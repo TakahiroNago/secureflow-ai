@@ -70,7 +70,10 @@ await new Promise((r) => net.createServer((c) => {
 }).listen(PORT, 'localhost', r));
 
 let fails = 0;
+// The last step, so that a violation says where it happened.
+let step = 'the start';
 const check = (label, ok, got = '') => {
+  step = label;
   if (!ok) fails++;
   console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${label}${ok ? '' : ` (got ${got})`}`);
 };
@@ -82,7 +85,7 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   const page = await context.newPage();
   // A page that breaks the CSP goes on working, so this has to be looked for.
   const violations = [];
-  page.on('console', (m) => { if (/Content Security Policy|Content-Security-Policy/i.test(m.text())) violations.push(m.text().slice(0, 160)); });
+  page.on('console', (m) => { if (/Content Security Policy|Content-Security-Policy/i.test(m.text())) violations.push(`after "${step}" on ${new URL(page.url()).pathname}: ${m.text().slice(0, 160)}`); });
   // Only what is sent after the login has answered: before that, 401 is the right answer.
   let loggedIn = false;
   const sentAfterLogin = new Set();
@@ -166,7 +169,9 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   check('nothing failed on the page', problems.length === 0, problems.join('; '));
   await page.setViewportSize({ width: 1280, height: 900 });
   // caret 'initial': hiding the caret makes Playwright add a <style>, which the CSP refuses as it should.
+  step = 'the screenshot of the dashboard';
   await page.screenshot({ path: `dashboard-${name}.png`, fullPage: true, caret: 'initial' });
+  step = 'after the screenshot of the dashboard';
 
   // Asking for an approval, on the real screens.
   await page.goto(`${BASE}${workflowPath}`);
