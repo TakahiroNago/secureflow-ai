@@ -139,6 +139,13 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(10)->by($user instanceof User ? $user->id : (string) $request->ip());
         });
 
+        // A provisional value, not measured. Every refusal here writes an audit record, so it bounds those too.
+        RateLimiter::for('approval-decisions', function (Request $request): Limit {
+            $user = $request->user();
+
+            return Limit::perMinute(30)->by($user instanceof User ? $user->id : (string) $request->ip());
+        });
+
         RateLimiter::for('account-password', function (Request $request): Limit {
             $user = $request->user();
 

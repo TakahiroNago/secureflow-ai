@@ -28,6 +28,11 @@ const RESOURCE_ENDPOINTS = [
     ['POST', 'api/v1/workflows/{workflow}/tasks'],
     ['PUT', 'api/v1/workflows/{workflow}/tasks/{task}'],
     ['DELETE', 'api/v1/workflows/{workflow}/tasks/{task}'],
+    ['POST', 'api/v1/workflows/{workflow}/submit'],
+    ['POST', 'api/v1/workflows/{workflow}/reopen'],
+    ['GET', 'api/v1/workflows/{workflow}/approval-context'],
+    ['POST', 'api/v1/workflows/{workflow}/approve'],
+    ['POST', 'api/v1/workflows/{workflow}/reject'],
 ];
 
 const VALID_TASK = [

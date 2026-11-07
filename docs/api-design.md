@@ -1,7 +1,7 @@
 # SecureFlow AI — API設計書
 
-- 版：v1.8（2026-11-07）
-- 状態：確定（v1.8：工程2-4 の出力検証とプロンプト構築を反映。v1.7：工程2-3 の入力検査の組み込みを反映。v1.6：工程1-7 のダッシュボードを反映。v1.5：工程1-6 の分析とワークフローの API を反映。v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.9（2026-11-07）
+- 状態：確定（v1.9：工程2-5 の提出、reopen、承認の API を反映。v1.8：工程2-4 の出力検証とプロンプト構築を反映。v1.7：工程2-3 の入力検査の組み込みを反映。v1.6：工程1-7 のダッシュボードを反映。v1.5：工程1-6 の分析とワークフローの API を反映。v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -71,6 +71,7 @@
 | `POST /auth/login` | 30回/分（工程1-3で追加。**実測に基づかない暫定値。** `AUDIT_LOGIN_IP_LIMIT_PER_MINUTE` で変更でき、負荷試験で見直す）。**現構成では利用者単位でなく全利用者の合計の上限である** | IP（IPv6 は `/64`） |
 | `PATCH /account/password` | 5回/分（維持する。503 の後の再試行も数える。429 でも同じキー・同じ内容を維持して再試行する。§3.1.2） | ユーザー |
 | `POST /analyses`、`POST /security/scan-preview` | 10回/分 | ユーザー |
+| `POST /workflows/{id}/approve`、`POST /workflows/{id}/reject` | 30回/分（工程2-5。**実測に基づかない暫定値。** 拒否も監査に記録するため、記録の量の上限も兼ねる） | ユーザー |
 | `POST /security/test-runs` | 3回/時 | 組織 |
 | その他API | 60回/分 | ユーザー（未認証はIP） |
 
@@ -274,13 +275,15 @@ IP 単位の制限は、NAT 配下など同じ送信元 IP を共有する利用
 | PUT | `/api/v1/workflows/{id}/tasks/{taskId}` | 所有者 | タスク編集。新リビジョン作成・再検査・状態を Draft に戻す。`If-Match` 必須 |
 | POST | `/api/v1/workflows/{id}/tasks` | 所有者 | タスク追加（同上） |
 | DELETE | `/api/v1/workflows/{id}/tasks/{taskId}` | 所有者 | タスク削除（同上） |
-| POST | `/api/v1/workflows/{id}/submit` | 所有者 | Draft→Pending。forbidden 操作含む場合 409 `FORBIDDEN_ACTION_PRESENT`、検査 block の場合 409 `SCAN_BLOCKED` |
-| POST | `/api/v1/workflows/{id}/reopen` | 所有者 | Rejected/Failed→Draft（新リビジョン） |
+| POST | `/api/v1/workflows/{id}/submit` | 所有者 | Draft→Pending。forbidden 操作含む場合 409 `FORBIDDEN_ACTION_PRESENT`、検査 block の場合 409 `SCAN_BLOCKED`、未検査の場合 409 `SCAN_REQUIRED` |
+| POST | `/api/v1/workflows/{id}/reopen` | 所有者 | Rejected/Failed→Draft（新リビジョン）。計画全体を検査し直す。`block` は 422 `INPUT_BLOCKED` で何も変えない |
 | GET | `/api/v1/workflows/{id}/history` | 所有者 / admin / auditor | リビジョン・承認・実行の時系列 |
 
 編集可能な項目：`title`, `description`, `action_type`（ActionCatalogの値のみ）, `steps`, `priority`, `target_data`, `impact_summary`。`derived_permissions`・`policy_decision` はクライアントから受け付けない（サーバー導出）。ユーザー編集内容にも入力検査（マスキング・認証情報検出・インジェクション検出）を適用し、全体判定が `block` の場合は編集を保存せず 422 `INPUT_BLOCKED` を返す（**工程2-3 から。それまでは未検査で保存する。** [threat-model.md R-24](threat-model.md)）。
 
-工程1-6 の補足：タスクは1〜10件で、最後のタスクの削除と11件目の追加は 422。タイトルの変更は編集できない状態（Running、Completed、Rejected、Failed）では 409。`history` はリビジョンの内容（`plan_snapshot`）を返さない。提出・reopen は工程2-5。
+工程1-6 の補足：タスクは1〜10件で、最後のタスクの削除と11件目の追加は 422。タイトルの変更は編集できない状態（Running、Completed、Rejected、Failed）では 409。`history` はリビジョンの内容（`plan_snapshot`）を返さない。
+
+工程2-5 の補足：提出と reopen は編集ではないため `If-Match` を取らない（状態の遷移と行ロックで1回に限られ、承認者は `plan_hash` で内容を照合する）。ワークフローの応答に `can_submit`、`can_reopen`、`can_view_approval`、`approver_available`、`decision`（現在のリビジョンの決定。却下の理由を所有者が読むため。マスク済み）を加えた。`can_*` は画面用で、サーバーは操作のたびに確認する。`history` の `approvals` は `comment` を含む。
 
 提出（submit）時、組織内に承認可能な admin（作成者以外の有効な admin）がいない場合も提出は受け付けるが、レスポンスに `"approver_available": false` を含め、画面に「承認可能な管理者がいないため、このワークフローは承認・実行できません」と表示する。
 
@@ -293,7 +296,7 @@ IP 単位の制限は、NAT 配下など同じ送信元 IP を共有する利用
 | POST | `/api/v1/workflows/{id}/approve` | admin（他ユーザーが作成したもののみ） | 下記 |
 | POST | `/api/v1/workflows/{id}/reject` | admin（他ユーザーが作成したもののみ） | `{revision_no, plan_hash, reason}` |
 
-`cannot_approve_reason` の値：`SELF_CREATED`（自分が作成者）、`ROLE_NOT_ADMIN`（admin 以外）、`INVALID_STATE`（Pending でない）、`FORBIDDEN_ACTION_PRESENT`、`SCAN_BLOCKED`。
+`cannot_approve_reason` の値：`SELF_CREATED`（自分が作成者）、`ROLE_NOT_ADMIN`（admin 以外）、`INVALID_STATE`（Pending でない）、`FORBIDDEN_ACTION_PRESENT`、`SCAN_BLOCKED`、`SCAN_REQUIRED`（未検査）、`PLAN_HASH_MISMATCH`（保存された計画と一致しない）。
 
 `approval-context` には `approver_available`（組織内に作成者以外の有効な admin が存在するか）を含める。
 
@@ -340,7 +343,15 @@ IP 単位の制限は、NAT 配下など同じ送信元 IP を共有する利用
 | 状態が Pending でない | 409 `WORKFLOW_INVALID_STATE` |
 | revision_no / plan_hash 不一致 | 409 `PLAN_HASH_MISMATCH` |
 | 同一リビジョンに決定済み（同時承認） | 409 `ALREADY_DECIDED` |
-| Medium以上で `acknowledged_risks=false` | 422 `RISK_ACK_REQUIRED` |
+| Medium以上で `acknowledged_risks=false` | 422 `RISK_ACK_REQUIRED`（判定は `workflows.max_severity`。編集で消した検出も残る） |
+| 未検査のリビジョン（工程2-3 より前の行） | 409 `SCAN_REQUIRED`。`NULL` を `allow` と扱わない |
+| 検査 `block` のリビジョン／forbidden を含む | 409 `SCAN_BLOCKED`／409 `FORBIDDEN_ACTION_PRESENT` |
+| `plan_snapshot` とリビジョンのハッシュ、または現在のタスクとリビジョンのハッシュの不一致 | 409 `PLAN_HASH_MISMATCH` |
+| コメント・却下の理由の検査が `block` | 422 `INPUT_BLOCKED`。個人情報はマスクして保存する。マスキング後に1000文字を超える場合は 422 |
+
+**判定の順序：** ①`revision_no`・`plan_hash` の不一致（編集が先なら状態が Draft でも `PLAN_HASH_MISMATCH`。[security-design.md §11](security-design.md)）→ ②決定済み → ③状態 → ④（承認のみ）計画の確認 → ⑤（承認のみ）リスク確認。却下は④⑤を行わない。承認できない計画も却下できなければならないためである。
+
+**工程2-5 の補足：** 応答はワークフローの詳細と同じ形である。`revision_no` は整数、`acknowledged_risks` は真偽値のみ受け付ける（`"1"` を確認済みと扱わない）。自己承認、権限なし、ハッシュ不一致の拒否は `approval.denied` に記録する。記録に失敗しても応答は変えない。別の組織や別の member のワークフローへの要求（404）は記録しない。`approval-context` は `ai_feature` と共に、ハッシュの対象となる項目をすべて返す（説明、手順、優先度を含む）。`ai_feature` は表示用で判定に使わない。
 
 ### 3.6 実行
 

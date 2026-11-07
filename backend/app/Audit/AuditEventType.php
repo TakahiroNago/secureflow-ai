@@ -19,6 +19,11 @@ enum AuditEventType: string
     case AvailabilityChecked = 'audit.availability_checked';
     case WorkflowCreated = 'workflow.created';
     case WorkflowUpdated = 'workflow.updated';
+    case WorkflowSubmitted = 'workflow.submitted';
+    case WorkflowReopened = 'workflow.reopened';
+    case ApprovalApproved = 'approval.approved';
+    case ApprovalRejected = 'approval.rejected';
+    case ApprovalDenied = 'approval.denied';
     case AnalysisFailed = 'analysis.failed';
     case SecurityScan = 'security.scan';
     case SecurityBlocked = 'security.blocked';
@@ -37,6 +42,9 @@ enum AuditEventType: string
             self::AvailabilityChecked => ['outage_id'],
             self::WorkflowCreated => ['revision_no'],
             self::WorkflowUpdated => ['revision_no', 'change'],
+            self::WorkflowSubmitted, self::WorkflowReopened => ['revision_no'],
+            self::ApprovalApproved, self::ApprovalRejected => ['revision_no', 'plan_hash'],
+            self::ApprovalDenied => ['reason_code'],
             self::AnalysisFailed => ['reason_code', 'analysis_id'],
             self::SecurityScan => ['target_type', 'decision', 'max_severity', 'findings_count'],
             self::SecurityBlocked => ['reason_code'],
@@ -48,7 +56,7 @@ enum AuditEventType: string
     {
         return match ($this) {
             self::LoginFailed, self::PasswordChangeFailed, self::AnalysisFailed => 'low',
-            self::Locked, self::SecurityBlocked => 'medium',
+            self::Locked, self::SecurityBlocked, self::ApprovalDenied => 'medium',
             self::EventsSuppressed => 'high',
             self::VerificationFailed => 'critical',
             default => null,

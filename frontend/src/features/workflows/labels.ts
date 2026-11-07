@@ -66,6 +66,18 @@ export function analysisErrorMessage(code: string | null): string {
   return (code !== null ? ANALYSIS_ERRORS[code] : undefined) ?? '分析に失敗しました。再度お試しください。'
 }
 
+export const NO_APPROVER_MESSAGE = '承認可能な管理者がいないため、このワークフローは承認・実行できません。'
+
+export const CANNOT_APPROVE_LABELS: Record<string, string> = {
+  SELF_CREATED: '自分が作成したワークフローは承認できません。',
+  ROLE_NOT_ADMIN: '承認できるのは管理者のみです。この画面は参照のみです。',
+  INVALID_STATE: '現在の状態では承認できません。',
+  FORBIDDEN_ACTION_PRESENT: '禁止された操作が含まれているため承認できません。',
+  SCAN_BLOCKED: '検査で停止と判定されたため承認できません。',
+  SCAN_REQUIRED: '未検査のリビジョンのため承認できません。',
+  PLAN_HASH_MISMATCH: '保存された計画と内容が一致しないため承認できません。',
+}
+
 const MASKED_TOO_LONG = 'マスキング後の文字数が上限を超えます。短くしてください。'
 
 /** A fixed sentence for each case. What the server sent is only shown when it is a known field error. */
@@ -77,6 +89,22 @@ export function apiErrorMessage(error: unknown): string {
   switch (error.code) {
     case 'REVISION_CONFLICT':
       return '他の変更が先に保存されました。最新の内容を読み込みました。確認してからもう一度保存してください。'
+    case 'PLAN_HASH_MISMATCH':
+      return '内容が変更されています。最新の内容を読み込みました。確認してからもう一度操作してください。'
+    case 'ALREADY_DECIDED':
+      return 'このリビジョンはすでに承認または却下されています。'
+    case 'RISK_ACK_REQUIRED':
+      return 'リスクを確認してから承認してください。'
+    case 'SCAN_REQUIRED':
+      return '未検査のリビジョンは提出、承認できません。編集して保存すると計画全体を検査します。'
+    case 'SCAN_BLOCKED':
+      return '検査で停止と判定されたリビジョンは提出、承認できません。'
+    case 'FORBIDDEN_ACTION_PRESENT':
+      return '禁止された操作を含むワークフローは提出、承認できません。該当するタスクを編集してください。'
+    case 'APPROVER_ROLE_REQUIRED':
+      return '承認または却下する権限がありません。'
+    case 'SELF_APPROVAL_FORBIDDEN':
+      return '自分が作成したワークフローは承認または却下できません。'
     case 'WORKFLOW_INVALID_STATE':
       return '現在の状態ではこの操作を行えません。'
     case 'INPUT_BLOCKED':

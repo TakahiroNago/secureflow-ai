@@ -23,4 +23,29 @@ final class WorkflowConflictException extends RuntimeException
     {
         return new self('REVISION_CONFLICT', '内容が更新されています。再読み込みしてください。');
     }
+
+    public static function planHashMismatch(): self
+    {
+        return new self('PLAN_HASH_MISMATCH', '承認対象の内容が変更されています。最新の内容を確認してください。');
+    }
+
+    public static function alreadyDecided(): self
+    {
+        return new self('ALREADY_DECIDED', 'このリビジョンはすでに承認または却下されています。');
+    }
+
+    public static function scanRequired(): self
+    {
+        return new self('SCAN_REQUIRED', '未検査のリビジョンは提出、承認できません。編集して保存すると計画全体を検査します。');
+    }
+
+    public static function scanBlocked(): self
+    {
+        return new self('SCAN_BLOCKED', '検査で停止と判定されたリビジョンは提出、承認できません。');
+    }
+
+    public static function forbiddenActionPresent(): self
+    {
+        return new self('FORBIDDEN_ACTION_PRESENT', '禁止された操作を含むワークフローは提出、承認できません。');
+    }
 }

@@ -59,6 +59,28 @@ final class WorkflowPolicy
         return $this->decide($user, $workflow);
     }
 
+    /**
+     * The list of what waits for a decision. A creator's own is listed too, marked as theirs to wait on.
+     */
+    public function viewApprovals(User $user): Response
+    {
+        return $user->is_active && $user->role === self::ROLE_ADMIN ? Response::allow() : $this->forbidden();
+    }
+
+    /**
+     * An admin, or the owner to see only. An auditor reads the workflow and its history instead.
+     */
+    public function viewApprovalContext(User $user, Workflow $workflow): Response
+    {
+        $hidden = $this->visibility($user, $workflow);
+
+        if ($hidden !== null) {
+            return $hidden;
+        }
+
+        return $user->role === self::ROLE_AUDITOR ? $this->forbidden() : Response::allow();
+    }
+
     public function execute(User $user, Workflow $workflow): Response
     {
         $hidden = $this->visibility($user, $workflow);

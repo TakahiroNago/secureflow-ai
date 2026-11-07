@@ -25,6 +25,11 @@ export function AppShell() {
           <NavLink className={linkClass} to="/workflows">
             ワークフロー
           </NavLink>
+          {user.role === 'admin' && (
+            <NavLink className={linkClass} to="/approvals">
+              承認待ち
+            </NavLink>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-slate-600">

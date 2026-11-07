@@ -72,6 +72,11 @@ const workflow = (overrides = {}) => ({
   scan,
   max_severity: null,
   can_edit: true,
+  can_submit: false,
+  can_reopen: false,
+  can_view_approval: false,
+  approver_available: true,
+  decision: null,
   tasks: [task()],
   ...overrides,
 })
@@ -555,5 +560,252 @@ describe('detail', () => {
     open(detailPath)
 
     expect(await screen.findByText('対象が見つかりません。')).toBeInTheDocument()
+  })
+})
+
+const HASH = 'a'.repeat(64)
+
+const approvalContext = (overrides = {}) => ({
+  workflow_id: WORKFLOW_ID,
+  title: '問い合わせの要約',
+  status: 'pending',
+  revision_no: 3,
+  plan_hash: HASH,
+  policy_version: '2026.11.1',
+  tasks: [{ ...task(), ai_feature: 'テキスト要約（模擬実行）' }],
+  security: scan,
+  requires_risk_acknowledgement: false,
+  created_by: { id: 'u', name: '申請者' },
+  can_approve: true,
+  cannot_approve_reason: null,
+  approver_available: true,
+  ...overrides,
+})
+
+const bodyOf = (call: Parameters<typeof fetch>) => JSON.parse(String(call[1]?.body)) as Record<string, unknown>
+
+describe('submitting and reopening', () => {
+  it('submits a draft, and shows the new state', async () => {
+    const spy = server({
+      [`GET /api/v1/workflows/${WORKFLOW_ID}`]: () => json({ data: workflow({ can_submit: true }) }),
+      [`POST /api/v1/workflows/${WORKFLOW_ID}/submit`]: () => json({ data: workflow({ status: 'pending', can_view_approval: true, can_edit: true }) }),
+    })
+    open(`/workflows/${WORKFLOW_ID}`)
+
+    fireEvent.click(await screen.findByRole('button', { name: '承認を依頼する' }))
+
+    expect(await screen.findByText('承認待ち')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '承認の画面を開く' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '承認を依頼する' })).not.toBeInTheDocument()
+    expect(callsTo(spy, `POST /api/v1/workflows/${WORKFLOW_ID}/submit`)).toHaveLength(1)
+  })
+
+  it('says when there is nobody to approve it', async () => {
+    server({ [`GET /api/v1/workflows/${WORKFLOW_ID}`]: () => json({ data: workflow({ status: 'pending', approver_available: false }) }) })
+    open(`/workflows/${WORKFLOW_ID}`)
+
+    expect(await screen.findByText('承認可能な管理者がいないため', { exact: false })).toBeInTheDocument()
+  })
+
+  it.each([
+    ['FORBIDDEN_ACTION_PRESENT', '禁止された操作を含む'],
+    ['SCAN_REQUIRED', '未検査のリビジョンは'],
+    ['SCAN_BLOCKED', '検査で停止と判定された'],
+  ])('says why a submission was refused: %s', async (code, message) => {
+    server({
+      [`GET /api/v1/workflows/${WORKFLOW_ID}`]: () => json({ data: workflow({ can_submit: true }) }),
+      [`POST /api/v1/workflows/${WORKFLOW_ID}/submit`]: () => problem(409, code),
+    })
+    open(`/workflows/${WORKFLOW_ID}`)
+
+    fireEvent.click(await screen.findByRole('button', { name: '承認を依頼する' }))
+
+    expect(await screen.findByText(message, { exact: false })).toBeInTheDocument()
+    expect(screen.queryByText('server text that is not shown')).not.toBeInTheDocument()
+  })
+
+  it('shows why it was rejected, as text, and reopens it', async () => {
+    const reason = '<img src=x onerror=alert(1)>手順が足りません'
+    const rejected = workflow({ status: 'rejected', can_edit: false, can_reopen: true, decision: { decision: 'rejected', comment: reason, decided_by: { id: 'a', name: '管理者' }, decided_at: '2026-11-07T00:00:00Z' } })
+    const spy = server({
+      [`GET /api/v1/workflows/${WORKFLOW_ID}`]: () => json({ data: rejected }),
+      [`POST /api/v1/workflows/${WORKFLOW_ID}/reopen`]: () => json({ data: workflow({ can_submit: true }) }),
+    })
+    open(`/workflows/${WORKFLOW_ID}`)
+
+    expect(await screen.findByText(reason)).toBeInTheDocument()
+    expect(document.querySelector('img')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '下書きに戻す' }))
+
+    expect(await screen.findByRole('button', { name: '承認を依頼する' })).toBeInTheDocument()
+    expect(callsTo(spy, `POST /api/v1/workflows/${WORKFLOW_ID}/reopen`)).toHaveLength(1)
+  })
+})
+
+describe('the approval screen', () => {
+  const contextRoute = `GET /api/v1/workflows/${WORKFLOW_ID}/approval-context`
+  const approveRoute = `POST /api/v1/workflows/${WORKFLOW_ID}/approve`
+  const rejectRoute = `POST /api/v1/workflows/${WORKFLOW_ID}/reject`
+  const afterwards = { [`GET /api/v1/workflows/${WORKFLOW_ID}`]: () => json({ data: workflow({ status: 'approved', can_edit: true }) }) }
+
+  it('shows the six items of the requirements and the notice', async () => {
+    server({ [contextRoute]: () => json({ data: approvalContext() }) }, 'admin')
+    open(`/workflows/${WORKFLOW_ID}/approval`)
+
+    for (const label of ['実行する処理', '使用する AI 機能', '対象データ', '必要な権限', '実行による影響']) {
+      expect(await screen.findByText(label)).toBeInTheDocument()
+    }
+    expect(screen.getByText('テキスト要約（模擬実行）')).toBeInTheDocument()
+    expect(screen.getByText('検査の結果：')).toBeInTheDocument()
+    expect(screen.getByText(NOTICE)).toBeInTheDocument()
+    expect(screen.getByText(HASH)).toBeInTheDocument()
+  })
+
+  it('sends the revision and the hash that were shown', async () => {
+    const spy = server({ [contextRoute]: () => json({ data: approvalContext() }), [approveRoute]: () => json({ data: workflow({ status: 'approved' }) }), ...afterwards }, 'admin')
+    open(`/workflows/${WORKFLOW_ID}/approval`)
+
+    fireEvent.click(await screen.findByRole('button', { name: '承認する' }))
+
+    await waitFor(() => { expect(callsTo(spy, approveRoute)).toHaveLength(1) })
+    expect(bodyOf(callsTo(spy, approveRoute)[0] as Parameters<typeof fetch>)).toEqual({ revision_no: 3, plan_hash: HASH, acknowledged_risks: false, comment: null })
+    expect(await screen.findByText('承認済み')).toBeInTheDocument()
+  })
+
+  it('asks for the confirmation only when the server does', async () => {
+    server({ [contextRoute]: () => json({ data: approvalContext({ requires_risk_acknowledgement: true }) }) }, 'admin')
+    open(`/workflows/${WORKFLOW_ID}/approval`)
+
+    expect(await screen.findByRole('checkbox')).toBeRequired()
+  })
+
+  it('sends the confirmation that was given', async () => {
+    const spy = server({ [contextRoute]: () => json({ data: approvalContext({ requires_risk_acknowledgement: true }) }), [approveRoute]: () => json({ data: workflow({ status: 'approved' }) }), ...afterwards }, 'admin')
+    open(`/workflows/${WORKFLOW_ID}/approval`)
+
+    fireEvent.click(await screen.findByRole('checkbox'))
+    fireEvent.click(screen.getByRole('button', { name: '承認する' }))
+
+    await waitFor(() => { expect(callsTo(spy, approveRoute)).toHaveLength(1) })
+    expect(bodyOf(callsTo(spy, approveRoute)[0] as Parameters<typeof fetch>)['acknowledged_risks']).toBe(true)
+  })
+
+  it('reads the plan again when it changed, takes back the confirmation and keeps the comment', async () => {
+    let contexts = 0
+    const spy = server({
+      [contextRoute]: () => {
+        contexts += 1
+        return json({ data: approvalContext(contexts === 1 ? { requires_risk_acknowledgement: true } : { requires_risk_acknowledgement: true, revision_no: 4, plan_hash: 'b'.repeat(64) }) })
+      },
+      [approveRoute]: () => problem(409, 'PLAN_HASH_MISMATCH'),
+    }, 'admin')
+    open(`/workflows/${WORKFLOW_ID}/approval`)
+
+    fireEvent.click(await screen.findByRole('checkbox'))
+    fireEvent.change(screen.getByLabelText('コメント（任意）'), { target: { value: '確認済み' } })
+    fireEvent.click(screen.getByRole('button', { name: '承認する' }))
+
+    expect(await screen.findByText('内容が変更されています。', { exact: false })).toBeInTheDocument()
+    expect(await screen.findByText('b'.repeat(64))).toBeInTheDocument()
+    expect(screen.getByRole('checkbox')).not.toBeChecked()
+    expect(screen.getByLabelText('コメント（任意）')).toHaveValue('確認済み')
+    expect(callsTo(spy, contextRoute).length).toBeGreaterThan(1)
+  })
+
+  it('shows what stopped a comment', async () => {
+    server({ [contextRoute]: () => json({ data: approvalContext() }), [approveRoute]: () => refused(blockedBody()) }, 'admin')
+    open(`/workflows/${WORKFLOW_ID}/approval`)
+
+    fireEvent.change(await screen.findByLabelText('コメント（任意）'), { target: { value: 'text' } })
+    fireEvent.click(screen.getByRole('button', { name: '承認する' }))
+
+    expect(await screen.findByText('APIキー形式の文字列を検出しました')).toBeInTheDocument()
+    expect(screen.getByLabelText('コメント（任意）')).toHaveValue('text')
+  })
+
+  it('needs a reason to reject, and sends it', async () => {
+    const spy = server({ [contextRoute]: () => json({ data: approvalContext() }), [rejectRoute]: () => json({ data: workflow({ status: 'rejected' }) }), ...afterwards }, 'admin')
+    open(`/workflows/${WORKFLOW_ID}/approval`)
+
+    const reason = await screen.findByLabelText('却下の理由')
+    expect(reason).toBeRequired()
+    fireEvent.change(reason, { target: { value: '手順が足りません' } })
+    fireEvent.click(screen.getByRole('button', { name: '却下する' }))
+
+    await waitFor(() => { expect(callsTo(spy, rejectRoute)).toHaveLength(1) })
+    expect(bodyOf(callsTo(spy, rejectRoute)[0] as Parameters<typeof fetch>)).toEqual({ revision_no: 3, plan_hash: HASH, reason: '手順が足りません' })
+  })
+
+  it.each([
+    ['SELF_CREATED', '自分が作成した'],
+    ['ROLE_NOT_ADMIN', '参照のみ'],
+  ])('offers no decision to someone who cannot make one: %s', async (reason, message) => {
+    server({ [contextRoute]: () => json({ data: approvalContext({ can_approve: false, cannot_approve_reason: reason }) }) })
+    open(`/workflows/${WORKFLOW_ID}/approval`)
+
+    expect(await screen.findByText(message, { exact: false })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '承認する' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '却下する' })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['FORBIDDEN_ACTION_PRESENT', '禁止された操作が含まれている'],
+    ['SCAN_REQUIRED', '未検査のリビジョン'],
+    ['SCAN_BLOCKED', '検査で停止'],
+    ['PLAN_HASH_MISMATCH', '一致しない'],
+  ])('can only be turned down when it cannot be approved: %s', async (reason, message) => {
+    server({ [contextRoute]: () => json({ data: approvalContext({ can_approve: false, cannot_approve_reason: reason }) }) }, 'admin')
+    open(`/workflows/${WORKFLOW_ID}/approval`)
+
+    expect(await screen.findByText(message, { exact: false })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '承認する' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '却下する' })).toBeInTheDocument()
+  })
+
+  it('draws the plan as text', async () => {
+    const markup = '<img src=x onerror=alert(1)>'
+    server({ [contextRoute]: () => json({ data: approvalContext({ title: markup, tasks: [{ ...task({ description: markup, target_data: markup, impact_summary: markup, steps: [markup] }), ai_feature: 'x' }] }) }) }, 'admin')
+    open(`/workflows/${WORKFLOW_ID}/approval`)
+
+    expect((await screen.findAllByText(markup)).length).toBeGreaterThan(2)
+    expect(document.querySelector('img')).toBeNull()
+  })
+
+  it('refuses a response of the wrong shape', async () => {
+    server({ [contextRoute]: () => json({ data: { ...approvalContext(), can_approve: 'yes' } }) }, 'admin')
+    open(`/workflows/${WORKFLOW_ID}/approval`)
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '承認する' })).not.toBeInTheDocument()
+  })
+})
+
+describe('the approvals list', () => {
+  const row = (overrides = {}) => ({ workflow_id: WORKFLOW_ID, title: '問い合わせの要約', revision_no: 3, max_severity: 'medium', created_by: { id: 'u', name: '申請者' }, submitted_at: '2026-11-07T00:00:00Z', can_approve: true, cannot_approve_reason: null, ...overrides })
+
+  it('is in the menu for an admin only', async () => {
+    server({ 'GET /api/v1/workflows': () => json({ data: [], meta: { next_cursor: null } }) })
+    open('/workflows')
+
+    await screen.findByRole('heading', { name: 'ワークフロー' })
+    expect(screen.queryByRole('link', { name: '承認待ち' })).not.toBeInTheDocument()
+  })
+
+  it('lists what waits, and says which ones are the admin\'s own', async () => {
+    server({ 'GET /api/v1/approvals?status=pending': () => json({ data: [row(), row({ workflow_id: 'other', title: '自分の', can_approve: false, cannot_approve_reason: 'SELF_CREATED' })], meta: { next_cursor: null } }) }, 'admin')
+    open('/approvals')
+
+    const link = await screen.findByRole('link', { name: '問い合わせの要約' })
+    expect(link).toHaveAttribute('href', `/workflows/${WORKFLOW_ID}/approval`)
+    expect(screen.getByRole('link', { name: '承認待ち' })).toBeInTheDocument()
+    expect(screen.getByText('自分が作成した', { exact: false })).toBeInTheDocument()
+  })
+
+  it('says when nothing waits', async () => {
+    server({ 'GET /api/v1/approvals?status=pending': () => json({ data: [], meta: { next_cursor: null } }) }, 'admin')
+    open('/approvals')
+
+    expect(await screen.findByText('承認待ちのワークフローはありません。')).toBeInTheDocument()
   })
 })

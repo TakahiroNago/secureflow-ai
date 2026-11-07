@@ -187,13 +187,29 @@ final readonly class WorkflowEditor
     }
 
     /**
+     * Back to Draft in a new revision. The plan does not change, but the scan is made again: a new revision needs
+     * one, and the rules may be newer than the ones that passed it (docs/security-design.md §9.3).
+     *
+     * @throws InputBlockedException
+     * @throws ValidationException when masking made a text too long
+     * @throws WorkflowConflictException
+     * @throws ServiceUnavailableException
+     */
+    public function reopen(User $user, Workflow $workflow): void
+    {
+        $revisionNo = (int) WorkflowRevision::query()->whereKey($workflow->current_revision_id)->value('revision_no');
+
+        $this->change($user, $workflow, $revisionNo, fn (array $plan) => $plan, function (): void {}, WorkflowEvent::Reopen);
+    }
+
+    /**
      * @param  Closure(list<PlannedTask>): list<PlannedTask>  $propose  The plan as this change would make it.
      * @param  Closure(Workflow, list<PlannedTask>): void  $apply
      */
-    private function change(User $user, Workflow $workflow, int $expectedRevisionNo, Closure $propose, Closure $apply): void
+    private function change(User $user, Workflow $workflow, int $expectedRevisionNo, Closure $propose, Closure $apply, WorkflowEvent $event = WorkflowEvent::Edit): void
     {
         $this->availability->assertAvailable();
-        $this->assertEditable($workflow, $expectedRevisionNo);
+        $this->assertEditable($workflow, $expectedRevisionNo, $event);
 
         $plan = $propose($this->currentPlan($workflow));
         $result = $this->scanner->scanFields(PlanText::fields(array_map(self::textOf(...), $plan)));
@@ -212,24 +228,32 @@ final readonly class WorkflowEditor
             PlanText::withMasked(array_map(self::textOf(...), $plan), $maskedFields),
         );
 
-        SingleAttemptTransaction::run(DB::connection(), function () use ($user, $workflow, $expectedRevisionNo, $apply, $masked, $result): void {
+        SingleAttemptTransaction::run(DB::connection(), function () use ($user, $workflow, $expectedRevisionNo, $apply, $masked, $result, $event): void {
             $locked = $this->lockAtRevision($workflow, $expectedRevisionNo);
 
-            $this->transition->apply($locked, WorkflowEvent::Edit);
+            $this->transition->apply($locked, $event);
             $apply($locked, $masked);
             $this->writeMasked($masked);
 
             $revisionNo = $expectedRevisionNo + 1;
             $revisionId = (string) Str::uuid7();
             $scan = $this->recorder->record($user, SecurityScan::TARGET_REVISION, $revisionId, $result);
-            $revision = $this->revisions->record($revisionId, $locked, $revisionNo, WorkflowRevisions::CHANGE_USER_EDIT, $user, $scan);
+            $changeType = $event === WorkflowEvent::Reopen ? WorkflowRevisions::CHANGE_REOPEN : WorkflowRevisions::CHANGE_USER_EDIT;
+            $revision = $this->revisions->record($revisionId, $locked, $revisionNo, $changeType, $user, $scan);
 
             $locked->forceFill([
                 'current_revision_id' => $revision->id,
                 'max_severity' => self::raisedSeverity($locked, $result),
             ])->save();
 
-            $this->recordUpdate($user, $locked, $revisionNo, self::CHANGE_TASK);
+            if ($event === WorkflowEvent::Reopen) {
+                $this->audit->recordInTransaction(
+                    AuditEntry::byUserOn(AuditEventType::WorkflowReopened, $user, 'workflow', $locked->id, ['revision_no' => $revisionNo]),
+                    'workflow_reopened_unrecorded',
+                );
+            } else {
+                $this->recordUpdate($user, $locked, $revisionNo, self::CHANGE_TASK);
+            }
         });
     }
 
@@ -332,7 +356,7 @@ final readonly class WorkflowEditor
      *
      * @throws WorkflowConflictException
      */
-    private function assertEditable(Workflow $workflow, int $expectedRevisionNo): void
+    private function assertEditable(Workflow $workflow, int $expectedRevisionNo, WorkflowEvent $event = WorkflowEvent::Edit): void
     {
         $current = WorkflowRevision::query()->whereKey($workflow->current_revision_id)->value('revision_no');
 
@@ -340,7 +364,7 @@ final readonly class WorkflowEditor
             throw WorkflowConflictException::revisionConflict();
         }
 
-        WorkflowStateMachine::next($workflow->status, WorkflowEvent::Edit);
+        WorkflowStateMachine::next($workflow->status, $event);
     }
 
     /**
