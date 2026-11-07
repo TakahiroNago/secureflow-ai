@@ -1,7 +1,7 @@
 # SecureFlow AI — API設計書
 
-- 版：v1.9（2026-11-07）
-- 状態：確定（v1.9：工程2-5 の提出、reopen、承認の API を反映。v1.8：工程2-4 の出力検証とプロンプト構築を反映。v1.7：工程2-3 の入力検査の組み込みを反映。v1.6：工程1-7 のダッシュボードを反映。v1.5：工程1-6 の分析とワークフローの API を反映。v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.10（2026-11-07）
+- 状態：確定（v1.10：工程2-6 の実行の API を反映。v1.9：工程2-5 の提出、reopen、承認の API を反映。v1.8：工程2-4 の出力検証とプロンプト構築を反映。v1.7：工程2-3 の入力検査の組み込みを反映。v1.6：工程1-7 のダッシュボードを反映。v1.5：工程1-6 の分析とワークフローの API を反映。v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -72,6 +72,7 @@
 | `PATCH /account/password` | 5回/分（維持する。503 の後の再試行も数える。429 でも同じキー・同じ内容を維持して再試行する。§3.1.2） | ユーザー |
 | `POST /analyses`、`POST /security/scan-preview` | 10回/分 | ユーザー |
 | `POST /workflows/{id}/approve`、`POST /workflows/{id}/reject` | 30回/分（工程2-5。**実測に基づかない暫定値。** 拒否も監査に記録するため、記録の量の上限も兼ねる） | ユーザー |
+| `POST /workflows/{id}/execute` | 30回/分（工程2-6。**実測に基づかない暫定値。** 拒否の記録の量の上限も兼ねる） | ユーザー |
 | `POST /security/test-runs` | 3回/時 | 組織 |
 | その他API | 60回/分 | ユーザー（未認証はIP） |
 
@@ -365,10 +366,16 @@ IP 単位の制限は、NAT 配下など同じ送信元 IP を共有する利用
 | 実行者が無効化（`is_active=false`） | 401（セッション破棄）。処理中に無効化された場合は 403 |
 | 有効な承認なし（未承認・承認無効化済み） | 409 `APPROVAL_NOT_VALID` |
 | 再計算ハッシュ不一致 | 409 `PLAN_HASH_MISMATCH` |
-| ポリシー再照合で forbidden | 409 `POLICY_VIOLATION` |
+| ポリシー再照合で forbidden、または承認後に `policy_version` が変更された | 409 `POLICY_VIOLATION`（監査の理由は `POLICY_FORBIDDEN`・`POLICY_VERSION_CHANGED`。編集して再提出する） |
+| 未検査のリビジョン／検査 `block` のリビジョン | 409 `SCAN_REQUIRED`／409 `SCAN_BLOCKED` |
 | 既に実行済み・実行中 | 409 `EXECUTION_ALREADY_EXISTS` |
 | 同一 Idempotency-Key・同一内容の再送 | 202（既存 execution を返す） |
-| 同一 Idempotency-Key・別ワークフロー | 422 `IDEMPOTENCY_KEY_REUSED` |
+| 同一 Idempotency-Key で、ワークフロー、承認、要求者のいずれかが異なる | 422 `IDEMPOTENCY_KEY_REUSED` |
+| `Idempotency-Key` がない、または形式が違う（英数字と `.`、`_`、`:`、`-` で1〜100文字） | 422 `VALIDATION_FAILED` |
+
+**判定の順序（工程2-6）：** ①同じ要求の再送（通信が切れた場合に状態が Running でも元の実行を返すため）→ ②キーの再利用 → ③実行者 → ④実行済み（失敗した実行を含む）→ ⑤状態と承認 → ⑥検査 → ⑦ポリシー → ⑧ハッシュ。
+
+**工程2-6 の補足：** 成功の応答は 202 `{ "data": { "execution_id", "status" } }`。処理中に無効化または降格された場合は 403 `FORBIDDEN`。拒否は `execution.denied` に記録する。記録に失敗しても応答は変えない。別の組織や別の member のワークフローへの要求（404）は記録しない。`executions` は新しい順に最大50件を返し、`Idempotency-Key` を返さない。`result` は `{ "simulated": true, "tasks": [{ "position", "action_type", "summary" }] }` で、`summary` は固定の文であり、タスクの文を含まない。ワークフローの応答に `can_execute` を加えた（画面用）。
 
 ### 3.7 セキュリティ管理
 

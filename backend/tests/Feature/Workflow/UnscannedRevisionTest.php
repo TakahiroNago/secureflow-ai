@@ -1,9 +1,11 @@
 <?php
 
+use App\Domain\Execution\ExecutionVerifier;
 use App\Domain\Workflow\ApprovalEligibility;
 use App\Domain\Workflow\WorkflowConflictException;
 use App\Domain\Workflow\WorkflowDecisions;
 use App\Domain\Workflow\WorkflowSubmission;
+use App\Models\Approval;
 use App\Models\Organization;
 use App\Models\Workflow;
 use App\Models\WorkflowRevision;
@@ -88,6 +90,21 @@ it('refuses to approve a revision that was never scanned, and says so beforehand
 
     expect(ownerDb()->table('approvals')->where('workflow_id', $workflow->id)->count())->toBe(0)
         ->and(ownerDb()->table('workflows')->where('id', $workflow->id)->value('status'))->toBe('pending');
+});
+
+it('refuses to execute a revision that was never scanned, even when it is approved', function () {
+    $workflow = unscannedWorkflowOf($this->org, $this->owner->id, 'approved');
+    $revision = ownerDb()->table('workflow_revisions')->where('workflow_id', $workflow->id)->sole();
+    insertApproval(ownerDb(), $workflow, $revision->id, $this->admin->id, ['plan_hash' => $revision->plan_hash]);
+
+    $refusal = inOrganization($this->org, fn () => ExecutionVerifier::refusal(
+        Workflow::query()->findOrFail($workflow->id),
+        WorkflowRevision::query()->findOrFail($revision->id),
+        Approval::query()->where('workflow_id', $workflow->id)->sole(),
+        WorkflowTask::query()->where('workflow_id', $workflow->id)->get(),
+    ));
+
+    expect($refusal)->toBe('SCAN_REQUIRED');
 });
 
 it('leaves the check that stops new unscanned rows in place', function () {

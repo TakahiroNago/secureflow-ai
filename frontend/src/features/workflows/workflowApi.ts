@@ -75,6 +75,7 @@ const workflowSchema = z.object({
   can_edit: z.boolean(),
   can_submit: z.boolean(),
   can_reopen: z.boolean(),
+  can_execute: z.boolean(),
   can_view_approval: z.boolean(),
   approver_available: z.boolean(),
   decision: z
@@ -87,6 +88,25 @@ const workflowSchema = z.object({
     .nullable(),
   tasks: z.array(taskSchema),
 })
+
+const executionSchema = z.object({
+  id: z.string(),
+  status: z.enum(['queued', 'running', 'completed', 'failed']),
+  revision_no: z.number().nullable(),
+  error_code: z.string().nullable(),
+  result: z
+    .object({
+      simulated: z.literal(true),
+      tasks: z.array(z.object({ position: z.number(), action_type: z.string(), summary: z.string() })),
+    })
+    .nullable(),
+  created_at: z.string().nullable(),
+  finished_at: z.string().nullable(),
+})
+
+const executionListResponse = z.object({ data: z.array(executionSchema) }).transform((response) => response.data)
+
+const executionAccepted = z.object({ data: z.object({ execution_id: z.string(), status: z.string() }) }).transform((response) => response.data)
 
 const approvalSummarySchema = z.object({
   workflow_id: z.string(),
@@ -151,6 +171,7 @@ export type WorkflowSummary = z.infer<typeof summarySchema>
 export type Workflow = z.infer<typeof workflowSchema>
 export type Task = z.infer<typeof taskSchema>
 export type ApprovalContext = z.infer<typeof approvalContextSchema>
+export type Execution = z.infer<typeof executionSchema>
 export type TaskFields = Pick<Task, 'title' | 'description' | 'action_type' | 'steps' | 'priority' | 'target_data' | 'impact_summary'>
 
 const revision = (no: number) => ({ 'If-Match': `"${String(no)}"` })
@@ -228,4 +249,17 @@ export function approveWorkflow(id: string, decision: PlanIdentity & { acknowled
 
 export function rejectWorkflow(id: string, decision: PlanIdentity & { reason: string }): Promise<Workflow> {
   return apiRequest('POST', `/api/v1/workflows/${encodeURIComponent(id)}/reject`, workflowResponse, decision)
+}
+
+export function executeWorkflow(id: string, key: string): Promise<z.output<typeof executionAccepted>> {
+  return apiRequest('POST', `/api/v1/workflows/${encodeURIComponent(id)}/execute`, executionAccepted, undefined, { 'Idempotency-Key': key })
+}
+
+export function fetchExecutions(id: string): Promise<Execution[]> {
+  return apiRequest('GET', `/api/v1/workflows/${encodeURIComponent(id)}/executions`, executionListResponse)
+}
+
+/** Random, for one attempt to execute. A resend after a lost answer uses the same one. */
+export function newIdempotencyKey(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }

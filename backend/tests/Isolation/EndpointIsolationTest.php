@@ -33,6 +33,8 @@ const RESOURCE_ENDPOINTS = [
     ['GET', 'api/v1/workflows/{workflow}/approval-context'],
     ['POST', 'api/v1/workflows/{workflow}/approve'],
     ['POST', 'api/v1/workflows/{workflow}/reject'],
+    ['POST', 'api/v1/workflows/{workflow}/execute'],
+    ['GET', 'api/v1/workflows/{workflow}/executions'],
 ];
 
 const VALID_TASK = [

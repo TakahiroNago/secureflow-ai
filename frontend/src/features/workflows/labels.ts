@@ -78,6 +78,19 @@ export const CANNOT_APPROVE_LABELS: Record<string, string> = {
   PLAN_HASH_MISMATCH: '保存された計画と内容が一致しないため承認できません。',
 }
 
+export const EXECUTION_STATUS_LABELS: Record<string, string> = { queued: '実行待ち', running: '実行中', completed: '完了', failed: '失敗' }
+
+const EXECUTION_ERRORS: Record<string, string> = {
+  EXECUTION_STALE: '処理が時間内に完了しなかったため、失敗として扱いました。',
+  EXECUTION_PLAN_CHANGED: '承認された内容と一致しなかったため、実行しませんでした。',
+  EXECUTION_NO_HANDLER: '実行できない操作が含まれていたため、実行を中止しました。',
+  USER_INACTIVE: '実行を依頼した利用者が無効になったため、実行しませんでした。',
+}
+
+export function executionErrorMessage(code: string | null): string {
+  return (code !== null ? EXECUTION_ERRORS[code] : undefined) ?? '実行に失敗しました。'
+}
+
 const MASKED_TOO_LONG = 'マスキング後の文字数が上限を超えます。短くしてください。'
 
 /** A fixed sentence for each case. What the server sent is only shown when it is a known field error. */
@@ -89,6 +102,14 @@ export function apiErrorMessage(error: unknown): string {
   switch (error.code) {
     case 'REVISION_CONFLICT':
       return '他の変更が先に保存されました。最新の内容を読み込みました。確認してからもう一度保存してください。'
+    case 'APPROVAL_NOT_VALID':
+      return '有効な承認がないため実行できません。'
+    case 'EXECUTION_ALREADY_EXISTS':
+      return 'この承認はすでに実行に使われています。もう一度実行するには、下書きに戻して再度承認を受けてください。'
+    case 'POLICY_VIOLATION':
+      return 'ポリシーの確認で実行できませんでした。編集して保存し、再度承認を受けてください。'
+    case 'IDEMPOTENCY_KEY_REUSED':
+      return '実行の依頼を処理できませんでした。ページを再読み込みしてください。'
     case 'PLAN_HASH_MISMATCH':
       return '内容が変更されています。最新の内容を読み込みました。確認してからもう一度操作してください。'
     case 'ALREADY_DECIDED':

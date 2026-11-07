@@ -1,12 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { ApiError } from '../../api/client'
-import { addTask, blockedScan, deleteTask, fetchWorkflow, reopenWorkflow, submitWorkflow, updateTask, updateTitle, type Task, type TaskFields, type Workflow } from './workflowApi'
-import { apiErrorMessage, NO_APPROVER_MESSAGE, PRIORITY_LABELS, scanLabel, SEVERITY_LABELS, STATUS_LABELS } from './labels'
+import { addTask, blockedScan, deleteTask, executeWorkflow, fetchExecutions, fetchWorkflow, newIdempotencyKey, reopenWorkflow, submitWorkflow, updateTask, updateTitle, type Task, type TaskFields, type Workflow } from './workflowApi'
+import { apiErrorMessage, EXECUTION_STATUS_LABELS, executionErrorMessage, NO_APPROVER_MESSAGE, PRIORITY_LABELS, scanLabel, SEVERITY_LABELS, STATUS_LABELS } from './labels'
 import { ScanPanel } from './ScanPanel'
 import { TaskForm } from './TaskForm'
 import { UnscannedNotice } from './UnscannedNotice'
+
+const POLL_MS = 2000
+
+/** The answer is not known yet, so the same request may be sent again. Anything else was an answer. */
+const mayResend = (error: unknown) => !(error instanceof ApiError) || error.status === 429 || error.status >= 500
 
 const fieldsOf = (task: Task): TaskFields => ({
   title: task.title,
@@ -25,7 +30,40 @@ export function WorkflowDetailPage() {
   const [editing, setEditing] = useState<string | 'new' | 'title' | null>(null)
   const [title, setTitle] = useState('')
 
-  const workflow = useQuery({ queryKey: key, queryFn: () => fetchWorkflow(id), retry: false })
+  const executionKey = useRef<string | null>(null)
+
+  const workflow = useQuery({
+    queryKey: key,
+    queryFn: () => fetchWorkflow(id),
+    retry: false,
+    refetchInterval: (query) => (query.state.data?.status === 'running' ? POLL_MS : false),
+  })
+  const status = workflow.data?.status
+  const executions = useQuery({
+    queryKey: ['executions', id, status],
+    queryFn: () => fetchExecutions(id),
+    retry: false,
+    enabled: status === 'running' || status === 'completed' || status === 'failed',
+    refetchInterval: status === 'running' ? POLL_MS : false,
+  })
+
+  const execute = useMutation({
+    mutationFn: () => {
+      executionKey.current ??= newIdempotencyKey()
+
+      return executeWorkflow(id, executionKey.current)
+    },
+    onSuccess: () => {
+      executionKey.current = null
+      void queryClient.invalidateQueries({ queryKey: key })
+    },
+    onError: (error) => {
+      if (!mayResend(error)) {
+        executionKey.current = null
+        void queryClient.invalidateQueries({ queryKey: key })
+      }
+    },
+  })
 
   const change = useMutation({
     mutationFn: (run: () => Promise<Workflow>) => run(),
@@ -155,12 +193,59 @@ export function WorkflowDetailPage() {
             下書きに戻す
           </button>
         )}
+        {current.can_execute && (
+          <button
+            type="button"
+            className="rounded-md bg-slate-900 px-3 py-2 text-white disabled:opacity-50"
+            disabled={execute.isPending}
+            onClick={() => { execute.mutate() }}
+          >
+            模擬実行する
+          </button>
+        )}
         {current.can_view_approval && (
           <Link className="underline" to={`/workflows/${encodeURIComponent(id)}/approval`}>
             承認の画面を開く
           </Link>
         )}
       </div>
+
+      {current.can_execute && <p className="text-xs text-slate-500">模擬実行です。外部への操作は行いません。承認は1回の実行で使い切ります。</p>}
+      {execute.isError && (
+        <p role="alert" className="text-sm text-red-700">
+          {apiErrorMessage(execute.error)}
+        </p>
+      )}
+
+      {executions.isError && (
+        <p role="alert" className="text-sm text-red-700">
+          {apiErrorMessage(executions.error)}
+        </p>
+      )}
+      {executions.data !== undefined && executions.data.length > 0 && (
+        <section aria-label="実行の履歴" className="space-y-2 rounded-md p-3 text-sm ring-1 ring-slate-200">
+          <h3 className="font-medium">実行の履歴</h3>
+          <ul className="space-y-2">
+            {executions.data.map((execution) => (
+              <li key={execution.id}>
+                <p>
+                  リビジョン {execution.revision_no ?? '-'}：{EXECUTION_STATUS_LABELS[execution.status]}
+                </p>
+                {execution.status === 'failed' && <p className="text-red-700">{executionErrorMessage(execution.error_code)}</p>}
+                {execution.result !== null && (
+                  <ul className="mt-1 list-disc pl-5">
+                    {execution.result.tasks.map((task) => (
+                      <li key={task.position}>
+                        {task.position}. {task.action_type}：{task.summary}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {change.isError && (
         <p role="alert" className="text-sm text-red-700">

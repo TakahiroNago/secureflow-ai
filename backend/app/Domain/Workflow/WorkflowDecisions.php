@@ -53,7 +53,7 @@ final readonly class WorkflowDecisions
         private WorkflowTransition $transition,
         private InputScanner $scanner,
         private ScanRecorder $recorder,
-        private ApprovalDenials $denials,
+        private DeniedAttempts $denials,
     ) {}
 
     /**
@@ -115,12 +115,12 @@ final readonly class WorkflowDecisions
                 $this->transition->apply($locked, $event);
             });
         } catch (AuthorizationException $exception) {
-            $this->denials->record($user, $workflow, (string) ($exception->response()->code() ?? 'FORBIDDEN'));
+            $this->denials->record(AuditEventType::ApprovalDenied, $user, $workflow, (string) ($exception->response()->code() ?? 'FORBIDDEN'));
 
             throw $exception;
         } catch (WorkflowConflictException $exception) {
             if ($exception->problemCode === ApprovalEligibility::PLAN_HASH_MISMATCH) {
-                $this->denials->record($user, $workflow, ApprovalEligibility::PLAN_HASH_MISMATCH);
+                $this->denials->record(AuditEventType::ApprovalDenied, $user, $workflow, ApprovalEligibility::PLAN_HASH_MISMATCH);
             }
 
             throw $exception;

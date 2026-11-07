@@ -69,6 +69,9 @@ login "$A" "$USER_A" "$PASSWORD"; is "the member logs in" "$STATUS" 200
 login "$B" "$USER_B" "$PASSWORD"; is "the admin logs in" "$STATUS" 200
 login "$C" "$USER_C" "$PASSWORD"; is "the second admin logs in" "$STATUS" 200
 
+# A script before this one may have left some behind on purpose: only what this one causes counts.
+failed_before=$(su_sql 'SELECT count(*) FROM failed_jobs')
+
 echo "== an analysis through the real worker =="
 call "$A" POST /api/v1/analyses "{\"input\":\"$MARKER\"}"
 is "accepted" "$STATUS" 202
@@ -87,7 +90,7 @@ done
 is "the worker finishes it" "$status" succeeded
 workflow=$(field data.workflow_id)
 is "the queue is empty" "$(su_sql 'SELECT count(*) FROM jobs')" 0
-is "nothing failed" "$(su_sql 'SELECT count(*) FROM failed_jobs')" 0
+is "nothing failed" "$(su_sql 'SELECT count(*) FROM failed_jobs')" "$failed_before"
 
 echo "== a stop =="
 jobs_before=$(su_sql 'SELECT count(*) FROM ai_analysis_requests')
@@ -208,6 +211,65 @@ call "$A" PUT "/api/v1/workflows/$workflow/tasks/$task" "$TASK" -H 'If-Match: "4
 is "back to a draft" "$(field data.status)" draft
 is "with no decision on it" "$(field data.decision)" None
 
+echo "== executing =="
+execute() { # jar key
+  call "$1" POST "/api/v1/workflows/$workflow/execute" '' -H "Idempotency-Key: $2"
+}
+call "$A" POST "/api/v1/workflows/$workflow/execute"
+is "a key is required" "$STATUS" 422
+execute "$A" "before-$$"
+is "not before it is approved" "$(field code)" APPROVAL_NOT_VALID
+call "$A" POST "/api/v1/workflows/$workflow/submit"
+plan=$(identity)
+call "$B" POST "/api/v1/workflows/$workflow/approve" "{$plan,\"acknowledged_risks\":true}"
+is "approved again" "$(field data.status)" approved
+is "the owner may run it" "$(field data.can_execute)" True
+
+i=0
+for key in one two three four; do
+  i=$((i+1))
+  (
+    token=$(awk '$6 == "XSRF-TOKEN" { print $7 }' "$A" | tail -1)
+    curl -s -o "$race/run$i" -w '%{http_code}\n' --max-time 30 -X POST -b "$A" \
+      -H 'Accept: application/json' -H "Origin: $BASE" -H "Referer: $BASE/" \
+      -H "X-XSRF-TOKEN: $(printf '%b' "${token//%/\\x}")" -H "Idempotency-Key: $key-$$" \
+      "$BASE/api/v1/workflows/$workflow/execute" > "$race/run$i.status"
+  ) &
+done
+wait
+is "four requests at once: one is accepted" "$(cat "$race"/run*.status | grep -c '^202$')" 1
+is "the others are refused" "$(cat "$race"/run*.status | grep -c '^409$')" 3
+is "because the approval is used" "$(grep -l '"EXECUTION_ALREADY_EXISTS"' "$race"/run[0-9] | wc -l | tr -d ' ')" 3
+is "one execution exists" "$(su_sql "SELECT count(*) FROM workflow_executions WHERE workflow_id='$workflow'")" 1
+execution=$(su_sql "SELECT id FROM workflow_executions WHERE workflow_id='$workflow'")
+winner=$(su_sql "SELECT idempotency_key FROM workflow_executions WHERE id='$execution'")
+
+status=queued
+for _ in $(seq 1 40); do
+  status=$(su_sql "SELECT status FROM workflow_executions WHERE id='$execution'")
+  case "$status" in completed|failed) break ;; esac
+  sleep 0.5
+done
+is "the real worker finishes it" "$status" completed
+is "and no job failed" "$(su_sql 'SELECT count(*) FROM failed_jobs')" "$failed_before"
+call "$A" GET "/api/v1/workflows/$workflow"
+is "the workflow is completed" "$(field data.status)" completed
+is "it can no longer be run" "$(field data.can_execute)" False
+execute "$A" "$winner"
+is "the same request gets the same answer" "$(field data.execution_id)" "$execution"
+is "and says how it ended" "$(field data.status)" completed
+execute "$B" "$winner"
+is "another person cannot use that key" "$(field code)" IDEMPOTENCY_KEY_REUSED
+execute "$A" "later-$$"
+is "another key cannot run it again" "$(field code)" EXECUTION_ALREADY_EXISTS
+call "$A" GET "/api/v1/workflows/$workflow/executions"
+is "the owner sees the result" "$(field data.0.status)" completed
+is "marked as simulated" "$(field data.0.result.simulated)" True
+hasnt "it does not repeat the plan" "$BODY" '編集後'
+hasnt "or the key" "$BODY" "$winner"
+call "$B" GET "/api/v1/workflows/$workflow/executions"
+is "the admin too" "$STATUS" 200
+
 echo "== nothing as it was typed is kept anywhere =="
 dump=$(docker compose exec -T postgres pg_dump -U postgres --data-only "$DB_DATABASE" < /dev/null)
 logs=$(docker compose logs --no-color app worker scheduler nginx 2>/dev/null)
@@ -220,10 +282,13 @@ if grep -q 'EMAIL_REDACTED' <<< "$dump"; then ok "the check can find stored text
 echo "== the audit chain =="
 is "the creation is recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='workflow.created' AND resource_id='$workflow'")" 1
 is "the edits are recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='workflow.updated' AND resource_id='$workflow'")" 3
-is "the submissions are recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='workflow.submitted' AND resource_id='$workflow'")" 2
+is "the submissions are recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='workflow.submitted' AND resource_id='$workflow'")" 3
 is "the reopening is recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='workflow.reopened' AND resource_id='$workflow'")" 1
 is "the rejection is recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='approval.rejected' AND resource_id='$workflow'")" 1
-is "the approval is recorded once" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='approval.approved' AND resource_id='$workflow'")" 1
+is "the approvals are recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='approval.approved' AND resource_id='$workflow'")" 2
+is "the execution started once" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='execution.started' AND resource_id='$workflow'")" 1
+is "and completed once" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='execution.completed' AND resource_id='$workflow'")" 1
+[ "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='execution.denied' AND resource_id='$workflow'")" -ge 6 ] && ok "the refusals are recorded" || ng "the refusals are recorded"
 is "the refused attempts are recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='approval.denied' AND resource_id='$workflow'")" 2
 [ "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='security.blocked'")" -ge 3 ] && ok "the stops are recorded" || ng "the stops are recorded"
 docker compose exec -T app php artisan audit:verify --all > "$work/verify" 2>&1

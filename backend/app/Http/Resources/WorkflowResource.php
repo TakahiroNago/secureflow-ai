@@ -41,6 +41,7 @@ final class WorkflowResource extends JsonResource
             'can_edit' => $this->can($request, 'update', WorkflowEvent::Edit),
             'can_submit' => $this->can($request, 'submit', WorkflowEvent::Submit),
             'can_reopen' => $this->can($request, 'reopen', WorkflowEvent::Reopen),
+            'can_execute' => $this->status === WorkflowStatus::Approved && Gate::forUser($request->user())->allows('execute', $this->resource),
             'can_view_approval' => $this->status === WorkflowStatus::Pending && Gate::forUser($request->user())->allows('viewApprovalContext', $this->resource),
             'approver_available' => ApprovalEligibility::approverAvailable($this->resource),
             'decision' => $this->decisionOnCurrentRevision(),

@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\AnalysisController;
 use App\Http\Controllers\Api\V1\ApprovalController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DashboardController;
+use App\Http\Controllers\Api\V1\ExecutionController;
 use App\Http\Controllers\Api\V1\SecurityController;
 use App\Http\Controllers\Api\V1\WorkflowController;
 use App\Http\Controllers\Api\V1\WorkflowTaskController;
@@ -83,11 +84,18 @@ Route::prefix('v1')->middleware('json.body')->group(function (): void {
             ->name('workflows.approval-context');
         // The denial is recorded before the policy refuses, and after the limit: a refusal writes to the chain.
         Route::post('/workflows/{workflow}/approve', [ApprovalController::class, 'approve'])
-            ->middleware(['throttle:approval-decisions', 'approval.denial:approve', 'can:approve,workflow'])
+            ->middleware(['throttle:approval-decisions', 'denied.attempt:approve', 'can:approve,workflow'])
             ->name('workflows.approve');
         Route::post('/workflows/{workflow}/reject', [ApprovalController::class, 'reject'])
-            ->middleware(['throttle:approval-decisions', 'approval.denial:reject', 'can:reject,workflow'])
+            ->middleware(['throttle:approval-decisions', 'denied.attempt:reject', 'can:reject,workflow'])
             ->name('workflows.reject');
+
+        Route::post('/workflows/{workflow}/execute', [ExecutionController::class, 'store'])
+            ->middleware(['throttle:execution-requests', 'denied.attempt:execute', 'can:execute,workflow'])
+            ->name('workflows.execute');
+        Route::get('/workflows/{workflow}/executions', [ExecutionController::class, 'index'])
+            ->middleware('can:view,workflow')
+            ->name('workflows.executions');
 
         Route::scopeBindings()->middleware('can:update,workflow')->group(function (): void {
             Route::post('/workflows/{workflow}/tasks', [WorkflowTaskController::class, 'store'])->name('workflows.tasks.store');
