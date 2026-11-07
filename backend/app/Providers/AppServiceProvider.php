@@ -14,10 +14,16 @@ use App\Domain\Auth\RedisRetiredSessions;
 use App\Domain\Auth\RetiredSessions;
 use App\Http\Middleware\StartSessionUnlessRetired;
 use App\Models\AiAnalysisRequest;
+use App\Models\OrganizationSetting;
+use App\Models\SecurityFinding;
+use App\Models\SecurityScan;
 use App\Models\User;
 use App\Models\Workflow;
 use App\Policies\AnalysisPolicy;
 use App\Policies\AuditLogPolicy;
+use App\Policies\OrganizationSettingPolicy;
+use App\Policies\SecurityFindingPolicy;
+use App\Policies\SecurityScanPolicy;
 use App\Policies\WorkflowPolicy;
 use App\Support\Database\DatabaseCommandPolicy;
 use App\Support\Database\SingleConnectPostgresConnection;
@@ -108,6 +114,9 @@ class AppServiceProvider extends ServiceProvider
 
         Gate::policy(Workflow::class, WorkflowPolicy::class);
         Gate::policy(AiAnalysisRequest::class, AnalysisPolicy::class);
+        Gate::policy(SecurityFinding::class, SecurityFindingPolicy::class);
+        Gate::policy(SecurityScan::class, SecurityScanPolicy::class);
+        Gate::policy(OrganizationSetting::class, OrganizationSettingPolicy::class);
 
         // Cookie sessions only. There is no personal_access_tokens table, and a bearer token must
         // simply be unauthenticated rather than reach a query on a table that does not exist.

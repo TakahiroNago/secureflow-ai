@@ -1,7 +1,7 @@
 # SecureFlow AI — API設計書
 
-- 版：v1.13（2026-11-07）
-- 状態：確定（v1.13：工程2-9 の全体のレート制限とエラー形式の統一を反映。v1.12：工程2-8 の利用上限と利用状況を反映。v1.11：工程2-7 の監査ログの API を反映。v1.10：工程2-6 の実行の API を反映。v1.9：工程2-5 の提出、reopen、承認の API を反映。v1.8：工程2-4 の出力検証とプロンプト構築を反映。v1.7：工程2-3 の入力検査の組み込みを反映。v1.6：工程1-7 のダッシュボードを反映。v1.5：工程1-6 の分析とワークフローの API を反映。v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.14（2026-11-07）
+- 状態：確定（v1.14：工程2-10 のセキュリティ管理と設定の API を反映。v1.13：工程2-9 の全体のレート制限とエラー形式の統一を反映。v1.12：工程2-8 の利用上限と利用状況を反映。v1.11：工程2-7 の監査ログの API を反映。v1.10：工程2-6 の実行の API を反映。v1.9：工程2-5 の提出、reopen、承認の API を反映。v1.8：工程2-4 の出力検証とプロンプト構築を反映。v1.7：工程2-3 の入力検査の組み込みを反映。v1.6：工程1-7 のダッシュボードを反映。v1.5：工程1-6 の分析とワークフローの API を反映。v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -388,11 +388,18 @@ IP 単位の制限は、NAT 配下など同じ送信元 IP を共有する利用
 
 | メソッド | パス | 権限 | 説明 |
 |---|---|---|---|
-| GET | `/api/v1/security/findings?severity=&status=&category=&cursor=` | admin / auditor / member（自分のみ） | 検出一覧 |
-| PATCH | `/api/v1/security/findings/{id}` | admin | `{status, status_note}`。監査ログ記録 |
-| GET | `/api/v1/security/scans/{id}` | 対象リソースの参照権限者 | |
+| GET | `/api/v1/security/findings?severity=&status=&category=&cursor=&limit=` | admin / auditor / member（自分の検査の検出のみ） | 検出一覧（工程2-10） |
+| PATCH | `/api/v1/security/findings/{id}` | admin | `{status, status_note}`。`finding.status_changed` を記録（工程2-10） |
+| GET | `/api/v1/security/scans/{id}` | admin / auditor / member（自分の検査のみ） | 検査と検出の詳細（工程2-10） |
 | POST | `/api/v1/security/test-runs` | admin | 自己診断開始。202 |
 | GET | `/api/v1/security/test-runs` / `/{id}` | 認証 | 結果一覧・詳細 |
+
+**工程2-10 の補足：**
+
+- `findings` の応答は `id`、`category`、`rule_id`、`severity`、`action`、`message`、`masked_excerpt`、`field`、`status`、`status_note`、`status_changed_by`（`id`、`name`）、`status_changed_at`、`created_at`、`scan`（`id`、`target_type`、`target_id`、`decision`、`block_reason`、`max_severity`、`created_at`）である。新しい順でカーソル方式（既定50件、最大100件）。member は自分の検査（`security_scans.user_id`）の検出のみを受け取る。未知の値と項目は 422。
+- `PATCH` の `status` は `open` / `acknowledged` / `resolved` / `false_positive`。遷移は [security-design.md §20](security-design.md) のとおりで、それ以外は 409 `INVALID_STATUS_TRANSITION`。`status_note`（任意、最大500文字）は承認のコメントと同じ検査を受け、マスク済みの文のみ保存する。秘密情報とインジェクションは 422 `INPUT_BLOCKED` で停止の記録を残す。メモのない変更は前のメモを消す。変更と `finding.status_changed` は同じトランザクションで記録し、記録できなければ 503。member と auditor は 403。
+- `scans/{id}` は検査の `id`、`target_type`、`target_id`、`user`、`ruleset_version`、`duration_ms`、`created_at` と、§3.3 の `scan` の形（`status`、`decision`、…、`limitations_notice`）を返す。`findings` の各項目には `id` と `status` が付く。admin と auditor は組織の検査を、member は自分の検査のみ参照でき、他人のものは 404。
+- `test-runs` は工程3-3 で実装する。
 
 ### 3.8 監査ログ
 
@@ -411,11 +418,13 @@ IP 単位の制限は、NAT 配下など同じ送信元 IP を共有する利用
 
 | メソッド | パス | 権限 | 説明 |
 |---|---|---|---|
-| GET | `/api/v1/settings/ai` | admin | `{provider, model, api_key_configured: true/false, timeout, max_output_tokens}`。**キー値・末尾桁も返さない** |
+| GET | `/api/v1/settings/ai` | admin | `{provider, model, api_key_configured: true/false, timeout_seconds, max_output_tokens}`。**キー値・末尾桁も返さない** |
 | GET / PATCH | `/api/v1/settings/limits` | admin | 月間トークン上限、ユーザー日次上限、最大入力長 |
 | GET | `/api/v1/settings/security` | admin | リスク判定方針・ルールセット版・ポリシー版（参照のみ。D4により固定） |
 
 プロバイダ・モデル・送信先URL・APIキーは環境変数で管理し、APIからは変更できない（D5・SSRF対策）。
+
+**工程2-10 の補足：** `settings/ai` は `{provider, model, api_key_configured, timeout_seconds, max_output_tokens}` で、`model` は未設定なら `null`。`settings/limits` は `{monthly_token_limit, user_daily_request_limit, max_input_chars, updated_at, updated_by}` で、行がなければ既定値（1,000,000・100・4,000）と `null` を返す。`PATCH` は変える項目のみを JSON の整数で送る（文字列の数字は 422。範囲は 1〜1,000,000,000・1〜100,000・1〜20,000）。変わった項目のみ `settings.updated` に記録し、次の要求から効く。`settings/security` は `policy_version`、`ruleset_version`、`prompt_version`、`input_actions`（`pii`、`secret`、`masking_failure`、`injection` の重大度ごとの動作）、`approval` を返す。admin 以外は 403。`settings/ai`・`settings/security` に変更の経路はない（405）。
 
 ### 3.10 ヘルスチェック
 

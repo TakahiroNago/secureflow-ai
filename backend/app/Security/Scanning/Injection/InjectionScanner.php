@@ -282,7 +282,7 @@ final class InjectionScanner
     /**
      * Only for injection rules. The rules for personal data and secrets define their own action (§3.5).
      */
-    private static function actionFor(Severity $severity): ScanAction
+    public static function actionFor(Severity $severity): ScanAction
     {
         return match ($severity) {
             Severity::Critical, Severity::High => ScanAction::Block,

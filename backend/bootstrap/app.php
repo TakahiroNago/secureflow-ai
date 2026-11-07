@@ -5,6 +5,7 @@ use App\Audit\AuditFailure;
 use App\Audit\OutageLog;
 use App\Audit\RefusalRecorder;
 use App\Domain\Execution\IdempotencyKeyReusedException;
+use App\Domain\Security\FindingConflictException;
 use App\Domain\Workflow\AiLimitExceededException;
 use App\Domain\Workflow\RiskAcknowledgementRequiredException;
 use App\Domain\Workflow\WorkflowConflictException;
@@ -122,6 +123,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Already logged by whatever raised it, and part of normal operation during an outage.
         $exceptions->dontReport(ServiceUnavailableException::class);
         $exceptions->dontReport(WorkflowConflictException::class);
+        $exceptions->dontReport(FindingConflictException::class);
         $exceptions->dontReport(RiskAcknowledgementRequiredException::class);
         $exceptions->dontReport(IdempotencyKeyReusedException::class);
         $exceptions->dontReport(AiLimitExceededException::class);

@@ -35,6 +35,12 @@ export function AppShell() {
               監査ログ
             </NavLink>
           )}
+          <NavLink className={linkClass} to="/security">
+            セキュリティ
+          </NavLink>
+          <NavLink className={linkClass} to="/settings">
+            設定
+          </NavLink>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-slate-600">

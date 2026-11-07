@@ -4,7 +4,7 @@ namespace App\Audit;
 
 /**
  * The events recorded so far (docs/security-design.md §16.1). The database checks only their shape,
- * so that adding one does not change the DB function. Other events arrive in step 2-7.
+ * so that adding one does not change the DB function. The self-test events arrive in step 3-3.
  */
 enum AuditEventType: string
 {
@@ -34,6 +34,8 @@ enum AuditEventType: string
     case AnalysisFailed = 'analysis.failed';
     case SecurityScan = 'security.scan';
     case SecurityBlocked = 'security.blocked';
+    case FindingStatusChanged = 'finding.status_changed';
+    case SettingsUpdated = 'settings.updated';
 
     /**
      * Anything else in metadata is dropped before recording.
@@ -61,6 +63,10 @@ enum AuditEventType: string
             self::AnalysisFailed => ['reason_code', 'analysis_id'],
             self::SecurityScan => ['target_type', 'decision', 'max_severity', 'findings_count'],
             self::SecurityBlocked => ['reason_code'],
+            // The statuses only: the note is text, and text does not go into the chain.
+            self::FindingStatusChanged => ['from', 'to'],
+            // The new values. They are numbers, and the previous ones are in the previous record.
+            self::SettingsUpdated => ['monthly_token_limit', 'user_daily_request_limit', 'max_input_chars'],
             default => [],
         };
     }

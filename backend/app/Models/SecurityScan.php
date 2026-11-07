@@ -7,6 +7,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
@@ -26,6 +27,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $duration_ms
  * @property CarbonInterface $created_at
  * @property-read Collection<int, SecurityFinding> $findings
+ * @property-read User|null $user
  */
 class SecurityScan extends Model
 {
@@ -45,6 +47,16 @@ class SecurityScan extends Model
     public function findings(): HasMany
     {
         return $this->hasMany(SecurityFinding::class, 'scan_id');
+    }
+
+    /**
+     * Who asked for the scan. Null for a scan nobody asked for in a request of their own.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Support\Http;
 
 use App\Domain\Execution\IdempotencyKeyReusedException;
+use App\Domain\Security\FindingConflictException;
 use App\Domain\Security\InputBlockedException;
 use App\Domain\Workflow\AiLimitExceededException;
 use App\Domain\Workflow\RiskAcknowledgementRequiredException;
@@ -83,6 +84,9 @@ final class ProblemDetails
                 419, 'CSRF_TOKEN_MISMATCH', 'CSRF token mismatch', 'ページを再読み込みしてください。',
             ),
             $exception instanceof WorkflowConflictException => self::response(
+                409, $exception->problemCode, 'Conflict', $exception->detail,
+            ),
+            $exception instanceof FindingConflictException => self::response(
                 409, $exception->problemCode, 'Conflict', $exception->detail,
             ),
             $exception instanceof RiskAcknowledgementRequiredException => self::response(

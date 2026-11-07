@@ -127,9 +127,17 @@ final readonly class InputScanner
             array_slice($findings, 0, self::MAX_FINDINGS),
             count($findings),
             $durationMs,
-            SensitiveDataScanner::RULESET_VERSION.'/'.($this->injection->rulesetVersion() ?? 'unavailable'),
+            $this->rulesetVersion(),
             $failureReason,
         );
+    }
+
+    /**
+     * The rules in force, as every scan records them: the sensitive-data rules and the injection rules.
+     */
+    public function rulesetVersion(): string
+    {
+        return SensitiveDataScanner::RULESET_VERSION.'/'.($this->injection->rulesetVersion() ?? 'unavailable');
     }
 
     /**
