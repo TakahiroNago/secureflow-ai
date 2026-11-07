@@ -8,7 +8,8 @@ import { ScanPanel } from './ScanPanel'
 import { TaskForm } from './TaskForm'
 import { UnscannedNotice } from './UnscannedNotice'
 
-const POLL_MS = 2000
+/** Two requests each time, and every request counts towards 60 a minute (docs/api-design.md §1.4). */
+const POLL_MS = 5000
 
 /** The answer is not known yet, so the same request may be sent again. Anything else was an answer. */
 const mayResend = (error: unknown) => !(error instanceof ApiError) || error.status === 429 || error.status >= 500

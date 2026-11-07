@@ -70,7 +70,10 @@ await new Promise((r) => net.createServer((c) => {
 }).listen(PORT, 'localhost', r));
 
 let fails = 0;
+// The last step, so that a violation says where it happened.
+let step = 'the start';
 const check = (label, ok, got = '') => {
+  step = label;
   if (!ok) fails++;
   console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${label}${ok ? '' : ` (got ${got})`}`);
 };
@@ -80,6 +83,12 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   const browser = await browsers[name].launch();
   const context = await browser.newContext();
   const page = await context.newPage();
+  // A page that breaks the CSP goes on working, so this has to be looked for.
+  // A screenshot in WebKit adds a <style> of Playwright's own, which the CSP refuses as it should: not the app's.
+  let shooting = false;
+  const screenshot = async (path) => { shooting = true; try { await page.screenshot({ path, fullPage: true }); await page.waitForTimeout(200); } finally { shooting = false; } };
+  const violations = [];
+  page.on('console', (m) => { if (/Content Security Policy|Content-Security-Policy/i.test(m.text())) if (!shooting) violations.push(`after "${step}" on ${new URL(page.url()).pathname}: ${m.text().slice(0, 160)}`); });
   // Only what is sent after the login has answered: before that, 401 is the right answer.
   let loggedIn = false;
   const sentAfterLogin = new Set();
@@ -162,7 +171,7 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   check('the chart is drawn', (await page.locator('.recharts-bar-rectangle').count()) > 0);
   check('nothing failed on the page', problems.length === 0, problems.join('; '));
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.screenshot({ path: `dashboard-${name}.png`, fullPage: true });
+  await screenshot(`dashboard-${name}.png`);
 
   // Asking for an approval, on the real screens.
   await page.goto(`${BASE}${workflowPath}`);
@@ -224,10 +233,11 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   await verified.waitFor({ timeout: 15000 }).catch(() => {});
   check('verifying finds nothing wrong', await verified.isVisible());
   check('still nothing failed on the page', problems.length === 0, problems.join('; '));
+  check('the CSP was never broken, on any screen', violations.length === 0, violations.join('; '));
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE}${workflowPath}/approval`);
   await page.getByRole('heading', { name: /^承認：/ }).waitFor({ timeout: 10000 }).catch(() => {});
-  await page.screenshot({ path: `approval-${name}.png`, fullPage: true });
+  await screenshot(`approval-${name}.png`);
   await browser.close();
 }
 console.log(`\nResult: ${fails} failed`);
