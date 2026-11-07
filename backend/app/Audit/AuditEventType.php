@@ -28,6 +28,9 @@ enum AuditEventType: string
     case ExecutionCompleted = 'execution.completed';
     case ExecutionFailed = 'execution.failed';
     case ExecutionDenied = 'execution.denied';
+    case AiCall = 'ai.call';
+    case AuthzDenied = 'authz.denied';
+    case RateLimitExceeded = 'rate_limit.exceeded';
     case AnalysisFailed = 'analysis.failed';
     case SecurityScan = 'security.scan';
     case SecurityBlocked = 'security.blocked';
@@ -52,6 +55,9 @@ enum AuditEventType: string
             self::ExecutionStarted => ['execution_id', 'revision_no'],
             self::ExecutionCompleted => ['execution_id'],
             self::ExecutionFailed => ['execution_id', 'reason_code'],
+            self::AiCall => ['provider', 'reason_code'],
+            self::AuthzDenied => ['route', 'status'],
+            self::RateLimitExceeded => ['route'],
             self::AnalysisFailed => ['reason_code', 'analysis_id'],
             self::SecurityScan => ['target_type', 'decision', 'max_severity', 'findings_count'],
             self::SecurityBlocked => ['reason_code'],
@@ -62,7 +68,7 @@ enum AuditEventType: string
     public function severity(): ?string
     {
         return match ($this) {
-            self::LoginFailed, self::PasswordChangeFailed, self::AnalysisFailed, self::ExecutionFailed => 'low',
+            self::LoginFailed, self::PasswordChangeFailed, self::AnalysisFailed, self::ExecutionFailed, self::AuthzDenied, self::RateLimitExceeded => 'low',
             self::Locked, self::SecurityBlocked, self::ApprovalDenied, self::ExecutionDenied => 'medium',
             self::EventsSuppressed => 'high',
             self::VerificationFailed => 'critical',

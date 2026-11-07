@@ -103,7 +103,7 @@ final class ProblemDetails
             $exception instanceof RedisException,
             $exception instanceof QueryException,
             $exception instanceof PDOException => self::unavailable($request),
-            ! $exception instanceof HttpExceptionInterface && $request->is('api/v1/auth/*', 'api/v1/account/*', 'api/v1/analyses*', 'api/v1/workflows*', 'api/v1/approvals*', 'api/v1/security/*', 'sanctum/*') => self::response(
+            ! $exception instanceof HttpExceptionInterface && $request->is('api/v1/auth/*', 'api/v1/account/*', 'api/v1/analyses*', 'api/v1/workflows*', 'api/v1/approvals*', 'api/v1/audit-logs*', 'api/v1/security/*', 'sanctum/*') => self::response(
                 500, 'INTERNAL_ERROR', 'Internal server error', 'サーバーでエラーが発生しました。',
             ),
             default => null,

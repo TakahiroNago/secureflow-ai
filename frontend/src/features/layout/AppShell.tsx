@@ -30,6 +30,11 @@ export function AppShell() {
               承認待ち
             </NavLink>
           )}
+          {(user.role === 'admin' || user.role === 'auditor') && (
+            <NavLink className={linkClass} to="/audit-logs">
+              監査ログ
+            </NavLink>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-slate-600">

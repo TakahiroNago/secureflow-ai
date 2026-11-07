@@ -212,6 +212,17 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   check('it runs, and the history says so', await finished.isVisible());
   check('the result says it was only simulated', await page.getByText('模擬実行。外部への操作はありません', { exact: false }).first().isVisible());
   check('the button is gone', (await page.getByRole('button', { name: '模擬実行する' }).count()) === 0);
+
+  // The record of all this, as the same admin.
+  await page.getByRole('link', { name: '監査ログ' }).click({ timeout: 5000 });
+  const logged = page.locator('td:text-is("execution.started")').first();
+  await logged.waitFor({ timeout: 10000 }).catch(() => {});
+  check('the audit log shows what happened', await logged.isVisible());
+  check('and what a verification cannot show', await page.getByText('改ざんがないことの保証ではありません', { exact: false }).isVisible());
+  await page.getByRole('button', { name: 'チェーンを検証' }).click({ timeout: 5000 });
+  const verified = page.getByText('矛盾は見つかりませんでした', { exact: false });
+  await verified.waitFor({ timeout: 15000 }).catch(() => {});
+  check('verifying finds nothing wrong', await verified.isVisible());
   check('still nothing failed on the page', problems.length === 0, problems.join('; '));
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE}${workflowPath}/approval`);

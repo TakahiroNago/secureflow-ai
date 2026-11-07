@@ -4,6 +4,8 @@ namespace App\Domain\Workflow;
 
 use App\Ai\AiGateway;
 use App\Ai\AiProviderException;
+use App\Ai\AiResponse;
+use App\Ai\BuiltPrompt;
 use App\Ai\PromptBuilder;
 use App\Audit\AuditEntry;
 use App\Audit\AuditEventType;
@@ -70,7 +72,7 @@ final readonly class AnalysisProcessor
 
         try {
             $prompt = $this->prompts->build((string) $analysis->input_masked);
-            $scanned = $this->outputs->scan($this->gateway->generate($prompt->systemPrompt, $prompt->input)->content, $prompt->canary);
+            $scanned = $this->outputs->scan($this->callAi($user, $analysisId, $prompt)->content, $prompt->canary);
 
             if ($scanned->result->blocks()) {
                 $this->block($analysisId, $user, $scanned->result);
@@ -86,6 +88,38 @@ final readonly class AnalysisProcessor
         } catch (ServiceUnavailableException|QueryException|PDOException) {
             $this->fail($analysisId, self::ERROR_FAILED);
         }
+    }
+
+    /**
+     * ai.call says that a call was made and how it ended, with no text. If it cannot be written, the analysis goes on:
+     * the critical log has it. The tokens and the limits arrive with the real provider in step 2-8.
+     *
+     * @throws AiProviderException
+     */
+    private function callAi(User $user, string $analysisId, BuiltPrompt $prompt): AiResponse
+    {
+        try {
+            $response = $this->gateway->generate($prompt->systemPrompt, $prompt->input);
+        } catch (AiProviderException $exception) {
+            $this->recordCall($user, $analysisId, 'failure', $exception->failure->value);
+
+            throw $exception;
+        }
+
+        $this->recordCall($user, $analysisId, 'success', null);
+
+        return $response;
+    }
+
+    private function recordCall(User $user, string $analysisId, string $result, ?string $reason): void
+    {
+        $this->audit->recordAfterTransaction(
+            AuditEntry::byUserOn(AuditEventType::AiCall, $user, 'ai_analysis', $analysisId, array_filter([
+                'provider' => config()->string('ai.provider'),
+                'reason_code' => $reason,
+            ], fn (?string $value) => $value !== null), $result),
+            'ai_call_unrecorded',
+        );
     }
 
     /**
