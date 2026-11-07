@@ -263,7 +263,7 @@ SECUREFLOW_ALLOW_FAILURE_INJECTION=<プロジェクト名> bash scripts/test-exe
 bash scripts/test-semgrep-rules.sh      # Semgrep のルール自体の負のテスト
 docker run --rm -v "$PWD":/src:ro -w /src semgrep/semgrep:1.183.0 \
   semgrep scan --config /src/.semgrep/secureflow.yml --metrics=off --error backend/app backend/routes backend/bootstrap backend/database backend/config frontend/src
-docker run --rm -v "$PWD":/src:ro aquasec/trivy:0.76.1 fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --ignore-unfixed --ignorefile /src/.trivyignore /src
+docker run --rm -v "$PWD":/src:ro aquasec/trivy:0.76.1 fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --ignore-unfixed --ignorefile /src/.trivyignore.yaml /src
 ```
 
 `test` サービスは外部に出られない内部ネットワーク上で動くため、`composer audit` / `npm audit` はネットワークに出られるコンテナで実行します：

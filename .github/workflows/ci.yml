@@ -269,7 +269,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/src:ro -v "$HOME/.cache/trivy":/root/.cache/trivy "$TRIVY_IMAGE" \
             fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress \
-            --ignorefile /src/.trivyignore /src
+            --ignorefile /src/.trivyignore.yaml /src
 
       - name: Create CI-only .env (random throwaway secrets)
         run: bash scripts/init-env.sh
@@ -277,13 +277,20 @@ jobs:
       - name: Build PHP image
         run: docker compose build app
 
-      # The PHP image and every pinned image compose uses, profiles included (SCA-01).
+      # The PHP image and every pinned image compose uses, profiles included (SCA-01). Every image is scanned
+      # before the step fails, so one finding does not hide the others.
       - name: Trivy images
         run: |
+          failed=""
           for image in $(docker compose --profile openai --profile tools config --images | sort -u); do
             echo "::group::$image"
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy":/root/.cache/trivy \
-              -v "$PWD/.trivyignore":/.trivyignore:ro "$TRIVY_IMAGE" \
-              image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress --ignorefile /.trivyignore "$image"
+              -v "$PWD/.trivyignore.yaml":/.trivyignore.yaml:ro "$TRIVY_IMAGE" \
+              image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress --ignorefile /.trivyignore.yaml "$image" \
+              || failed="$failed $image"
             echo "::endgroup::"
           done
+          if [ -n "$failed" ]; then
+            echo "::error::HIGH or CRITICAL vulnerabilities with a fix in:$failed"
+            exit 1
+          fi

@@ -1,0 +1,42 @@
+# SecureFlow AI — Trivy exceptions (docs/test-strategy.md §31, SCA-01).
+#
+# CI fails on any HIGH or CRITICAL vulnerability that has a fix, in the dependencies, the PHP image and every image
+# compose uses. An entry here needs the id, the paths it applies to, a statement of why it cannot be fixed now, and
+# an expiry date: after that date Trivy reports it again, so the review cannot be forgotten. An entry without a
+# statement and an expiry is refused in review. Vulnerabilities with no fix are not failures (--ignore-unfixed)
+# and need no entry.
+vulnerabilities:
+  # node:24.22.2-alpine3.24 (2026-11-05, the newest 24.x tag) bundles npm with these two packages. They belong to
+  # npm's own HTTP client and glob matching, used only while npm installs packages in a container that never serves
+  # the application (the Vite dev server and the CI build). Nothing of them is in frontend/dist. Reviewed 2026-11-07:
+  # no node image with a fixed npm exists yet; check for one before the expiry.
+  - id: CVE-2026-102276
+    paths:
+      - "usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json"
+    statement: "brace-expansion inside the node image's bundled npm; build-time only, not shipped. Update the node image when a tag with npm's fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-102278
+    paths:
+      - "usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json"
+    statement: "brace-expansion inside the node image's bundled npm; build-time only, not shipped. Update the node image when a tag with npm's fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-109383
+    paths:
+      - "usr/local/lib/node_modules/npm/node_modules/undici/package.json"
+    statement: "undici inside the node image's bundled npm; used by npm to reach the registry at build time only, not shipped. Update the node image when a tag with npm's fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-109869
+    paths:
+      - "usr/local/lib/node_modules/npm/node_modules/undici/package.json"
+    statement: "undici inside the node image's bundled npm; used by npm to reach the registry at build time only, not shipped. Update the node image when a tag with npm's fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-19534
+    paths:
+      - "usr/local/lib/node_modules/npm/node_modules/undici/package.json"
+    statement: "undici inside the node image's bundled npm; used by npm to reach the registry at build time only, not shipped. Update the node image when a tag with npm's fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-87018
+    paths:
+      - "usr/local/lib/node_modules/npm/node_modules/undici/package.json"
+    statement: "undici inside the node image's bundled npm; used by npm to reach the registry at build time only, not shipped. Update the node image when a tag with npm's fix exists."
+    expired_at: 2026-12-07

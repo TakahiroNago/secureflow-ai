@@ -475,7 +475,7 @@ AI出力スキーマ（概要）：
 | マスアサインメント | `$fillable` 明示、FormRequest の `validated()` のみ使用、未知フィールドは 422 |
 | セキュリティヘッダ | CSP、`X-Content-Type-Options`、`Referrer-Policy: no-referrer`、`Permissions-Policy`、HTTPS時 HSTS。同一オリジンの GET には `Origin` が付かず、Sanctum は `Origin` か `Referer` のない要求にセッションを使わないため、API の呼び出しのみ `fetch` に `referrerPolicy: 'same-origin'` を指定する（`frontend/src/api/client.ts`）。外部へは送らない |
 | CORS | 同一オリジン運用のため CORS は許可しない |
-| 依存関係 | 最小限の依存、`composer audit`・`npm audit`・Trivy（fs とイメージ。HIGH 以上で修正版のあるものは失敗、例外は `.trivyignore` に理由と期限）を CI で実行 |
+| 依存関係 | 最小限の依存、`composer audit`・`npm audit`・Trivy（fs とイメージ。HIGH 以上で修正版のあるものは失敗、例外は `.trivyignore.yaml` に理由と期限）を CI で実行 |
 
 ## 16. 監査ログ
 
