@@ -68,14 +68,14 @@ it('ST-06: an admin and an auditor read the log, and a member does not', functio
 
     loggedIn($this, $user)->send('GET', AUDIT_LOGS)->assertStatus($status);
     loggedIn($this, $user)->send('POST', AUDIT_LOGS.'/verify')->assertStatus($status);
-})->with([['admin', 200], ['auditor', 200], ['member', 403]]);
+})->with([['admin', 200], ['auditor', 200], ['member', 403]])->group('security');
 
 it('ST-06: a deactivated user is refused by the policy too', function (string $role) {
     $user = userIn($this->org->id, $role, ['is_active' => false]);
 
     expect(Gate::forUser($user)->denies('viewAny', AuditLog::class))->toBeTrue()
         ->and(Gate::forUser($user)->denies('verify', AuditLog::class))->toBeTrue();
-})->with(['admin', 'auditor']);
+})->with(['admin', 'auditor'])->group('security');
 
 it('has no way to change the log', function (string $method) {
     loggedIn($this, $this->admin)->send($method, AUDIT_LOGS, $method === 'DELETE' ? null : [])->assertStatus(405);

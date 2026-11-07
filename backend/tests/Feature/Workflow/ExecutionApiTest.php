@@ -176,7 +176,7 @@ it('ST-06: an auditor cannot execute, another member does not see it, and only t
     requestExecution(loggedIn($this, userIn($this->org->id)), $this->id)->assertStatus(404);
 
     expect(executionDenials($this->id))->toBe(['FORBIDDEN'])->and(executionRow($this->id))->toBeNull();
-});
+})->group('security');
 
 it('AUTH-LOCK-03: a locked owner can execute', function () {
     $client = loggedIn($this, $this->owner);
@@ -209,7 +209,7 @@ it('ST-08: refuses what is not approved, and records it', function (string $stat
     requestExecution(loggedIn($this, $this->owner), $this->id)->assertStatus(409)->assertJsonPath('code', 'APPROVAL_NOT_VALID');
 
     expect(executionRow($this->id))->toBeNull()->and(executionDenials($this->id))->toBe(['APPROVAL_NOT_VALID']);
-})->with(['draft', 'pending', 'rejected', 'running', 'completed', 'failed']);
+})->with(['draft', 'pending', 'rejected', 'running', 'completed', 'failed'])->group('security');
 
 it('ST-08: refuses when the approval is for an earlier revision', function () {
     $workflow = Workflow::query()->withoutGlobalScopes()->findOrFail($this->id);
@@ -217,7 +217,7 @@ it('ST-08: refuses when the approval is for an earlier revision', function () {
     DB::table('workflows')->where('id', $this->id)->update(['current_revision_id' => $revision]);
 
     requestExecution(loggedIn($this, $this->owner), $this->id)->assertStatus(409)->assertJsonPath('code', 'APPROVAL_NOT_VALID');
-});
+})->group('security');
 
 it('ST-08: a rejection is not an approval', function () {
     $id = runnablePlan($this->owner, $this->admin);
@@ -229,7 +229,7 @@ it('ST-08: a rejection is not an approval', function () {
 
     expect($revision)->not->toBe($second);
     requestExecution(loggedIn($this, $this->owner), $id)->assertStatus(409)->assertJsonPath('code', 'APPROVAL_NOT_VALID');
-});
+})->group('security');
 
 it('ST-37: an approval by the creator is not valid, whatever got it into the table', function () {
     $workflow = Workflow::query()->withoutGlobalScopes()->findOrFail($this->id);
@@ -246,7 +246,7 @@ it('ST-37: an approval by the creator is not valid, whatever got it into the tab
     expect($refusal)->toBe('APPROVAL_NOT_VALID');
 
     requestExecution($client, $this->id)->assertStatus(202);
-});
+})->group('security');
 
 it('ST-08: an approval of another revision, or of another hash, is not valid', function () {
     $first = app(OrganizationContext::class)->run($this->org->id, fn () => Approval::query()->where('workflow_id', $this->id)->sole());
@@ -264,7 +264,7 @@ it('ST-08: an approval of another revision, or of another hash, is not valid', f
         ->and($check($first))->toBe('APPROVAL_NOT_VALID')
         ->and($check((clone $valid)->forceFill(['plan_hash' => str_repeat('b', 64)])))->toBe('APPROVAL_NOT_VALID')
         ->and($check((clone $valid)->forceFill(['workflow_revision_id' => $first->workflow_revision_id])))->toBe('APPROVAL_NOT_VALID');
-});
+})->group('security');
 
 it('refuses a revision the scan stopped', function () {
     reviseWith($this->id, $this->admin, [
@@ -321,7 +321,7 @@ it('ST-09: an edit after the approval takes it away', function () {
     ], ['HTTP_IF_MATCH' => '"1"'])->assertOk();
 
     requestExecution($client, $this->id)->assertStatus(409)->assertJsonPath('code', 'APPROVAL_NOT_VALID');
-});
+})->group('security');
 
 it('cannot edit a running workflow', function () {
     $client = loggedIn($this, $this->owner);
@@ -346,7 +346,7 @@ it('ST-22: the same key gets the same execution back, with nothing new', functio
         ->and(executionAudit($this->id, 'execution.started'))->toHaveCount(1)
         ->and(DB::table('jobs')->where('queue', 'execution')->count())->toBe(1)
         ->and(executionDenials($this->id))->toBe([]);
-});
+})->group('security');
 
 it('ST-22: the same key after it has finished still gets the first answer', function () {
     $client = loggedIn($this, $this->owner);
@@ -356,7 +356,7 @@ it('ST-22: the same key after it has finished still gets the first answer', func
     requestExecution($client, $this->id)->assertStatus(202)
         ->assertJsonPath('data.execution_id', $first->json('data.execution_id'))
         ->assertJsonPath('data.status', 'completed');
-});
+})->group('security');
 
 it('ST-22: another key cannot use the approval again, however it ended', function (string $end) {
     $client = loggedIn($this, $this->owner);
@@ -372,7 +372,7 @@ it('ST-22: another key cannot use the approval again, however it ended', functio
 
     expect(DB::table('workflow_executions')->where('workflow_id', $this->id)->count())->toBe(1)
         ->and(executionDenials($this->id))->toBe(['EXECUTION_ALREADY_EXISTS']);
-})->with(['waiting', 'completed', 'failed']);
+})->with(['waiting', 'completed', 'failed'])->group('security');
 
 it('refuses a key used on another workflow, by another person, or for an earlier approval', function (string $case) {
     $client = loggedIn($this, $this->owner);
@@ -589,7 +589,7 @@ it('ST-33: gives up on a run with no heartbeat and on a job nobody took, in ever
             ->and(workflowStatus($id))->toBe('failed')
             ->and(json_decode((string) executionAudit($id, 'execution.failed')->sole()->metadata, true)['reason_code'])->toBe('EXECUTION_STALE');
     }
-});
+})->group('security');
 
 it('ST-33: leaves alone what is still within its time', function () {
     $execution = requestExecution(loggedIn($this, $this->owner), $this->id)->json('data.execution_id');
@@ -598,7 +598,7 @@ it('ST-33: leaves alone what is still within its time', function () {
     Artisan::call('executions:reap-stale');
 
     expect(executionRow($this->id)->status)->toBe('running')->and(workflowStatus($this->id))->toBe('running');
-});
+})->group('security');
 
 it('ST-33: a job that comes back after being given up on changes nothing', function () {
     $execution = requestExecution(loggedIn($this, $this->owner), $this->id)->json('data.execution_id');
@@ -610,7 +610,7 @@ it('ST-33: a job that comes back after being given up on changes nothing', funct
     (new ExecuteWorkflowJob($execution, $this->org->id))->failed(null);
 
     expect(executionRow($this->id))->toEqual($after)->and(executionAudit($this->id, 'execution.failed'))->toHaveCount(1);
-});
+})->group('security');
 
 it('ST-33: a failure cannot undo a result', function () {
     $execution = requestExecution(loggedIn($this, $this->owner), $this->id)->json('data.execution_id');
@@ -619,7 +619,7 @@ it('ST-33: a failure cannot undo a result', function () {
     (new ExecuteWorkflowJob($execution, $this->org->id))->failed(null);
 
     expect(executionRow($this->id)->status)->toBe('completed')->and(workflowStatus($this->id))->toBe('completed');
-});
+})->group('security');
 
 it('ST-33: after a failure it takes reopening, submitting and approving again', function () {
     $owner = loggedIn($this, $this->owner);
@@ -635,7 +635,7 @@ it('ST-33: after a failure it takes reopening, submitting and approving again', 
     loggedIn($this, $this->admin)->send('POST', EXECUTION_WORKFLOWS.$this->id.'/approve', ['revision_no' => $revision->revision_no, 'plan_hash' => $revision->plan_hash, 'acknowledged_risks' => false])->assertOk();
 
     requestExecution($owner, $this->id, 'key-2')->assertStatus(202);
-});
+})->group('security');
 
 it('keeps the time limits in the right order', function () {
     $job = new ExecuteWorkflowJob('a', 'b');

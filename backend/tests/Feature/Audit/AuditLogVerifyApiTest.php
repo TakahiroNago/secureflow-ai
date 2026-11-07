@@ -39,7 +39,7 @@ it('ST-28: says an untouched chain is valid, and only what is designed', functio
     $response = $this->client->send('POST', AUDIT_VERIFY)->assertOk();
 
     expect($response->json('data'))->toBe(['valid' => true, 'checked_count' => 4, 'first_broken_seq' => null, 'reason_code' => null]);
-});
+})->group('security');
 
 it('ST-28: finds a changed row, answers 200, and leaves the record where the organization cannot read it', function () {
     $logged = [];
@@ -62,14 +62,14 @@ it('ST-28: finds a changed row, answers 200, and leaves the record where the org
     expect(json_decode((string) $system->metadata, true))->toMatchArray(['chain_id' => $this->org->id, 'first_broken_seq' => 3]);
 
     expect($this->client->send('GET', '/api/v1/audit-logs?limit=100')->assertOk()->getContent())->not->toContain('audit.verification_failed');
-});
+})->group('security');
 
 it('ST-28: a break in the system chain is nothing to this organization', function () {
     appendAudit(['metadata' => '{"n":1}']);
     tamperChain($this->org->id, "UPDATE audit_logs SET result = 'denied' WHERE organization_id IS NULL");
 
     $this->client->send('POST', AUDIT_VERIFY)->assertOk()->assertJsonPath('data.valid', true)->assertJsonPath('data.checked_count', 4);
-});
+})->group('security');
 
 it('ST-28: a break in another organization is nothing to this one', function () {
     $other = Organization::factory()->create();
@@ -80,7 +80,7 @@ it('ST-28: a break in another organization is nothing to this one', function () 
 
     resetAuditTables();
     ownerDb()->table('organizations')->where('id', $other->id)->delete();
-});
+})->group('security');
 
 it('takes no chain from the request', function () {
     $this->client->send('POST', AUDIT_VERIFY, ['chain_id' => '00000000-0000-0000-0000-000000000000'])

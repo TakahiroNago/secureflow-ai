@@ -111,7 +111,7 @@ it('ST-23: answers 404 to every role of another organization, and changes nothin
     expect(DB::table('workflows')->where('id', $a['workflow'])->first())->toEqual($before)
         ->and(DB::table('workflow_revisions')->where('workflow_id', $a['workflow'])->count())->toBe($revisions)
         ->and(DB::table('workflow_tasks')->where('workflow_id', $a['workflow'])->count())->toBe($tasks);
-})->with(RESOURCE_ENDPOINTS)->with(['admin', 'member', 'auditor']);
+})->with(RESOURCE_ENDPOINTS)->with(['admin', 'member', 'auditor'])->group('security');
 
 it('ST-23: a task of another organization cannot be reached through one\'s own workflow', function (string $method) {
     $a = fullOrganization();
@@ -122,7 +122,7 @@ it('ST-23: a task of another organization cannot be reached through one\'s own w
         ->assertStatus(404);
 
     expect(DB::table('workflow_tasks')->where('id', $a['task'])->value('title'))->not->toBe('T');
-})->with(['PUT', 'DELETE']);
+})->with(['PUT', 'DELETE'])->group('security');
 
 it('the list shows nothing of another organization, whatever the role', function (string $role) {
     $a = fullOrganization();
@@ -140,4 +140,4 @@ it('ST-34: the analysis and workflow routes have the rate limit or policy they s
         ->and(Route::getRoutes()->getByName('workflows.tasks.update')->gatherMiddleware())->toContain('can:update,workflow')
         ->and(Route::getRoutes()->getByName('workflows.tasks.update')->enforcesScopedBindings())->toBeTrue()
         ->and(Route::getRoutes()->getByName('workflows.tasks.destroy')->enforcesScopedBindings())->toBeTrue();
-});
+})->group('security');

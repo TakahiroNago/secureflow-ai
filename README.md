@@ -225,6 +225,10 @@ SPA の Cookie 認証を許可するオリジンは `SANCTUM_STATEFUL_DOMAINS` �
 ```bash
 # バックエンド（テスト用 DB secureflow_test。スキーマは secureflow_test_owner、テストは secureflow_test_app）
 docker compose run --rm test                                   # Pest
+docker compose run --rm test php vendor/bin/pest --group security   # セキュリティテストのみ（ST-01〜39）
+docker compose run --rm test php -d memory_limit=1G vendor/bin/pest --coverage --coverage-clover=coverage.xml
+python3 scripts/check-coverage.py backend/coverage.xml         # カバレッジの目標（docs/test-strategy.md §3）
+docker compose run --rm --no-deps test php artisan security:corpus-report   # 検出エンジンのコーパス評価
 docker compose run --rm --no-deps test php vendor/bin/pint --test
 docker compose run --rm --no-deps test php vendor/bin/phpstan analyse --memory-limit=1G
 
@@ -253,6 +257,15 @@ SECUREFLOW_ALLOW_FAILURE_INJECTION=<プロジェクト名> bash scripts/test-ai-
 SECUREFLOW_ALLOW_FAILURE_INJECTION=<プロジェクト名> bash scripts/test-execution-failure.sh   # 実行中の worker の強制終了（約10分）
 ```
 
+静的解析と脆弱性スキャン（CI の `sast-sca` ジョブと同じ。Docker Hub からスキャナのイメージを取得します）：
+
+```bash
+bash scripts/test-semgrep-rules.sh      # Semgrep のルール自体の負のテスト
+docker run --rm -v "$PWD":/src:ro -w /src semgrep/semgrep:1.183.0 \
+  semgrep scan --config /src/.semgrep/secureflow.yml --metrics=off --error backend/app backend/routes backend/bootstrap backend/database backend/config frontend/src
+docker run --rm -v "$PWD":/src:ro aquasec/trivy:0.76.1 fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --ignore-unfixed --ignorefile /src/.trivyignore.yaml /src
+```
+
 `test` サービスは外部に出られない内部ネットワーク上で動くため、`composer audit` / `npm audit` はネットワークに出られるコンテナで実行します：
 
 ```bash
@@ -267,7 +280,9 @@ docker compose run --rm --no-deps frontend npm audit
 | ジョブ | 内容 |
 |---|---|
 | secret-scan | gitleaks（Git 履歴全体）、Trivy（作業ツリーの秘密情報） |
-| backend | PostgreSQL / Redis 起動、基盤検証、Pint、Larastan、Pest、composer audit |
+| security | Pest の `security` グループ（ST-01〜39 とコーパスの合否）、コーパス評価レポート（ジョブサマリと artifact） |
+| sast-sca | Semgrep（独自ルール `.semgrep/secureflow.yml` と、ルール自体の負のテスト）、Trivy（依存関係・Dockerfile・compose・秘密情報と、PHP イメージ・固定済みの全イメージ。HIGH 以上で修正版のあるものは失敗） |
+| backend | PostgreSQL / Redis 起動、基盤検証、Pint、Larastan、Pest（カバレッジ付き。`scripts/check-coverage.py` が目標を確認）、composer audit |
 | frontend | ESLint、型チェック、Vitest、ビルド、npm audit |
 | stack | 全サービス起動、マイグレーション、`verify-infra.sh`、認証の通し確認、公開ポート検査と healthcheck の負のテスト |
 

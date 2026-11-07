@@ -200,7 +200,7 @@ it('ST-09: an edit after approval goes back to draft', function (string $status)
     DB::table('workflows')->where('id', $this->id)->update(['status' => $status]);
 
     putTask(loggedIn($this, $this->member), $this->id)->assertOk()->assertJsonPath('data.status', 'draft');
-})->with(['pending', 'approved']);
+})->with(['pending', 'approved'])->group('security');
 
 it('refuses to edit a workflow in a state that does not allow it', function (string $status) {
     DB::table('workflows')->where('id', $this->id)->update(['status' => $status]);
@@ -217,7 +217,7 @@ it('ST-17: changing to a forbidden action is saved and marked, by the server', f
         ->assertOk()
         ->assertJsonPath('data.tasks.0.policy_decision', 'forbidden')
         ->assertJsonPath('data.tasks.0.derived_permissions', ['system.shell']);
-});
+})->group('security');
 
 it('does not accept what only the server decides', function (array $body) {
     $client = loggedIn($this, $this->member);
@@ -383,7 +383,7 @@ it('ST-12, ST-06: who may read and who may change', function (string $role, bool
     'an admin elsewhere' => ['admin', false, 404, 404],
     'an auditor elsewhere' => ['auditor', false, 404, 404],
     'a member elsewhere' => ['member', false, 404, 404],
-]);
+])->group('security');
 
 it('answers 401 on every route without a session', function (string $method, string $path) {
     spa($this)->csrf()->send($method, str_replace('{id}', $this->id, $path), $method === 'GET' ? null : [])->assertStatus(401);

@@ -17,6 +17,7 @@ vendor/
 dist/
 build/
 coverage/
+backend/coverage.xml
 .phpunit.cache/
 .phpunit.result.cache
 playwright-report/

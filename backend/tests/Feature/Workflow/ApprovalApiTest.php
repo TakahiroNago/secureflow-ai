@@ -129,7 +129,7 @@ it('ST-37: accepts a submission with nobody to approve it, and says so', functio
         ->assertOk()
         ->assertJsonPath('data.status', 'pending')
         ->assertJsonPath('data.approver_available', false);
-});
+})->group('security');
 
 it('ST-37: the creator does not count as an approver for their own workflow', function () {
     $org = Organization::factory()->create();
@@ -144,7 +144,7 @@ it('ST-37: the creator does not count as an approver for their own workflow', fu
         ->assertJsonPath('data.can_approve', false)
         ->assertJsonPath('data.cannot_approve_reason', 'SELF_CREATED');
     workflowAction($client, $id, 'approve', approveBody($id))->assertStatus(403);
-});
+})->group('security');
 
 it('ST-37: someone who is not an admin does not count as an approver', function () {
     DB::table('users')->where('id', $this->admin->id)->update(['is_active' => false]);
@@ -152,7 +152,7 @@ it('ST-37: someone who is not an admin does not count as an approver', function 
     userIn($this->org->id, 'auditor');
 
     workflowAction(loggedIn($this, $this->owner), $this->id, 'submit')->assertOk()->assertJsonPath('data.approver_available', false);
-});
+})->group('security');
 
 it('AUTH-LOCK-03: a locked admin still counts as an approver, and can approve', function () {
     DB::table('users')->where('id', $this->admin->id)->update(['locked_until' => now()->addMinutes(15)]);
@@ -175,7 +175,7 @@ it('ST-16: refuses to submit a forbidden action', function () {
     workflowAction($client, $this->id, 'submit')->assertStatus(409)->assertJsonPath('code', 'FORBIDDEN_ACTION_PRESENT');
 
     expect(statusOf($this->id))->toBe('draft');
-});
+})->group('security');
 
 it('ST-17: an edit to a forbidden action cannot be submitted', function () {
     $client = loggedIn($this, $this->owner);
@@ -186,7 +186,7 @@ it('ST-17: an edit to a forbidden action cannot be submitted', function () {
     ], ['HTTP_IF_MATCH' => '"1"'])->assertOk();
 
     workflowAction($client, $this->id, 'submit')->assertStatus(409)->assertJsonPath('code', 'FORBIDDEN_ACTION_PRESENT');
-});
+})->group('security');
 
 it('treats an action the catalog now forbids as forbidden, whatever is stored', function () {
     $client = loggedIn($this, $this->owner);
@@ -223,7 +223,7 @@ it('ST-06: only the owner submits and reopens', function (string $role, string $
     $client = loggedIn($this, userIn($this->org->id, $role));
 
     workflowAction($client, $this->id, $action)->assertStatus(403)->assertJsonPath('code', 'FORBIDDEN');
-})->with(['admin', 'auditor'])->with(['submit', 'reopen']);
+})->with(['admin', 'auditor'])->with(['submit', 'reopen'])->group('security');
 
 it('leaves nothing behind when a submission cannot be recorded', function () {
     $client = loggedIn($this, $this->owner);
@@ -270,14 +270,14 @@ it('ST-06: a member or an auditor cannot decide, and the attempt is recorded', f
     expect(statusOf($this->id))->toBe('pending')
         ->and(decisionsOn($this->id))->toBe(0)
         ->and(deniedReasons($this->id))->toBe(['APPROVER_ROLE_REQUIRED']);
-})->with(['auditor'])->with(['approve', 'reject']);
+})->with(['auditor'])->with(['approve', 'reject'])->group('security');
 
 it('ST-06: the owner who is a member cannot decide either', function () {
     setPending($this->id);
 
     workflowAction(loggedIn($this, $this->owner), $this->id, 'approve', approveBody($this->id))
         ->assertStatus(403)->assertJsonPath('code', 'APPROVER_ROLE_REQUIRED');
-});
+})->group('security');
 
 it('ST-21: an admin cannot decide on their own workflow, and the attempt is recorded', function (string $action) {
     $id = planFor($this->admin);
@@ -288,7 +288,7 @@ it('ST-21: an admin cannot decide on their own workflow, and the attempt is reco
         ->assertStatus(403)->assertJsonPath('code', 'SELF_APPROVAL_FORBIDDEN');
 
     expect(decisionsOn($id))->toBe(0)->and(deniedReasons($id))->toBe(['SELF_APPROVAL_FORBIDDEN']);
-})->with(['approve', 'reject']);
+})->with(['approve', 'reject'])->group('security');
 
 it('records nothing for a workflow the caller may not know exists', function (string $who) {
     setPending($this->id);
@@ -311,7 +311,7 @@ it('ST-20: refuses an old plan_hash or revision_no, and records the attempt', fu
 })->with([
     'hash' => [['plan_hash' => str_repeat('b', 64)]],
     'revision' => [['revision_no' => 2]],
-]);
+])->group('security');
 
 it('refuses a plan changed behind the revision: a task row no longer matches its hash', function () {
     setPending($this->id);
@@ -400,7 +400,7 @@ it('ST-09: an edit after the approval goes back to Draft and the approval no lon
         ->and($response->json('data.decision'))->toBeNull()
         ->and($response->json('data.current_revision.no'))->toBe(2)
         ->and(DB::table('approvals')->where('workflow_id', $this->id)->sole()->id)->toBe($approved->id);
-});
+})->group('security');
 
 it('asks for the risk confirmation from medium up, and remembers it', function (string $severity) {
     setPending($this->id);
@@ -771,7 +771,7 @@ it('pages through the list', function () {
 
 it('ST-06: only an admin reads the list', function (string $role) {
     loggedIn($this, userIn($this->org->id, $role))->send('GET', APPROVALS)->assertStatus(403)->assertJsonPath('code', 'FORBIDDEN');
-})->with(['member', 'auditor']);
+})->with(['member', 'auditor'])->group('security');
 
 it('refuses another status in the list', function () {
     loggedIn($this, $this->admin)->send('GET', APPROVALS.'?status=approved')->assertStatus(422);

@@ -1,7 +1,7 @@
 # SecureFlow AI — テスト戦略
 
-- 版：v1.19（2026-11-07）
-- 状態：確定（v1.19：工程2-10 のテストを追加。v1.18：工程2-9 のテストを追加。v1.17：工程2-8 のテストを追加。v1.16：工程2-7 のテストと検証 API の測定を追加。v1.15：工程2-6 のテストと worker の強制終了の結果を追加。v1.14：工程2-5 のテストを追加。v1.13：工程2-4 のテストと実測を追加。v1.12：工程2-3 の統合テストと実測を追加。v1.11：工程2-2 のインジェクション検出のテストと実測を追加。v1.10：工程2-1 の検出とマスキングのテストを追加。v1.9：工程1-7 のダッシュボードのテストを追加。v1.8：工程1-6 の分析とワークフロー API のテストを追加。v1.7：工程1-5 のワークフロー基盤のテストを追加。v1.6：AUDIT-LOAD-01 の測定結果を追加。v1.5：工程1-4 の AI 基盤のテストを追加。v1.4：工程1-3 の監査ログテストを追加。v1.3：工程1-2 の認証テストを追加。v1.2：工程1-1 の設計レビューと検査の修正を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.20（2026-11-07）
+- 状態：確定（v1.20：工程3-1・3-5 のテストと CI のジョブを反映。v1.19：工程2-10 のテストを追加。v1.18：工程2-9 のテストを追加。v1.17：工程2-8 のテストを追加。v1.16：工程2-7 のテストと検証 API の測定を追加。v1.15：工程2-6 のテストと worker の強制終了の結果を追加。v1.14：工程2-5 のテストを追加。v1.13：工程2-4 のテストと実測を追加。v1.12：工程2-3 の統合テストと実測を追加。v1.11：工程2-2 のインジェクション検出のテストと実測を追加。v1.10：工程2-1 の検出とマスキングのテストを追加。v1.9：工程1-7 のダッシュボードのテストを追加。v1.8：工程1-6 の分析とワークフロー API のテストを追加。v1.7：工程1-5 のワークフロー基盤のテストを追加。v1.6：AUDIT-LOAD-01 の測定結果を追加。v1.5：工程1-4 の AI 基盤のテストを追加。v1.4：工程1-3 の監査ログテストを追加。v1.3：工程1-2 の認証テストを追加。v1.2：工程1-1 の設計レビューと検査の修正を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -151,13 +151,14 @@ MockAiProvider はテスト設定（コンストラクタ引数）でのみ応�
 | ジョブ | 内容 |
 |---|---|
 | secret-scan | gitleaks（Git 履歴全体）、Trivy（fs の secret スキャン）。**Phase 0 から実施** |
-| backend | Pint（--test）、Larastan、Pest（Unit/Feature/Isolation/Concurrency）※PostgreSQL・Redis サービスコンテナ。スキーマ作成は owner、テスト実行は app ロール |
-| security | Pest group security、コーパス評価レポート |
-| frontend | ESLint、tsc --noEmit、Vitest、ビルド |
-| e2e | Docker Compose 起動 → Playwright |
-| sast-sca | Semgrep、Trivy（fs・イメージ・secret）、composer audit、npm audit |
+| backend | Pint（--test）、Larastan、Pest（全件、`--coverage`）、`scripts/check-coverage.py`（§3 の目標。工程3-1）、composer audit ※PostgreSQL・Redis サービスコンテナ。スキーマ作成は owner、テスト実行は app ロール |
+| security | Pest group security（ST-01〜39 と、コーパスの合否。ファイルの場所を問わない）、`security:corpus-report`（ジョブサマリと artifact）。**工程3-1 から実施** |
+| frontend | ESLint、tsc --noEmit、Vitest、ビルド、npm audit |
+| stack | 全サービス起動、マイグレーション、`verify-infra.sh`、認証・分析の通し確認、実ブラウザ、nginx の応答、公開ポートと healthcheck の負のテスト |
+| sast-sca | Semgrep（独自ルールのみ。`.semgrep/secureflow.yml` と、ルール自体の負のテスト `scripts/test-semgrep-rules.sh`）、Trivy（fs：依存関係・Dockerfile・compose・秘密情報。image：PHP イメージと固定済みの全イメージ。HIGH 以上で修正版のあるものは失敗）。**工程3-5 から実施。** composer audit と npm audit は backend / frontend ジョブのまま |
+| e2e | Docker Compose 起動 → Playwright（工程3-4） |
 
-Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・ビルドを実施する。security・e2e・sast-sca は Phase 3 で追加する。
+Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・ビルドを実施し、stack は工程1-2 で、security と sast-sca は工程3-1・3-5 で追加した。e2e は工程3-4 で追加する。
 
 ## 12. Phase 0 基盤テスト
 
@@ -768,3 +769,19 @@ Redis の停止（`docker compose stop`）と凍結（`docker compose pause`）�
 **制限：** 対策状況の変更は検出の記録を書き換えない（状態の列のみ）。member の一覧は検査の `user_id` に基づく。画面の確認は Vitest のみで、実ブラウザの流れ（`scripts/test-login-browser.sh`）にはこの 2 画面を加えていない。
 
 **変異試験：** 20件のうち19件を試験で検出した。残る1件（行ロックの下での遷移の再確認の削除）は、要求の読み取りと行ロックの間に状態が変わる場合の試験（FIND-STATUS-02）で補い、検出した。
+
+## 31. 工程3-1・3-5 のセキュリティテストの分離と SAST / SCA
+
+| ID | 対象 | 内容 | ファイル |
+|---|---|---|---|
+| ST-GROUP-01 | グループ | ST-01〜39 のすべてに `security` グループのテストがあり、ST の名前を持つテストはどのディレクトリにあってもグループに入っている（トークン解析で判定し、文字列中の括弧や引用符に惑わされない）。`tests/Security` は Pest.php の経路でグループに入る | `tests/Security/SecurityGroupTest.php`、`tests/Support/SecurityTestIndex.php` |
+| CORPUS-REPORT-01 | レポート | `security:corpus-report` が調整用と評価専用の検出率を並べて出力し、評価専用は「report only」で合否にしない。JSON を書く。評価専用が目標未達でも終了コード 0 | `tests/Feature/Security/CorpusReportCommandTest.php` |
+| ST-02 ほか | コーパスの合否 | 測定を `CorpusEvaluation` に移し、テストとレポートが同じ値を出す | `tests/Unit/Scanning/InjectionCorpusTest.php`、`CorpusTest.php` |
+| COV-01 | カバレッジ | backend ジョブで `pest --coverage` と clover を出力し、`scripts/check-coverage.py` が §3 の目標（`app/Security`・`app/Domain` 90%、全体 80%）を確認する。基準値（2026-11-07、クローン）：全体 96.7% | `.github/workflows/ci.yml`、`scripts/check-coverage.py` |
+| SAST-01 | Semgrep | 独自ルールのみで、レジストリから取得しない。`DB::raw` などの生 SQL、`withoutGlobalScope`、コード実行とシェル、TLS 検証の無効化、ミドルウェアの除外、AI への `tools`、HTML の描画と `eval`・ブラウザストレージ。許可した箇所は `// nosemgrep: <ルール ID>` と理由のコメントで限定する（停滞回収の 2 コマンド、ダッシュボードの定数の `selectRaw`、ヘルスチェックの `withoutMiddleware` の 4 箇所） | `.semgrep/secureflow.yml` |
+| SAST-02 | ルールの負のテスト | 各ルールが禁止するものを置いたプローブで期待どおりの件数が出て、正常なコードと `nosemgrep` の注記では出ない | `scripts/test-semgrep-rules.sh`（CI） |
+| SCA-01 | Trivy | fs（`composer.lock`・`package-lock.json` の脆弱性、Dockerfile と compose の設定、秘密情報）と、CI でビルドした PHP イメージおよび compose が使う固定済みの全イメージ。HIGH 以上で修正版のあるものがあれば失敗（全イメージを走査してから失敗する）。例外は `.trivyignore.yaml` に理由（`statement`）と期限（`expired_at`）とパスが必須で、期限を過ぎると再び検出される | `.github/workflows/ci.yml`、`.trivyignore.yaml` |
+
+**制限：** Trivy の基準値はこの開発機では取得できない（コンテナ内の TLS が検査ソフトに傍受され、脆弱性 DB と npm レジストリへの接続が証明書の検証で失敗する。検証を無効にしない）。**初回の CI の計測（2026-11-07）：** fs と nginx は 0 件。`node:24.22.2-alpine3.24`（最新の 24 系）に同梱の npm の `brace-expansion` と `undici` に HIGH 6 件（修正版あり）。修正済みの npm を含む node のイメージが未公開のため、ビルド時のみの利用であることを理由に 2026-12-07 を期限として `.trivyignore.yaml` で除外した。`postgres:18.6-alpine3.24`（最新の 18 系）の `/usr/local/bin/gosu`（Go 1.24.6 で構築）に Go 標準ライブラリの HIGH 25 件・CRITICAL 1 件（修正版あり）。gosu は起動時に権限を落として postgres を exec するだけでネットワークを使わないことを理由に、同じ期限で除外した。redis、nginx、PHP イメージ、fs は 0 件。期限までに新しいタグを確認する。フロントエンドのカバレッジ（目標 70%）は `@vitest/coverage-v8` の追加が同じ理由で保留である。カバレッジの目標は目安であり、§5 のケースの存在と成功を優先する（§3）。Semgrep のルールは列挙した構文のみを見つけ、別名や動的な呼び出しは見つけない。
+
+**変異試験：** 11件のうち初回は7件を試験で検出した。残る4件（グループ名の引用符の確認、`tests/Security` の経路による判定、Low を検出に数える、秘密情報を常に停止と数える）は試験の穴で補い、すべて検出した。`scripts/check-coverage.py` はしきい値を 99.9% に変えた写しで失敗することを確認した。Semgrep のルールは SAST-02 のプローブで全ルールが発火し、正常なコードと `nosemgrep` の注記では発火しないことを確認した。

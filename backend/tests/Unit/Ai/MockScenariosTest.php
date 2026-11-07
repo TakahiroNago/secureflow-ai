@@ -51,7 +51,7 @@ it('ST-07: a broken answer is refused as AI_INVALID_OUTPUT', function (MockScena
     'extra_keys' => [MockScenario::ExtraKeys, 'unknown_key'],
     'oversized' => [MockScenario::Oversized, 'too_long'],
     'unknown_action' => [MockScenario::UnknownAction, 'unknown_action'],
-]);
+])->group('security');
 
 it('forbidden_action: each task is marked forbidden', function () {
     $tasks = (new OutputValidator)->validate(mockAnswer(MockScenario::ForbiddenAction));

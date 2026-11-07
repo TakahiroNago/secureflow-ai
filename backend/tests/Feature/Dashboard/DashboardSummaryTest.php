@@ -215,7 +215,7 @@ it('answers 401 without a session', function () {
 it('ST-34: has authentication, an organization and a policy', function () {
     expect(Route::getRoutes()->getByName('dashboard.summary')->gatherMiddleware())
         ->toContain('auth:sanctum', 'session.current', 'org.context', 'can:viewAny,App\Models\Workflow');
-});
+})->group('security');
 
 it('keeps reading while the audit log cannot be written, as reads do', function () {
     $client = loggedIn($this, $this->member);

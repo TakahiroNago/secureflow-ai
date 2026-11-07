@@ -22,7 +22,7 @@ const SETTINGS_LIMITS_URI = '/api/v1/settings/limits';
 
 const SETTINGS_SECURITY_URI = '/api/v1/settings/security';
 
-const FAKE_KEY = 'sk-proj-ThisIsNotARealKey0123456789abcdefABCDEF';
+const SETTINGS_FAKE_KEY = 'sk-proj-ThisIsNotARealKey0123456789abcdefABCDEF';
 
 function settingsEvents(string $organizationId): array
 {
@@ -58,7 +58,7 @@ it('ST-06: only an admin reads or changes the settings', function (string $role,
         expect(settingsRow($this->org->id))->toBeNull()
             ->and(settingsEvents($this->org->id))->toBe([]);
     }
-})->with([['admin', 200], ['auditor', 403], ['member', 403]]);
+})->with([['admin', 200], ['auditor', 403], ['member', 403]])->group('security');
 
 it('has no way to change the AI or the security settings', function (string $uri) {
     loggedIn($this, $this->admin)->send('PATCH', $uri, [])->assertStatus(405);
@@ -67,14 +67,14 @@ it('has no way to change the AI or the security settings', function (string $uri
 // ---- AI --------------------------------------------------------------------------------------------------
 
 it('says whether a key is configured, and never what it is', function () {
-    config(['ai.openai.api_key' => FAKE_KEY, 'ai.openai.model' => 'gpt-6-luna']);
+    config(['ai.openai.api_key' => SETTINGS_FAKE_KEY, 'ai.openai.model' => 'gpt-6-luna']);
 
     $response = loggedIn($this, $this->admin)->send('GET', SETTINGS_AI_URI)->assertOk();
 
     expect(array_keys($response->json('data')))->toBe(['provider', 'model', 'api_key_configured', 'timeout_seconds', 'max_output_tokens'])
         ->and($response->json('data'))->toMatchArray(['provider' => 'mock', 'model' => 'gpt-6-luna', 'api_key_configured' => true, 'timeout_seconds' => 30, 'max_output_tokens' => 2000])
-        ->and($response->getContent())->not->toContain(FAKE_KEY)
-        ->and($response->getContent())->not->toContain(substr(FAKE_KEY, -4));
+        ->and($response->getContent())->not->toContain(SETTINGS_FAKE_KEY)
+        ->and($response->getContent())->not->toContain(substr(SETTINGS_FAKE_KEY, -4));
 });
 
 it('says when there is no key and no model', function () {

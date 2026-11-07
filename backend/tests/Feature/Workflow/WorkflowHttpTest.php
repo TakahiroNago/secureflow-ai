@@ -58,13 +58,13 @@ it('ST-23: answers 404 for a workflow of another organization, whatever the role
     $outsider = userIn(Organization::factory()->create()->id, $role);
 
     assertProblem(loggedIn($this, $outsider)->send('GET', sprintf(VIEW_URI, $this->workflow->id)), 404, 'NOT_FOUND');
-})->with(['admin', 'member', 'auditor']);
+})->with(['admin', 'member', 'auditor'])->group('security');
 
 it('ST-12: answers 404 for another member\'s workflow', function () {
     $other = userIn($this->org->id);
 
     assertProblem(loggedIn($this, $other)->send('GET', sprintf(VIEW_URI, $this->workflow->id)), 404, 'NOT_FOUND');
-});
+})->group('security');
 
 it('reveals nothing: another organization, another member and no such workflow look the same', function () {
     $outsider = userIn(Organization::factory()->create()->id);
@@ -99,14 +99,14 @@ it('ST-06: answers 403 with the approver code for a member or auditor', function
 })->with([
     'the creator as a member' => ['member', true],
     'an auditor' => ['auditor', false],
-]);
+])->group('security');
 
 it('ST-21: answers 403 with the self-approval code to an admin who created the workflow', function () {
     $admin = userIn($this->org->id, 'admin');
     $own = workflowOf($admin);
 
     assertProblem(loggedIn($this, $admin)->send('GET', sprintf(VIEW_URI, $own->id).'/approve'), 403, 'SELF_APPROVAL_FORBIDDEN');
-});
+})->group('security');
 
 it('allows another admin to approve', function () {
     loggedIn($this, userIn($this->org->id, 'admin'))

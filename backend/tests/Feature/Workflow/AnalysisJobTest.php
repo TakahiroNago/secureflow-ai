@@ -75,7 +75,7 @@ function auditEvents(string $type): array
     return DB::table('audit_logs')->where('event_type', $type)->get()->all();
 }
 
-it('creates a draft workflow with its first revision and tasks', function () {
+it('ST-01: a normal request becomes a draft workflow with its first revision and tasks', function () {
     $analysis = analysisRow($this->user);
 
     runAnalysis($analysis);
@@ -103,7 +103,7 @@ it('creates a draft workflow with its first revision and tasks', function () {
             ->and($task->derived_permissions)->toBe(['ai.text.read'])
             ->and($task->policy_decision)->toBe('allowed');
     });
-});
+})->group('security');
 
 it('records workflow.created in the same transaction, with no content', function () {
     runAnalysis(analysisRow($this->user));
@@ -176,7 +176,7 @@ it('ST-07: fails the analysis on invalid AI output, and saves nothing', function
         ->and(DB::table('workflows')->count())->toBe(0)
         ->and($events)->toHaveCount(1)
         ->and(json_decode($events[0]->metadata, true))->toBe(['analysis_id' => $analysis->id, 'reason_code' => 'AI_INVALID_OUTPUT']);
-})->with([MockScenario::MalformedJson, MockScenario::ExtraKeys, MockScenario::Oversized, MockScenario::UnknownAction]);
+})->with([MockScenario::MalformedJson, MockScenario::ExtraKeys, MockScenario::Oversized, MockScenario::UnknownAction])->group('security');
 
 it('fails the analysis when the provider keeps failing', function (MockScenario $scenario) {
     useMockScenario($scenario);

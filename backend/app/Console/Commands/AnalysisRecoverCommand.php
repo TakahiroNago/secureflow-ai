@@ -30,6 +30,9 @@ final class AnalysisRecoverCommand extends Command
 
     public function handle(AnalysisProcessor $processor, OrganizationContext $context): int
     {
+        // Across organizations on purpose: the one reader of every organization's rows, and each row is handled
+        // inside its own organization's context below (docs/security-design.md §13.3).
+        // nosemgrep: secureflow.php.without-global-scope
         $stuck = AiAnalysisRequest::query()
             ->withoutGlobalScope(OrganizationScope::class)
             ->where(fn ($query) => $query

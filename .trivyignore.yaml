@@ -1,0 +1,175 @@
+# SecureFlow AI — Trivy exceptions (docs/test-strategy.md §31, SCA-01).
+#
+# CI fails on any HIGH or CRITICAL vulnerability that has a fix, in the dependencies, the PHP image and every image
+# compose uses. An entry here needs the id, the paths it applies to, a statement of why it cannot be fixed now, and
+# an expiry date: after that date Trivy reports it again, so the review cannot be forgotten. An entry without a
+# statement and an expiry is refused in review. Vulnerabilities with no fix are not failures (--ignore-unfixed)
+# and need no entry.
+vulnerabilities:
+  # node:24.22.2-alpine3.24 (2026-11-05, the newest 24.x tag) bundles npm with these two packages. They belong to
+  # npm's own HTTP client and glob matching, used only while npm installs packages in a container that never serves
+  # the application (the Vite dev server and the CI build). Nothing of them is in frontend/dist. Reviewed 2026-11-07:
+  # no node image with a fixed npm exists yet; check for one before the expiry.
+  - id: CVE-2026-102276
+    paths:
+      - "usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json"
+    statement: "brace-expansion inside the node image's bundled npm; build-time only, not shipped. Update the node image when a tag with npm's fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-102278
+    paths:
+      - "usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json"
+    statement: "brace-expansion inside the node image's bundled npm; build-time only, not shipped. Update the node image when a tag with npm's fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-109383
+    paths:
+      - "usr/local/lib/node_modules/npm/node_modules/undici/package.json"
+    statement: "undici inside the node image's bundled npm; used by npm to reach the registry at build time only, not shipped. Update the node image when a tag with npm's fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-109869
+    paths:
+      - "usr/local/lib/node_modules/npm/node_modules/undici/package.json"
+    statement: "undici inside the node image's bundled npm; used by npm to reach the registry at build time only, not shipped. Update the node image when a tag with npm's fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-19534
+    paths:
+      - "usr/local/lib/node_modules/npm/node_modules/undici/package.json"
+    statement: "undici inside the node image's bundled npm; used by npm to reach the registry at build time only, not shipped. Update the node image when a tag with npm's fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-87018
+    paths:
+      - "usr/local/lib/node_modules/npm/node_modules/undici/package.json"
+    statement: "undici inside the node image's bundled npm; used by npm to reach the registry at build time only, not shipped. Update the node image when a tag with npm's fix exists."
+    expired_at: 2026-12-07
+
+  # postgres:18.6-alpine3.24 (2026-11-06, the newest 18.x tag): gosu is a Go binary built with Go 1.24.6. Reviewed
+  # 2026-11-07. gosu runs once at start and uses none of the affected packages' network paths.
+  - id: CVE-2025-68121
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2025-61726
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2025-61729
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-111943
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-25679
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-27145
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-32280
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-32281
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-32283
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-33811
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-33814
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-33818
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-39820
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-39821
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-39822
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-39836
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-42499
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-42504
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-56853
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-56858
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-56859
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-56860
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-56862
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-78667
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-78669
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+  - id: CVE-2026-97031
+    paths:
+      - "usr/local/bin/gosu"
+    statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
