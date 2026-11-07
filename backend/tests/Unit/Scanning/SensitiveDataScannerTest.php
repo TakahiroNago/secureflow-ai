@@ -58,7 +58,7 @@ it('ST-04: masks personal information and continues', function (string $text, st
     'landline in brackets' => ['電話 03(1234)5678', 'PII-PHONE-JP', '電話 [PHONE_REDACTED]'],
     'international' => ['Tel +81-90-1234-5678', 'PII-PHONE-JP', 'Tel [PHONE_REDACTED]'],
     'international with a zero' => ['Tel +81(0)3-1234-5678', 'PII-PHONE-JP', 'Tel [PHONE_REDACTED]'],
-]);
+])->group('security');
 
 it('ST-04: finds a card by its check digit, in every usual form', function (Closure $number) {
     $text = 'カード '.$number().' です';
@@ -71,7 +71,7 @@ it('ST-04: finds a card by its check digit, in every usual form', function (Clos
     'spaces' => [fn () => implode(' ', str_split(FakeSecrets::card(), 4))],
     'hyphens' => [fn () => implode('-', str_split(FakeSecrets::card(), 4))],
     '15 digits' => [fn () => FakeSecrets::card(15, '37')],
-]);
+])->group('security');
 
 it('leaves a number that fails the check digit', function () {
     $card = FakeSecrets::card();
@@ -97,7 +97,7 @@ it('ST-04: finds My Number by its check digit', function () {
     $wrong = substr($number, 0, 11).(((int) $number[11] + 1) % 10);
 
     expect(rulesIn(scanned('番号 '.$wrong)))->not->toContain('PII-MYNUMBER');
-});
+})->group('security');
 
 it('calculates the check digit of My Number by hand', function () {
     // 12345678901, weights 6 5 4 3 2 7 6 5 4 3 2: the sum is 212, the remainder 3, so the check digit is 8.
@@ -146,14 +146,14 @@ it('ST-03, ST-35: stops on every form of a secret, and returns no text', functio
     'PEM' => [fn () => FakeSecrets::privateKey(), 'SEC-PRIVKEY'],
     'OpenSSH' => [fn () => FakeSecrets::privateKey('OPENSSH '), 'SEC-PRIVKEY'],
     'EC' => [fn () => FakeSecrets::privateKey('EC '), 'SEC-PRIVKEY'],
-]);
+])->group('security');
 
 it('ST-35: stops on a key that was cut off before its end', function () {
     $key = FakeSecrets::privateKey();
     $cut = substr($key, 0, 60);
 
     expect(rulesIn(scanned('鍵は '.$cut)))->toBe(['SEC-PRIVKEY']);
-});
+})->group('security');
 
 it('ST-35: stops on a password next to its keyword', function (string $template) {
     $password = FakeSecrets::password();
@@ -177,7 +177,7 @@ it('ST-35: stops on a password next to its keyword', function (string $template)
     '"password": "%s"',
     "password = '%s'",
     'ﾊﾟｽﾜｰﾄﾞ: %s',
-]);
+])->group('security');
 
 it('does not stop on a sentence about passwords', function (string $text) {
     expect(rulesIn(scanned($text)))->not->toContain('SEC-PASSWORD');
@@ -351,12 +351,12 @@ function failsWith(ScanResult $result, string $reason): void
 
 it('ST-36: blocks text that is not valid UTF-8', function () {
     failsWith(scanned("宛先 \xC3\x28 test@example.com"), ScanFailure::INVALID_ENCODING);
-});
+})->group('security');
 
 it('ST-36: blocks a text over the limit, without reading it', function () {
     failsWith(scanned(str_repeat('あ', SensitiveDataScanner::MAX_CHARACTERS + 1)), ScanFailure::TOO_LONG);
     expect(scanned(str_repeat('あ', SensitiveDataScanner::MAX_CHARACTERS))->decision)->toBe(ScanDecision::Allow);
-});
+})->group('security');
 
 it('ST-36: blocks when a detector fails', function (Throwable $thrown, string $reason) {
     $detector = new class($thrown) implements Detector
@@ -373,7 +373,7 @@ it('ST-36: blocks when a detector fails', function (Throwable $thrown, string $r
 })->with([
     'an error' => [new RuntimeException('boom'), 'unexpected'],
     'a pattern that gave up' => [new ScanFailure(ScanFailure::PATTERN_ERROR), ScanFailure::PATTERN_ERROR],
-]);
+])->group('security');
 
 it('ST-36: a pattern that gave up has not said there is nothing', function () {
     // PCRE refuses invalid UTF-8 with an error: the same way as when it runs out of its limits.
@@ -390,11 +390,11 @@ it('ST-36: a pattern that gave up has not said there is nothing', function () {
         ini_set('pcre.backtrack_limit', (string) $limit);
         ini_set('pcre.jit', (string) $jit);
     }
-});
+})->group('security');
 
 it('ST-36: blocks when the time is over', function () {
     failsWith((new SensitiveDataScanner(deadlineSeconds: 0))->scan('普通の文章'), ScanFailure::TIMEOUT);
-});
+})->group('security');
 
 it('ST-36: blocks when something is still found after masking', function () {
     // Finds the same thing in the masked text too, whatever it says.
@@ -407,7 +407,7 @@ it('ST-36: blocks when something is still found after masking', function () {
     };
 
     failsWith((new SensitiveDataScanner(detectors: [$detector]))->scan('abc'), ScanFailure::STILL_DETECTED);
-});
+})->group('security');
 
 it('ST-36: blocks when masking does not add up', function () {
     $detector = new class implements Detector
@@ -419,7 +419,7 @@ it('ST-36: blocks when masking does not add up', function () {
     };
 
     failsWith((new SensitiveDataScanner(detectors: [$detector]))->scan('abc'), ScanFailure::COUNT_MISMATCH);
-});
+})->group('security');
 
 it('refuses detections that overlap or are empty', function (array $detections) {
     expect(fn () => (new Masker)->mask('abcdef', $detections))->toThrow(ScanFailure::class);

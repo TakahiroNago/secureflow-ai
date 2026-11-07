@@ -26,8 +26,9 @@ use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 | Health checks (no authentication). Rate limiting is applied by nginx, not by the
 | application, so that readiness can still answer when Redis is unavailable.
 | They skip the session middleware even when a browser calls them: sessions live in Redis, and
-| liveness must not depend on it. See docs/api-design.md §3.10.
+| liveness must not depend on it. See docs/api-design.md §3.10. The one allowed bypass (.semgrep/secureflow.yml).
 */
+// nosemgrep: secureflow.php.middleware-bypass
 Route::withoutMiddleware(EnsureFrontendRequestsAreStateful::class)->group(function (): void {
     Route::get('/health/live', [HealthController::class, 'live'])->name('health.live');
     Route::get('/health/ready', [HealthController::class, 'ready'])->name('health.ready');

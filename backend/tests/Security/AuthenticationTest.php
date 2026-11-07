@@ -69,7 +69,7 @@ it('ST-05: treats a bearer token as unauthenticated, not as a server error', fun
 
 // ---- ST-27 and AUTH-ERR-01 ---------------------------------------------------------------------
 
-it('AUTH-ERR-01: makes every failure identical from outside', function () {
+it('ST-27, AUTH-ERR-01: makes every failure identical from outside, whether the address exists or not', function () {
     $wrongPassword = User::factory()->create();
     $inactive = User::factory()->inactive()->create();
     $locked = User::factory()->locked()->create();

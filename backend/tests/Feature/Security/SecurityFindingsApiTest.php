@@ -66,7 +66,7 @@ it('ST-06: an admin and an auditor list the organization\'s findings, a member o
     'admin' => ['admin', ['adminFinding', 'otherFinding', 'memberFinding']],
     'auditor' => ['auditor', ['adminFinding', 'otherFinding', 'memberFinding']],
     'member' => ['member', ['memberFinding']],
-]);
+])->group('security');
 
 it('returns what is designed, with the excerpt as it was stored', function () {
     $response = loggedIn($this, $this->member)->send('GET', FINDINGS_URI)->assertOk();
@@ -116,7 +116,7 @@ it('ST-06: a member and an auditor cannot change a status', function (string $ro
 
     expect(findingStatus($this->memberFinding))->toBe('open')
         ->and(findingEvents($this->org->id, 'finding.status_changed'))->toBe([]);
-})->with(['member', 'auditor']);
+})->with(['member', 'auditor'])->group('security');
 
 it('ST-06: a deactivated user is refused by the policies', function () {
     $admin = userIn($this->org->id, 'admin', ['is_active' => false]);
@@ -127,7 +127,7 @@ it('ST-06: a deactivated user is refused by the policies', function () {
         ->and(Gate::forUser($admin)->denies('update', $finding))->toBeTrue()
         ->and(Gate::forUser($admin)->denies('view', $scan))->toBeTrue()
         ->and(Gate::forUser($admin)->denies('view', OrganizationSetting::class))->toBeTrue();
-});
+})->group('security');
 
 it('has no way to create or delete a finding', function (string $method, string $uri) {
     loggedIn($this, $this->admin)->send($method, $uri, $method === 'DELETE' ? null : [])->assertStatus(405);

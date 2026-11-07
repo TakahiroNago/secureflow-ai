@@ -62,6 +62,8 @@ final readonly class DashboardSummary
     private function countsByStatus(User $user): array
     {
         /** @var array<string, int> $counts */
+        // A constant expression with no input in it; the rows are already scoped to the organization.
+        // nosemgrep: secureflow.php.raw-sql
         $counts = $this->ownWorkflows($user)
             ->toBase()
             ->selectRaw('status, count(*) AS total')

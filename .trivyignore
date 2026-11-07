@@ -1,0 +1,10 @@
+# SecureFlow AI — Trivy exceptions (docs/test-strategy.md §31).
+#
+# CI fails on any HIGH or CRITICAL vulnerability that has a fix, in the dependencies, the PHP image and the pinned
+# base images. An entry here needs the vulnerability id, the reason it cannot be fixed now, and a date to review it:
+#
+#   # 2026-11-07, until 2026-12-07: libfoo 1.2.3 in the PHP base image; the fixed Alpine package is not released yet.
+#   CVE-2026-00000
+#
+# An entry without a reason and a date is refused in review. Vulnerabilities with no fix are not failures and
+# do not need an entry (--ignore-unfixed).

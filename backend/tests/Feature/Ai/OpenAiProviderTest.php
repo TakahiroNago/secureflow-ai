@@ -91,7 +91,7 @@ it('ST-31: sends exactly what was reviewed, to the fixed address, and nothing ab
 
         return true;
     });
-});
+})->group('security');
 
 it('ST-31: the address does not come from the environment', function () {
     config(['ai.openai.base_url' => 'https://somewhere.example/v1']);
@@ -101,7 +101,7 @@ it('ST-31: the address does not come from the environment', function () {
 
     Http::assertSentCount(1);
     Http::assertSent(fn (Request $request) => $request->url() === OPENAI_URL);
-});
+})->group('security');
 
 it('sends a schema that strict mode can take, with every action so that a forbidden one is reported', function () {
     $schema = AiOutputSchema::definition();

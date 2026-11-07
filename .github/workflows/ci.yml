@@ -17,6 +17,7 @@ env:
   # Scanner and toolchain images are pinned by version AND digest.
   GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
   TRIVY_IMAGE: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+  SEMGREP_IMAGE: semgrep/semgrep:1.183.0@sha256:2e45517a85e13a9cca14a2a00df6bb48affd66b8ebfae1b0991cd57578362fb0
   NODE_IMAGE: node:24.22.2-alpine3.24
   PHP_IMAGE: secureflow-php:dev
 
@@ -84,8 +85,12 @@ jobs:
       - name: Larastan
         run: docker compose run --rm --no-deps -T test php vendor/bin/phpstan analyse --no-progress --memory-limit=1G
 
-      - name: Pest (owner role builds schema, app role runs tests)
-        run: docker compose run --rm -T test php vendor/bin/pest --colors=never
+      - name: Pest with coverage (owner role builds schema, app role runs tests)
+        run: docker compose run --rm -T test php -d memory_limit=1G vendor/bin/pest --colors=never --coverage --coverage-clover=coverage.xml
+
+      # docs/test-strategy.md §3: app/Security and app/Domain 90%, the backend 80% (COV-01).
+      - name: Line coverage against the targets
+        run: python3 scripts/check-coverage.py backend/coverage.xml --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Logs on failure
         if: failure()
@@ -191,3 +196,94 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down -v --remove-orphans
+
+  security:
+    name: Security tests (Pest group security / corpus report)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Create CI-only .env (random throwaway secrets)
+        run: bash scripts/init-env.sh
+
+      - name: Build PHP image
+        run: docker compose build app
+
+      - name: composer install
+        run: |
+          docker run --rm -u "$(id -u):$(id -g)" -e COMPOSER_HOME=/tmp/composer \
+            -v "$PWD/backend":/var/www/html -w /var/www/html "$PHP_IMAGE" \
+            composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Start PostgreSQL and Redis
+        run: docker compose up -d --wait postgres redis
+
+      # ST-01 to ST-39 and the corpus gates, wherever their files live (docs/test-strategy.md §5, §31).
+      - name: Security tests (Pest group security)
+        run: docker compose run --rm -T test php vendor/bin/pest --colors=never --group security
+
+      # The tuning and the hold-out rates side by side; the hold-out never counts as achieved (§7).
+      - name: Corpus evaluation report
+        run: |
+          docker compose run --rm --no-deps -T test php artisan security:corpus-report --json=corpus-report.json \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: corpus-report
+          path: backend/corpus-report.json
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v --remove-orphans
+
+  sast-sca:
+    name: SAST / SCA (Semgrep / Trivy)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The rules fire on what they forbid and stay quiet on clean code (SAST-02).
+      - name: Semgrep rule probes
+        run: bash scripts/test-semgrep-rules.sh
+
+      # Project rules only (.semgrep/secureflow.yml): nothing is fetched from a registry (SAST-01).
+      - name: Semgrep
+        run: |
+          docker run --rm -v "$PWD":/src:ro -w /src "$SEMGREP_IMAGE" \
+            semgrep scan --config /src/.semgrep/secureflow.yml --metrics=off --error \
+            backend/app backend/routes backend/bootstrap backend/database backend/config frontend/src
+
+      # Dependencies (composer.lock, package-lock.json), the Dockerfile and compose, secrets (SCA-01).
+      - name: Trivy filesystem
+        run: |
+          docker run --rm -v "$PWD":/src:ro -v "$HOME/.cache/trivy":/root/.cache/trivy "$TRIVY_IMAGE" \
+            fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress \
+            --ignorefile /src/.trivyignore /src
+
+      - name: Create CI-only .env (random throwaway secrets)
+        run: bash scripts/init-env.sh
+
+      - name: Build PHP image
+        run: docker compose build app
+
+      # The PHP image and every pinned image compose uses, profiles included (SCA-01).
+      - name: Trivy images
+        run: |
+          for image in $(docker compose --profile openai --profile tools config --images | sort -u); do
+            echo "::group::$image"
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy":/root/.cache/trivy \
+              -v "$PWD/.trivyignore":/.trivyignore:ro "$TRIVY_IMAGE" \
+              image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress --ignorefile /.trivyignore "$image"
+            echo "::endgroup::"
+          done

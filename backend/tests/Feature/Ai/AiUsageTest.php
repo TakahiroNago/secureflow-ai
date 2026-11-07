@@ -114,7 +114,7 @@ it('ST-30: refuses with 429 at the daily limit, and never calls the AI', functio
         ->and($row->error_code)->toBe('USER_DAILY_LIMIT')
         ->and($audit->result)->toBe('denied')
         ->and(json_decode((string) $audit->metadata, true)['reason_code'])->toBe('USER_DAILY_LIMIT');
-});
+})->group('security');
 
 it('ST-30: refuses at the monthly limit of the organization, whoever used it', function () {
     limitsOf($this->org->id, 100, 50);
@@ -124,7 +124,7 @@ it('ST-30: refuses at the monthly limit of the organization, whoever used it', f
         ->assertStatus(429)->assertJsonPath('code', 'AI_LIMIT_EXCEEDED');
 
     expect(DB::table('ai_usage_logs')->where('status', 'budget_blocked')->value('error_code'))->toBe('ORGANIZATION_MONTHLY_LIMIT');
-});
+})->group('security');
 
 it('ST-30: refuses in the worker too, since a job can wait, and never calls the AI', function () {
     $ai = aiThatAnswers(fn () => goodPlan());
@@ -141,14 +141,14 @@ it('ST-30: refuses in the worker too, since a job can wait, and never calls the 
         ->and($row->error_code)->toBe('AI_LIMIT_EXCEEDED')
         ->and($row->input_masked)->toBeNull()
         ->and(DB::table('ai_usage_logs')->where('analysis_request_id', $analysis->id)->value('status'))->toBe('budget_blocked');
-});
+})->group('security');
 
 it('ST-30: passes just below the limits', function () {
     limitsOf($this->org->id, 101, 2);
     usageRow(['organization_id' => $this->org->id, 'user_id' => $this->user->id, 'total_tokens' => 100]);
 
     loggedIn($this, $this->user)->send('POST', USAGE_ANALYSES, ['input' => '週次の報告'])->assertStatus(202);
-});
+})->group('security');
 
 it('ST-30: last month and yesterday do not count, and neither does another organization', function () {
     limitsOf($this->org->id, 100, 1);
@@ -157,14 +157,14 @@ it('ST-30: last month and yesterday do not count, and neither does another organ
     usageRow(['organization_id' => $this->org->id, 'user_id' => $this->user->id, 'total_tokens' => 100, 'created_at' => now('UTC')->startOfMonth()->subSecond()->toIso8601String()]);
 
     loggedIn($this, $this->user)->send('POST', USAGE_ANALYSES, ['input' => '週次の報告'])->assertStatus(202);
-});
+})->group('security');
 
 it('ST-30: a refusal does not use up the day', function () {
     limitsOf($this->org->id, 1000, 1);
     usageRow(['organization_id' => $this->org->id, 'user_id' => $this->user->id, 'status' => 'budget_blocked']);
 
     loggedIn($this, $this->user)->send('POST', USAGE_ANALYSES, ['input' => '週次の報告'])->assertStatus(202);
-});
+})->group('security');
 
 it('ST-30: an organization with no settings still has limits', function () {
     foreach (range(1, 100) as $ignored) {
@@ -173,7 +173,7 @@ it('ST-30: an organization with no settings still has limits', function () {
 
     loggedIn($this, $this->user)->send('POST', USAGE_ANALYSES, ['input' => '週次の報告'])
         ->assertStatus(429)->assertJsonPath('code', 'AI_LIMIT_EXCEEDED');
-});
+})->group('security');
 
 // ---- The record of a call ---------------------------------------------------------------------------
 

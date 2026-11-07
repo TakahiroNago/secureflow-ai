@@ -62,7 +62,7 @@ it('ST-21: refuses an approval by the creator, even an admin', function () {
     $revision = insertRevision(appDb(), $adminWorkflow);
 
     expectDbError(fn (Connection $db) => insertApproval($db, $adminWorkflow, $revision, $this->admin->id), '42501');
-});
+})->group('security');
 
 it('ST-38: refuses a decision by anyone but an active admin', function (string $role, array $attributes) {
     $revision = insertRevision(appDb(), $this->workflow);
@@ -73,7 +73,7 @@ it('ST-38: refuses a decision by anyone but an active admin', function (string $
     'member' => ['member', []],
     'auditor' => ['auditor', []],
     'inactive admin' => ['admin', ['is_active' => false]],
-]);
+])->group('security');
 
 it('accepts a decision by a locked admin: a lock does not take away approval rights', function () {
     $revision = insertRevision(appDb(), $this->workflow);

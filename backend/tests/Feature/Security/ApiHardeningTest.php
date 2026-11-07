@@ -56,7 +56,7 @@ it('ST-11: stops a user at 60 a minute, with Retry-After and a record', function
     $client->send('GET', '/api/v1/workflows')->assertStatus(429)->assertJsonPath('code', 'RATE_LIMITED')->assertHeader('Retry-After');
 
     expect(DB::table('audit_logs')->where('event_type', 'rate_limit.exceeded')->where('organization_id', $this->org->id)->count())->toBe(1);
-});
+})->group('security');
 
 it('ST-11: counts every route together, for each user on their own', function () {
     $client = loggedIn($this, $this->user);
@@ -68,7 +68,7 @@ it('ST-11: counts every route together, for each user on their own', function ()
     $client->send('GET', '/api/v1/dashboard/summary')->assertStatus(429);
 
     loggedIn($this, userIn($this->org->id))->send('GET', '/api/v1/workflows')->assertOk();
-});
+})->group('security');
 
 it('ST-11: still lets the user see who they are, and log out', function () {
     $client = loggedIn($this, $this->user);
@@ -79,7 +79,7 @@ it('ST-11: still lets the user see who they are, and log out', function () {
 
     $client->send('GET', HARDENING_ME)->assertOk();
     $client->send('POST', '/api/v1/auth/logout')->assertNoContent();
-});
+})->group('security');
 
 it('ST-11: stops those with no session at 60 a minute, by address', function () {
     foreach (range(1, 60) as $ignored) {
@@ -91,7 +91,7 @@ it('ST-11: stops those with no session at 60 a minute, by address', function () 
 
     $client = loggedIn($this, $this->user, ip: '203.0.113.77');
     $client->send('GET', HARDENING_ME)->assertOk();
-});
+})->group('security');
 
 it('ST-11: does not limit health', function () {
     foreach (range(1, 70) as $ignored) {
@@ -99,7 +99,7 @@ it('ST-11: does not limit health', function () {
     }
 
     $response->assertOk();
-});
+})->group('security');
 
 // ---- Answers -----------------------------------------------------------------------------------------
 
@@ -124,7 +124,7 @@ it('ST-29: answers everything under the API in one format', function (string $me
     'no route in v1' => ['GET', '/api/v1/no-such-thing', 404, 'NOT_FOUND'],
     'no route under api' => ['GET', '/api/no-such-thing', 404, 'NOT_FOUND'],
     'a wrong method' => ['DELETE', '/api/v1/auth/login', 405, 'METHOD_NOT_ALLOWED'],
-]);
+])->group('security');
 
 it('ST-29: says nothing about what went wrong, and the id leads to the log', function () {
     $secret = FakeSecrets::apiKey('openai');
@@ -137,7 +137,7 @@ it('ST-29: says nothing about what went wrong, and the id leads to the log', fun
         ->not->toContain('SELECT')
         ->not->toContain('RuntimeException')
         ->and($response->json('trace_id'))->toBe(app(RequestId::class)->value());
-});
+})->group('security');
 
 it('leaves the format of health as it is', function () {
     $this->getJson('/api/health/live')->assertExactJson(['status' => 'ok']);
@@ -153,7 +153,7 @@ it('ST-29: does not send back the name of an unknown field that could be anythin
         ->and($response->json('errors'))->toHaveKey('unknown_field');
 
     $client->send('POST', '/api/v1/analyses', ['input' => '報告', 'made_up' => 'x'])->assertStatus(422)->assertJsonValidationErrors(['made_up']);
-});
+})->group('security');
 
 // ---- ST-32 -------------------------------------------------------------------------------------------
 
@@ -172,14 +172,14 @@ it('ST-32: a login takes it as a wrong password', function (string $attack) {
     $client->send('POST', '/api/v1/auth/login', ['email' => $this->user->email, 'password' => $attack])->assertStatus(401)->assertJsonPath('code', 'AUTH_FAILED');
 
     expect(DB::table('users')->where('id', $this->user->id)->exists())->toBeTrue();
-})->with($sql);
+})->with($sql)->group('security');
 
 it('ST-32: a login refuses it as an address, and finds nobody', function (string $attack) {
     $client = spa($this);
     $client->csrf();
 
     expect($client->send('POST', '/api/v1/auth/login', ['email' => $attack, 'password' => 'x'])->status())->toBeIn([401, 422]);
-})->with($sql);
+})->with($sql)->group('security');
 
 it('ST-32: filters refuse it', function (string $attack) {
     $admin = loggedIn($this, userIn($this->org->id, 'admin'));
@@ -188,11 +188,11 @@ it('ST-32: filters refuse it', function (string $attack) {
     foreach (['/api/v1/workflows?status=', '/api/v1/audit-logs?event_type=', '/api/v1/audit-logs?actor_user_id=', '/api/v1/audit-logs?from=', '/api/v1/ai-usage/summary?period='] as $path) {
         $admin->send('GET', $path.$query)->assertStatus(422);
     }
-})->with($sql);
+})->with($sql)->group('security');
 
 it('ST-32: an id in a path is only ever not found', function (string $attack) {
     loggedIn($this, $this->user)->send('GET', '/api/v1/workflows/'.rawurlencode($attack))->assertStatus(404)->assertJsonPath('code', 'NOT_FOUND');
-})->with($sql);
+})->with($sql)->group('security');
 
 it('ST-32: text is kept as text, or stopped, and changes nothing else', function (string $attack) {
     $users = DB::table('users')->count();
@@ -201,7 +201,7 @@ it('ST-32: text is kept as text, or stopped, and changes nothing else', function
     expect($client->send('POST', '/api/v1/security/scan-preview', ['input' => $attack])->status())->toBe(200);
 
     expect(DB::table('users')->count())->toBe($users);
-})->with($sql);
+})->with($sql)->group('security');
 
 // ---- ST-29: the logs ---------------------------------------------------------------------------------
 
@@ -211,7 +211,7 @@ it('ST-29: masks personal data in a message and in the context', function () {
     expect($record['message'])->toBe('宛先 [EMAIL_REDACTED]')
         ->and($record['context']['to'][0])->toBe('[EMAIL_REDACTED]')
         ->and($record['context']['count'])->toBe(2);
-});
+})->group('security');
 
 it('ST-29: takes the whole string with a secret', function () {
     $secret = FakeSecrets::apiKey('openai');
@@ -220,7 +220,7 @@ it('ST-29: takes the whole string with a secret', function () {
     expect($record['message'])->toBe(RedactSensitiveData::REDACTED)
         ->and($record['context']['deep']['deeper'][0])->toBe(RedactSensitiveData::REDACTED)
         ->and(json_encode($record))->not->toContain($secret);
-});
+})->group('security');
 
 it('ST-29: keeps an exception by its class and place, not its message', function () {
     $record = logged(fn ($log) => $log->error('failed', ['exception' => new RuntimeException('SELECT * FROM users WHERE name = 山田太郎', 0, new LogicException('inner 佐藤'))]));
@@ -231,7 +231,7 @@ it('ST-29: keeps an exception by its class and place, not its message', function
         ->and($record['context']['exception']['line'])->toBeInt()
         ->and(json_encode($record, JSON_UNESCAPED_UNICODE))->not->toContain('山田太郎')
         ->and(json_encode($record, JSON_UNESCAPED_UNICODE))->not->toContain('佐藤');
-});
+})->group('security');
 
 it('ST-29: does not write out an object', function () {
     $user = new User;
@@ -240,7 +240,7 @@ it('ST-29: does not write out an object', function () {
     $record = logged(fn ($log) => $log->info('who', ['user' => $user]));
 
     expect($record['context']['user'])->toBe('['.User::class.']');
-});
+})->group('security');
 
 it('ST-29: leaves what identifies a failure alone', function () {
     $id = '019a0000-0000-7000-8000-00000000000a';
@@ -248,7 +248,7 @@ it('ST-29: leaves what identifies a failure alone', function () {
 
     expect($record['message'])->toBe('audit.write_failed')
         ->and($record['context'])->toBe(['metric' => 'audit.write_failed', 'request_id' => $id, 'sqlstate' => '53100', 'first_broken_seq' => 3, 'failed' => true, 'none' => null]);
-});
+})->group('security');
 
 it('ST-29: redacts a line it cannot check, and cuts one that is too long', function () {
     $record = logged(fn ($log) => $log->info(str_repeat('あ', 5000)));
@@ -258,7 +258,7 @@ it('ST-29: redacts a line it cannot check, and cuts one that is too long', funct
     $record = logged(fn ($log) => $log->info('bad', ['text' => "\xB1\x31"]));
 
     expect($record['context']['text'])->toBeString();
-});
+})->group('security');
 
 it('ST-29: stops at a depth it can check, and keeps what is above it', function () {
     $deep = 'bottom';
@@ -269,20 +269,20 @@ it('ST-29: stops at a depth it can check, and keeps what is above it', function 
 
     expect(json_encode($record['context']))->not->toContain('bottom')->toContain('[REDACTED]')
         ->and($record['context']['shallow'])->toBe(['a' => ['b' => 'kept']]);
-});
+})->group('security');
 
 it('ST-29: gives each line the id of the request', function () {
     $record = logged(fn ($log) => $log->info('x'));
 
     expect($record['extra']['trace_id'])->toBe(app(RequestId::class)->value());
-});
+})->group('security');
 
 it('ST-29: every channel that writes has it', function (string $channel) {
     expect(config("logging.channels.{$channel}.tap"))->toContain(RedactLogs::class);
-})->with(['single', 'daily', 'stderr', 'syslog', 'errorlog', 'slack', 'papertrail']);
+})->with(['single', 'daily', 'stderr', 'syslog', 'errorlog', 'slack', 'papertrail'])->group('security');
 
 it('ST-29: a channel really runs it', function () {
     $logger = app('log')->channel('stderr');
 
     expect(collect($logger->getLogger()->getProcessors())->contains(fn ($processor) => $processor instanceof RedactSensitiveData))->toBeTrue();
-});
+})->group('security');

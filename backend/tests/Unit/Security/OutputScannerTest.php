@@ -83,7 +83,7 @@ it('ST-15: stops at the canary, however it is written and wherever it is', funct
     'in pieces in two fields' => [['title' => substr(OUTPUT_CANARY, 0, 20), 'description' => substr(OUTPUT_CANARY, 20)]],
     'between tags' => [['description' => substr(OUTPUT_CANARY, 0, 20).'<b></b>'.substr(OUTPUT_CANARY, 20)]],
     'inside a script' => [['description' => '前<script>'.OUTPUT_CANARY.'</script>後']],
-]);
+])->group('security');
 
 it('ST-15: sees it in an answer that is not valid, so that a leak is not reported as a broken answer', function (string $answer) {
     assertCanaryStop((new OutputScanner)->scan($answer, OUTPUT_CANARY));
@@ -92,32 +92,32 @@ it('ST-15: sees it in an answer that is not valid, so that a leak is not reporte
     'cut short' => ['{"tasks": [{"title": "'.OUTPUT_CANARY],
     'an unknown key' => ['{"tasks": [], "extra": "'.OUTPUT_CANARY.'"}'],
     'the name of a key' => ['{"'.OUTPUT_CANARY.'": 1}'],
-]);
+])->group('security');
 
 it('ST-15: sees it as an escape in JSON', function () {
     $escaped = implode('', array_map(fn (string $character) => sprintf('\u%04x', ord($character)), str_split(OUTPUT_CANARY)));
 
     assertCanaryStop((new OutputScanner)->scan('{"tasks": [], "extra": "'.$escaped.'"}', OUTPUT_CANARY));
-});
+})->group('security');
 
 it('ST-15: sees an escape deep inside an answer that is not valid', function () {
     $escaped = implode('', array_map(fn (string $character) => sprintf('\u%04x', ord($character)), str_split(OUTPUT_CANARY)));
 
     assertCanaryStop((new OutputScanner)->scan('{"tasks": [{"unknown": ["'.$escaped.'"]}]}', OUTPUT_CANARY));
-});
+})->group('security');
 
 it('ST-15: sees an escape in the name of a key', function () {
     $escaped = implode('', array_map(fn (string $character) => sprintf('\u%04x', ord($character)), str_split(OUTPUT_CANARY)));
 
     assertCanaryStop((new OutputScanner)->scan('{"'.$escaped.'": 1}', OUTPUT_CANARY));
-});
+})->group('security');
 
 it('ST-15: sees it as an escape in a valid answer', function () {
     $escaped = implode('', array_map(fn (string $character) => sprintf('\u%04x', ord($character)), str_split(OUTPUT_CANARY)));
     $valid = json_encode(['tasks' => [outputTask(['description' => 'MARK'])]], JSON_UNESCAPED_UNICODE);
 
     assertCanaryStop((new OutputScanner)->scan(str_replace('MARK', $escaped, $valid), OUTPUT_CANARY));
-});
+})->group('security');
 
 it('does not stop at a canary from another request', function () {
     $output = scanOutput(['description' => 'SF-CANARY-ffffffffffffffffffffffffffffffff の説明']);
@@ -149,7 +149,7 @@ it('ST-10: removes markup, says so per field, and goes on', function () {
         ->and($finding->action)->toBe(ScanAction::Record)
         ->and($finding->start)->toBeNull()
         ->and($output->result->decision)->toBe(ScanDecision::Allow);
-});
+})->group('security');
 
 it('fails when nothing is left of a text, saying where and not what', function (array $task, string $position) {
     try {
@@ -229,7 +229,7 @@ it('ST-18: warns when more is asked for than the action needs, and uses only wha
         ->and($finding->message)->not->toContain('system.shell')
         ->and($finding->message)->not->toContain('admin.all')
         ->and($output->tasks[0]->permissions)->toBe(['ai.text.read']);
-});
+})->group('security');
 
 it('ST-18: only records when less is asked for', function (array $requested) {
     $output = scanOutput(['requested_permissions' => $requested]);
@@ -239,7 +239,7 @@ it('ST-18: only records when less is asked for', function (array $requested) {
         ->and($finding->severity)->toBe(Severity::Low)
         ->and($finding->action)->toBe(ScanAction::Record)
         ->and($output->tasks[0]->permissions)->toBe(['ai.text.read']);
-})->with([[[]]]);
+})->with([[[]]])->group('security');
 
 it('reports each direction when a task has both', function () {
     $output = scanOutput(['action_type' => 'report.draft', 'requested_permissions' => ['ai.text.read', 'admin.all']]);

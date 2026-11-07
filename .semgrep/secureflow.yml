@@ -1,0 +1,130 @@
+# SecureFlow AI — Semgrep rules (docs/security-design.md §13, §14, §15; docs/test-strategy.md §31).
+#
+# Only these rules run in CI: nothing is fetched from a registry, so a run is reproducible. Every finding is an
+# error. A place that is allowed on purpose carries `// nosemgrep: <rule id>` on the matching line, with the reason
+# in a comment above it; an exclusion without a reason is refused in review.
+rules:
+  - id: secureflow.php.raw-sql
+    languages: [php]
+    severity: ERROR
+    message: >-
+      Raw SQL. Use the query builder with bindings. If the SQL is a constant with no input in it, say why in a
+      comment and add "nosemgrep: secureflow.php.raw-sql" (docs/security-design.md §15).
+    paths:
+      # Migrations run as the owner role with constant SQL and quoted identifiers; the application role never
+      # reaches them (docs/database-design.md §4.3).
+      exclude:
+        - backend/database/migrations/
+    pattern-either:
+      - pattern: DB::raw(...)
+      - pattern: $Q->whereRaw(...)
+      - pattern: $Q->selectRaw(...)
+      - pattern: $Q->orderByRaw(...)
+      - pattern: $Q->havingRaw(...)
+      - pattern: $Q->groupByRaw(...)
+      - pattern: $Q->fromRaw(...)
+      - pattern: DB::unprepared(...)
+      - pattern: $C->unprepared(...)
+      # The facade and a connection, with SQL that is not a literal (bindings go in the second argument).
+      - patterns:
+          - pattern-either:
+              - pattern: DB::$M($SQL, ...)
+              - pattern: DB::connection(...)->$M($SQL, ...)
+          - metavariable-regex:
+              metavariable: $M
+              regex: ^(statement|select|selectOne|scalar|insert|update|delete|affectingStatement|cursor)$
+          - pattern-not: DB::$M("...", ...)
+          - pattern-not: DB::connection(...)->$M("...", ...)
+
+  - id: secureflow.php.without-global-scope
+    languages: [php]
+    severity: ERROR
+    message: >-
+      A query outside the organization scope. Only a scheduler command that reads across organizations may do this,
+      and it must handle each row inside that organization's context (docs/security-design.md §13.3).
+    pattern-either:
+      - pattern: $Q->withoutGlobalScope(...)
+      - pattern: $Q->withoutGlobalScopes(...)
+
+  - id: secureflow.php.dangerous-call
+    languages: [php]
+    severity: ERROR
+    message: >-
+      Code execution, a shell, or deserialization of data. The application runs nothing the AI or a user supplies
+      (docs/architecture.md §1, docs/security-design.md §8).
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: exec(...)
+      - pattern: shell_exec(...)
+      - pattern: system(...)
+      - pattern: passthru(...)
+      - pattern: proc_open(...)
+      - pattern: popen(...)
+      - pattern: pcntl_exec(...)
+      - pattern: unserialize(...)
+      - pattern: Process::run(...)
+      - pattern: Process::start(...)
+
+  - id: secureflow.php.tls-verification-off
+    languages: [php]
+    severity: ERROR
+    message: Certificate verification must stay on (docs/security-design.md §6.1).
+    pattern-either:
+      - pattern: $H->withoutVerifying()
+      - pattern: $H->withOptions([..., 'verify' => false, ...])
+
+  - id: secureflow.php.middleware-bypass
+    languages: [php]
+    severity: ERROR
+    message: >-
+      A route or request that skips middleware. The health checks are the only allowed case (docs/api-design.md §3.10).
+    pattern-either:
+      - pattern: $R->withoutMiddleware(...)
+      - pattern: Route::withoutMiddleware(...)
+      - pattern: $M->validateCsrfTokens(...)
+
+  - id: secureflow.php.ai-tools-parameter
+    languages: [php]
+    severity: ERROR
+    message: The AI is never given tools or function calling (docs/security-design.md §6, ST-31).
+    pattern-either:
+      - pattern: |
+          [..., 'tools' => $V, ...]
+      - pattern: |
+          [..., 'tool_choice' => $V, ...]
+      - pattern: |
+          [..., 'functions' => $V, ...]
+
+  - id: secureflow.ts.html-rendering
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      Text from the AI or a user is drawn as React text only. Rendering HTML, evaluating code and browser storage
+      are prohibited (docs/security-design.md §14, docs/architecture.md §6).
+    paths:
+      exclude:
+        # The probes that prove the ESLint rules fire (P0-FE-01).
+        - xss-lint-rules.test.ts
+    pattern-either:
+      - pattern: $E.innerHTML = $V
+      - pattern: $E.outerHTML = $V
+      - pattern: $E.insertAdjacentHTML(...)
+      - pattern: $R.createContextualFragment(...)
+      - pattern: document.write(...)
+      - pattern: document.writeln(...)
+      - pattern: eval(...)
+      - pattern: new Function(...)
+      - pattern: localStorage.$M(...)
+      - pattern: sessionStorage.$M(...)
+      - pattern: window.localStorage
+      - pattern: window.sessionStorage
+
+  - id: secureflow.ts.dangerously-set-inner-html
+    languages: [generic]
+    severity: ERROR
+    message: dangerouslySetInnerHTML is prohibited (docs/security-design.md §14).
+    paths:
+      exclude:
+        # The probes that prove the ESLint rules fire (P0-FE-01).
+        - xss-lint-rules.test.ts
+    pattern: dangerouslySetInnerHTML
