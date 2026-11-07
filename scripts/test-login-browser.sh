@@ -165,7 +165,8 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   check('the chart is drawn', (await page.locator('.recharts-bar-rectangle').count()) > 0);
   check('nothing failed on the page', problems.length === 0, problems.join('; '));
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.screenshot({ path: `dashboard-${name}.png`, fullPage: true });
+  // caret 'initial': hiding the caret makes Playwright add a <style>, which the CSP refuses as it should.
+  await page.screenshot({ path: `dashboard-${name}.png`, fullPage: true, caret: 'initial' });
 
   // Asking for an approval, on the real screens.
   await page.goto(`${BASE}${workflowPath}`);
@@ -231,7 +232,7 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE}${workflowPath}/approval`);
   await page.getByRole('heading', { name: /^承認：/ }).waitFor({ timeout: 10000 }).catch(() => {});
-  await page.screenshot({ path: `approval-${name}.png`, fullPage: true });
+  await page.screenshot({ path: `approval-${name}.png`, fullPage: true, caret: 'initial' });
   await browser.close();
 }
 console.log(`\nResult: ${fails} failed`);
