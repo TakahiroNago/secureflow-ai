@@ -40,81 +40,86 @@ Route::prefix('v1')->middleware('json.body')->group(function (): void {
     Route::middleware(['db.available', 'auth:sanctum', 'session.current', 'org.context'])->group(function (): void {
         Route::post('/auth/logout', [AuthController::class, 'logout'])->name('auth.logout');
         Route::get('/auth/me', [AuthController::class, 'me'])->name('auth.me');
-        Route::patch('/account/password', [AccountPasswordController::class, 'update'])
-            ->middleware('throttle:account-password')
-            ->name('account.password');
 
-        Route::get('/dashboard/summary', [DashboardController::class, 'summary'])
-            ->middleware('can:viewAny,'.Workflow::class)
-            ->name('dashboard.summary');
+        // Everything else counts towards one limit. Logging out, and asking who one is, stay possible: the screen
+        // would otherwise show someone over the limit as logged out.
+        Route::middleware('throttle:api-general')->group(function (): void {
+            Route::patch('/account/password', [AccountPasswordController::class, 'update'])
+                ->middleware('throttle:account-password')
+                ->name('account.password');
 
-        Route::get('/ai-usage/summary', [AiUsageController::class, 'summary'])
-            ->middleware('can:viewAny,'.Workflow::class)
-            ->name('ai-usage.summary');
+            Route::get('/dashboard/summary', [DashboardController::class, 'summary'])
+                ->middleware('can:viewAny,'.Workflow::class)
+                ->name('dashboard.summary');
 
-        Route::post('/security/scan-preview', [SecurityController::class, 'scanPreview'])
-            ->middleware(['throttle:scan-preview', 'can:create,'.Workflow::class])
-            ->name('security.scan-preview');
+            Route::get('/ai-usage/summary', [AiUsageController::class, 'summary'])
+                ->middleware('can:viewAny,'.Workflow::class)
+                ->name('ai-usage.summary');
 
-        Route::post('/analyses', [AnalysisController::class, 'store'])
-            ->middleware(['throttle:analyses', 'can:create,'.Workflow::class])
-            ->name('analyses.store');
-        Route::get('/analyses/{analysis}', [AnalysisController::class, 'show'])
-            ->middleware('can:view,analysis')
-            ->name('analyses.show');
+            Route::post('/security/scan-preview', [SecurityController::class, 'scanPreview'])
+                ->middleware(['throttle:scan-preview', 'can:create,'.Workflow::class])
+                ->name('security.scan-preview');
 
-        Route::get('/workflows', [WorkflowController::class, 'index'])
-            ->middleware('can:viewAny,'.Workflow::class)
-            ->name('workflows.index');
-        Route::get('/workflows/{workflow}', [WorkflowController::class, 'show'])
-            ->middleware('can:view,workflow')
-            ->name('workflows.show');
-        Route::get('/workflows/{workflow}/history', [WorkflowController::class, 'history'])
-            ->middleware('can:view,workflow')
-            ->name('workflows.history');
-        Route::patch('/workflows/{workflow}', [WorkflowController::class, 'update'])
-            ->middleware('can:update,workflow')
-            ->name('workflows.update');
+            Route::post('/analyses', [AnalysisController::class, 'store'])
+                ->middleware(['throttle:analyses', 'can:create,'.Workflow::class])
+                ->name('analyses.store');
+            Route::get('/analyses/{analysis}', [AnalysisController::class, 'show'])
+                ->middleware('can:view,analysis')
+                ->name('analyses.show');
 
-        Route::post('/workflows/{workflow}/submit', [WorkflowController::class, 'submit'])
-            ->middleware('can:submit,workflow')
-            ->name('workflows.submit');
-        Route::post('/workflows/{workflow}/reopen', [WorkflowController::class, 'reopen'])
-            ->middleware('can:reopen,workflow')
-            ->name('workflows.reopen');
+            Route::get('/workflows', [WorkflowController::class, 'index'])
+                ->middleware('can:viewAny,'.Workflow::class)
+                ->name('workflows.index');
+            Route::get('/workflows/{workflow}', [WorkflowController::class, 'show'])
+                ->middleware('can:view,workflow')
+                ->name('workflows.show');
+            Route::get('/workflows/{workflow}/history', [WorkflowController::class, 'history'])
+                ->middleware('can:view,workflow')
+                ->name('workflows.history');
+            Route::patch('/workflows/{workflow}', [WorkflowController::class, 'update'])
+                ->middleware('can:update,workflow')
+                ->name('workflows.update');
 
-        Route::get('/approvals', [ApprovalController::class, 'index'])
-            ->middleware('can:viewApprovals,'.Workflow::class)
-            ->name('approvals.index');
-        Route::get('/workflows/{workflow}/approval-context', [ApprovalController::class, 'context'])
-            ->middleware('can:viewApprovalContext,workflow')
-            ->name('workflows.approval-context');
-        // The denial is recorded before the policy refuses, and after the limit: a refusal writes to the chain.
-        Route::post('/workflows/{workflow}/approve', [ApprovalController::class, 'approve'])
-            ->middleware(['throttle:approval-decisions', 'denied.attempt:approve', 'can:approve,workflow'])
-            ->name('workflows.approve');
-        Route::post('/workflows/{workflow}/reject', [ApprovalController::class, 'reject'])
-            ->middleware(['throttle:approval-decisions', 'denied.attempt:reject', 'can:reject,workflow'])
-            ->name('workflows.reject');
+            Route::post('/workflows/{workflow}/submit', [WorkflowController::class, 'submit'])
+                ->middleware('can:submit,workflow')
+                ->name('workflows.submit');
+            Route::post('/workflows/{workflow}/reopen', [WorkflowController::class, 'reopen'])
+                ->middleware('can:reopen,workflow')
+                ->name('workflows.reopen');
 
-        Route::post('/workflows/{workflow}/execute', [ExecutionController::class, 'store'])
-            ->middleware(['throttle:execution-requests', 'denied.attempt:execute', 'can:execute,workflow'])
-            ->name('workflows.execute');
-        Route::get('/workflows/{workflow}/executions', [ExecutionController::class, 'index'])
-            ->middleware('can:view,workflow')
-            ->name('workflows.executions');
+            Route::get('/approvals', [ApprovalController::class, 'index'])
+                ->middleware('can:viewApprovals,'.Workflow::class)
+                ->name('approvals.index');
+            Route::get('/workflows/{workflow}/approval-context', [ApprovalController::class, 'context'])
+                ->middleware('can:viewApprovalContext,workflow')
+                ->name('workflows.approval-context');
+            // The denial is recorded before the policy refuses, and after the limit: a refusal writes to the chain.
+            Route::post('/workflows/{workflow}/approve', [ApprovalController::class, 'approve'])
+                ->middleware(['throttle:approval-decisions', 'denied.attempt:approve', 'can:approve,workflow'])
+                ->name('workflows.approve');
+            Route::post('/workflows/{workflow}/reject', [ApprovalController::class, 'reject'])
+                ->middleware(['throttle:approval-decisions', 'denied.attempt:reject', 'can:reject,workflow'])
+                ->name('workflows.reject');
 
-        Route::get('/audit-logs', [AuditLogController::class, 'index'])
-            ->middleware('can:viewAny,'.AuditLog::class)
-            ->name('audit-logs.index');
-        Route::post('/audit-logs/verify', [AuditLogController::class, 'verify'])
-            ->middleware(['throttle:audit-verify', 'can:verify,'.AuditLog::class])
-            ->name('audit-logs.verify');
+            Route::post('/workflows/{workflow}/execute', [ExecutionController::class, 'store'])
+                ->middleware(['throttle:execution-requests', 'denied.attempt:execute', 'can:execute,workflow'])
+                ->name('workflows.execute');
+            Route::get('/workflows/{workflow}/executions', [ExecutionController::class, 'index'])
+                ->middleware('can:view,workflow')
+                ->name('workflows.executions');
 
-        Route::scopeBindings()->middleware('can:update,workflow')->group(function (): void {
-            Route::post('/workflows/{workflow}/tasks', [WorkflowTaskController::class, 'store'])->name('workflows.tasks.store');
-            Route::put('/workflows/{workflow}/tasks/{task}', [WorkflowTaskController::class, 'update'])->name('workflows.tasks.update');
-            Route::delete('/workflows/{workflow}/tasks/{task}', [WorkflowTaskController::class, 'destroy'])->name('workflows.tasks.destroy');
+            Route::get('/audit-logs', [AuditLogController::class, 'index'])
+                ->middleware('can:viewAny,'.AuditLog::class)
+                ->name('audit-logs.index');
+            Route::post('/audit-logs/verify', [AuditLogController::class, 'verify'])
+                ->middleware(['throttle:audit-verify', 'can:verify,'.AuditLog::class])
+                ->name('audit-logs.verify');
+
+            Route::scopeBindings()->middleware('can:update,workflow')->group(function (): void {
+                Route::post('/workflows/{workflow}/tasks', [WorkflowTaskController::class, 'store'])->name('workflows.tasks.store');
+                Route::put('/workflows/{workflow}/tasks/{task}', [WorkflowTaskController::class, 'update'])->name('workflows.tasks.update');
+                Route::delete('/workflows/{workflow}/tasks/{task}', [WorkflowTaskController::class, 'destroy'])->name('workflows.tasks.destroy');
+            });
         });
     });
 });

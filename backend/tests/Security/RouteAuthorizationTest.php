@@ -1,11 +1,14 @@
 <?php
 
 use App\Http\Middleware\SetOrganizationContext;
+use App\Http\Middleware\ThrottleUnauthenticated;
 use App\Models\Workflow;
+use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Route;
+use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
 /*
 | ST-34: no route can be added without authentication, an organization context and a policy. It walks
@@ -84,4 +87,14 @@ it('resolves route model binding inside the organization scope', function () {
 
     expect($position(SetOrganizationContext::class))
         ->toBeLessThan($position(SubstituteBindings::class));
+});
+
+it('counts guests before authentication turns them away', function () {
+    $route = Route::getRoutes()->getByName('auth.me');
+    $order = app('router')->gatherRouteMiddleware($route);
+    $position = fn (string $class) => array_search($class, $order, true);
+
+    expect($position(ThrottleUnauthenticated::class))->toBeInt()
+        ->toBeLessThan($position(EnsureFrontendRequestsAreStateful::class))
+        ->toBeLessThan($position(Authenticate::class.':sanctum'));
 });

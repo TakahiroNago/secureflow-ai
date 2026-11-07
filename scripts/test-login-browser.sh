@@ -80,6 +80,9 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   const browser = await browsers[name].launch();
   const context = await browser.newContext();
   const page = await context.newPage();
+  // A page that breaks the CSP goes on working, so this has to be looked for.
+  const violations = [];
+  page.on('console', (m) => { if (/Content Security Policy|Content-Security-Policy/i.test(m.text())) violations.push(m.text().slice(0, 160)); });
   // Only what is sent after the login has answered: before that, 401 is the right answer.
   let loggedIn = false;
   const sentAfterLogin = new Set();
@@ -224,6 +227,7 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   await verified.waitFor({ timeout: 15000 }).catch(() => {});
   check('verifying finds nothing wrong', await verified.isVisible());
   check('still nothing failed on the page', problems.length === 0, problems.join('; '));
+  check('the CSP was never broken, on any screen', violations.length === 0, violations.join('; '));
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE}${workflowPath}/approval`);
   await page.getByRole('heading', { name: /^承認：/ }).waitFor({ timeout: 10000 }).catch(() => {});

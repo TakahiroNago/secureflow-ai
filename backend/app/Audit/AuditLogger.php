@@ -3,9 +3,9 @@
 namespace App\Audit;
 
 use App\Support\Database\SingleAttemptTransaction;
+use App\Support\Http\RequestId;
 use App\Support\Http\ServiceUnavailableException;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use LogicException;
 use RedisException;
 use Throwable;
@@ -21,13 +21,12 @@ class AuditLogger
 {
     private ?string $chainInTransaction = null;
 
-    private ?string $requestId = null;
-
     public function __construct(
         private readonly AuditWriter $writer,
         private readonly TransactionBoundary $boundary,
         private readonly AuditAvailability $availability,
         private readonly SystemChainLimiter $limiter,
+        private readonly RequestId $requestId,
     ) {}
 
     /**
@@ -120,6 +119,6 @@ class AuditLogger
 
     private function requestId(): string
     {
-        return $this->requestId ??= (string) Str::uuid7();
+        return $this->requestId->value();
     }
 }

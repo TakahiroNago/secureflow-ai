@@ -172,6 +172,9 @@ jobs:
       - name: Login screen in real browsers (AUTH-E2E-01)
         run: bash scripts/test-login-browser.sh
 
+      - name: What nginx answers by itself, and the headers
+        run: bash scripts/test-nginx-errors.sh
+
       - name: Published port policy negative tests (P0-NET-01)
         run: bash scripts/test-published-ports.sh
 

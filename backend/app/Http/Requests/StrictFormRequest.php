@@ -10,6 +10,8 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 abstract class StrictFormRequest extends FormRequest
 {
+    private const FIELD_NAME = '/^[a-z][a-z0-9_]{0,39}$/D';
+
     /**
      * @return array<string, mixed>
      */
@@ -22,7 +24,9 @@ abstract class StrictFormRequest extends FormRequest
 
             foreach (array_keys($this->all()) as $field) {
                 if (! array_key_exists($field, $rules)) {
-                    $validator->errors()->add((string) $field, '不明な項目です。');
+                    // A name is only sent back when it looks like one: what was sent could be anything.
+                    $name = preg_match(self::FIELD_NAME, (string) $field) === 1 ? (string) $field : 'unknown_field';
+                    $validator->errors()->add($name, '不明な項目です。');
                 }
             }
         });
