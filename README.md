@@ -249,6 +249,7 @@ bash scripts/test-workflow-flow.sh      # 分析と編集の通し確認（実�
 
 # worker、Redis、PostgreSQL の実際の障害。コンテナを止めるため、プロジェクト名の明示が必要です
 SECUREFLOW_ALLOW_FAILURE_INJECTION=<プロジェクト名> bash scripts/test-worker-failure.sh
+SECUREFLOW_ALLOW_FAILURE_INJECTION=<プロジェクト名> bash scripts/test-ai-egress.sh           # worker の外部への経路（OpenAI のみ）
 SECUREFLOW_ALLOW_FAILURE_INJECTION=<プロジェクト名> bash scripts/test-execution-failure.sh   # 実行中の worker の強制終了（約10分）
 ```
 

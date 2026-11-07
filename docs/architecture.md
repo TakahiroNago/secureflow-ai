@@ -301,7 +301,7 @@ Draft ──submit──▶ Pending ──approve──▶ Approved ──execut
 | `DB_TEST_MIGRATOR_USERNAME` / `DB_TEST_MIGRATOR_PASSWORD` | テスト用DBの owner（`secureflow_test_owner`）。**`test` サービスに `DB_MIGRATOR_*` として渡す**。`postgres` はロール作成にのみ使う | `secureflow_test_owner` / 生成値 |
 | `COMPOSE_PROJECT_NAME` / `NGINX_PORT` / `FRONTEND_PORT` | 複数環境の分離 | `secureflow` / `8080` / `5173` |
 | `REDIS_PASSWORD` | Redis認証 | 必須 |
-| `AI_PROVIDER` | `mock` / `openai` | `mock` |
+| `AI_PROVIDER` | `mock` / `openai`。`openai` には `COMPOSE_PROFILES=openai` も必要（中継 `ai-egress`。[security-design.md §6.1](security-design.md)） | `mock` |
 | `OPENAI_API_KEY` | APIキー（画面からは設定不可・表示不可） | 空 |
 | `OPENAI_MODEL` | 使用モデル名。確認済みの `gpt-6-luna` のみ（[security-design.md §6.1](security-design.md)） | 空 |
 | `OPENAI_BASE_URL` | 送信先の確認用。確認済みの値と一致しなければ起動しない。要求は定数を使う | `https://api.openai.com/v1` |

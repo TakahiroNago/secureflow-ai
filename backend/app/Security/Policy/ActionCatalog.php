@@ -33,6 +33,26 @@ final class ActionCatalog
         'task.create' => 'タスク作成（模擬実行）',
     ];
 
+    /**
+     * For the prompt. What a model reads to choose, so it decides nothing either.
+     */
+    private const MEANINGS = [
+        'text.analyze' => 'Analyze, count or compare information the person provides.',
+        'text.summarize' => 'Summarize text the person provides.',
+        'report.draft' => 'Write a draft of a report or a document. Nothing is sent to anyone.',
+        'task.create' => 'Create a follow-up task inside this application.',
+        'email.send' => 'Actually send an email.',
+        'file.delete' => 'Actually delete a file.',
+        'shell.exec' => 'Actually run a command on a server.',
+        'db.query' => 'Actually run a query directly against a database system.',
+        'http.request' => 'Actually call an external system or API.',
+    ];
+
+    public static function meaning(string $actionType): string
+    {
+        return self::MEANINGS[$actionType] ?? '';
+    }
+
     public static function aiFeature(string $actionType): string
     {
         return self::AI_FEATURES[$actionType] ?? 'なし（禁止された操作）';

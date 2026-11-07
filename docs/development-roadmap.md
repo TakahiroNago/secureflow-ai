@@ -60,7 +60,7 @@
 | 工程 | 内容 | 完了条件 | テスト方法 |
 |---|---|---|---|
 | 3-1 | セキュリティテストの分離（ST-01〜34、group: security） | 単独実行で全件成功 | CI security ジョブ |
-| 3-2 | 攻撃・正常コーパス整備と評価レポート | レポートを CI で出力 | CI |
+| 3-2 | 攻撃・正常コーパス整備と評価レポート。**実 AI の評価（複数の依頼文での計画の品質と操作の選択、攻撃文への耐性 R-26）を手動で行う。工程2-8 の実接続で、集計に禁止された操作が選ばれることを確認している** | レポートを CI で出力。実 AI の評価は承認を得て実施し、結果を記録する | CI、手動 |
 | 3-3 | アプリ内自己診断（Runner・API・画面・ダッシュボード表示） | 画面から実行・結果保存・表示 | Feature、E2E |
 | 3-4 | Playwright E2E（[test-strategy.md §10](test-strategy.md)） | CI で成功 | CI e2e ジョブ |
 | 3-5 | Semgrep（独自ルール：`dangerouslySetInnerHTML`、`DB::raw`、`withoutGlobalScope` 等）、Trivy（fs・イメージ）、composer/npm audit | High 以上の未対応脆弱性なし | CI sast-sca ジョブ |

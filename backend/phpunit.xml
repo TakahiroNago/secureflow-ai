@@ -48,6 +48,8 @@
         <server name="SANCTUM_STATEFUL_DOMAINS" value="localhost:8080,127.0.0.1:8080,localhost:5173,127.0.0.1:5173" force="true"/>
         <server name="MAIL_MAILER" value="array" force="true"/>
         <server name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <server name="AI_PROVIDER" value="mock" force="true"/>
+        <server name="OPENAI_API_KEY" value="" force="true"/>
         <server name="SESSION_DRIVER" value="array" force="true"/>
         <server name="LOG_CHANNEL" value="null" force="true"/>
 
@@ -65,6 +67,8 @@
         <env name="DB_URL" value="" force="true"/>
         <env name="MAIL_MAILER" value="array" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="AI_PROVIDER" value="mock" force="true"/>
+        <env name="OPENAI_API_KEY" value="" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
         <env name="LOG_CHANNEL" value="null" force="true"/>
     </php>

@@ -4,6 +4,7 @@
 # Networks:
 #   data : postgres / redis only + PHP services. internal (no host access, no outbound route).
 #   web  : nginx <-> php-fpm. nginx publishes 127.0.0.1:${NGINX_PORT:-8080} only.
+#   ai-egress (profile "openai") : the relay's way out. Nothing else is on it, so the worker keeps no route of its own.
 #
 # Several copies can run side by side: COMPOSE_PROJECT_NAME isolates containers, networks,
 # volumes and the PHP image tag; NGINX_PORT / FRONTEND_PORT isolate the host ports.
@@ -247,6 +248,30 @@ services:
       timeout: 3s
       retries: 10
 
+  # The worker's only way out, to OpenAI only, and only with COMPOSE_PROFILES=openai. See docker/ai-egress/nginx.conf.
+  ai-egress:
+    <<: *hardening
+    image: nginx:1.30.6-alpine3.24
+    profiles: [openai]
+    user: "101:101"
+    read_only: true
+    cap_drop: [ALL]
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "0"
+    tmpfs:
+      - /tmp
+    volumes:
+      - ./docker/ai-egress/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      data:
+        aliases: [api.openai.com]
+      ai-egress: {}
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "443"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
   # Vite dev server (hot reload). Proxies /api and /sanctum to nginx (same-origin).
   frontend:
     <<: *hardening
@@ -281,6 +306,9 @@ services:
     restart: "no"
     environment:
       <<: *laravel-env
+      # Never the real provider or its key here, whatever .env says.
+      AI_PROVIDER: mock
+      OPENAI_API_KEY: ""
       DB_MIGRATOR_USERNAME: ${DB_MIGRATOR_USERNAME:?set DB_MIGRATOR_USERNAME in .env}
       DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?}
     command: ["php", "artisan", "migrate", "--database=pgsql_migrator", "--force"]
@@ -295,6 +323,9 @@ services:
     restart: "no"
     environment:
       <<: *laravel-env
+      # Never the real provider or its key here, whatever .env says.
+      AI_PROVIDER: mock
+      OPENAI_API_KEY: ""
       APP_ENV: testing
       DB_DATABASE: ${DB_TEST_DATABASE:?set DB_TEST_DATABASE in .env}
       DB_USERNAME: ${DB_TEST_USERNAME:-secureflow_test_app}
@@ -308,6 +339,7 @@ networks:
   data:
     internal: true
   web:
+  ai-egress:
 
 volumes:
   pgdata:

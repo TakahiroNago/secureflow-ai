@@ -62,6 +62,38 @@ if not job_limit < retry_after:
 if worker[2:4] != ['queue:work', 'database']:
     fails.append(f'the worker must use the database queue: {worker[2:4]}')
 
+# docs/security-design.md §6.1: the relay exists only when asked for, and the worker has no way out of its own.
+if 'ai-egress' in plain:
+    fails.append('the relay must not start unless COMPOSE_PROFILES=openai')
+with_relay = rendered({'COMPOSE_PROFILES': 'openai'})
+relay = with_relay.get('ai-egress')
+if relay is None:
+    fails.append('COMPOSE_PROFILES=openai must start the relay')
+else:
+    if set(relay['networks']) != {'data', 'ai-egress'} or relay['networks']['data'].get('aliases') != ['api.openai.com']:
+        fails.append(f"the relay must be api.openai.com on data, and on ai-egress: {relay['networks']}")
+    if relay.get('ports'):
+        fails.append('the relay must publish no port')
+    if relay.get('environment'):
+        fails.append('the relay must have no environment: no key, and no password')
+    if relay.get('read_only') is not True or relay.get('cap_drop') != ['ALL']:
+        fails.append('the relay must be read-only, with no capabilities')
+for name, service in with_relay.items():
+    if name != 'ai-egress' and 'ai-egress' in (service.get('networks') or {}):
+        fails.append(f'{name} must not be on the ai-egress network')
+if set(with_relay['worker']['networks']) != {'data'}:
+    fails.append(f"the worker must stay on data only: {with_relay['worker']['networks']}")
+# Whatever .env says, the tests and the migrations never get the real provider or its key.
+tools = rendered({'COMPOSE_PROFILES': 'tools', 'AI_PROVIDER': 'openai', 'OPENAI_API_KEY': 'a-key', 'OPENAI_MODEL': 'gpt-6-luna'})
+for name in ('migrate', 'test'):
+    environment = tools[name]['environment']
+    if environment.get('AI_PROVIDER') != 'mock' or environment.get('OPENAI_API_KEY'):
+        fails.append(f'{name} must have the mock and no key, whatever .env says')
+conf = subprocess.run(['docker', 'run', '--rm', '-v', os.getcwd() + '/docker/ai-egress/nginx.conf:/etc/nginx/nginx.conf:ro', relay['image'] if relay else 'nginx', 'nginx', '-t'],
+                      capture_output=True, text=True)
+if conf.returncode != 0:
+    fails.append('docker/ai-egress/nginx.conf does not load: ' + conf.stderr[-200:])
+
 for line in fails:
     print('  [FAIL]', line)
 print(f'{len(names)} variables, {len(SERVICES)} services, {len(fails)} failures')
