@@ -129,6 +129,8 @@ export function apiErrorMessage(error: unknown): string {
       return '自分が作成したワークフローは承認または却下できません。'
     case 'WORKFLOW_INVALID_STATE':
       return '現在の状態ではこの操作を行えません。'
+    case 'INVALID_STATUS_TRANSITION':
+      return '現在の対策状況からその状態には変更できません。最新の状態を読み込んでください。'
     case 'INPUT_BLOCKED':
       return '検査により処理を停止しました。何も保存していません。検出された箇所を確認してください。'
     case 'VALIDATION_FAILED':

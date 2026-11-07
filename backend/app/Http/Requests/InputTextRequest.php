@@ -11,8 +11,6 @@ use Closure;
  */
 abstract class InputTextRequest extends StrictFormRequest
 {
-    private const DEFAULT_MAX_CHARS = 4000;
-
     /**
      * @return array<string, mixed>
      */
@@ -37,6 +35,6 @@ abstract class InputTextRequest extends StrictFormRequest
         /** @var User $user */
         $user = $this->user();
 
-        return OrganizationSetting::query()->whereKey($user->organization_id)->value('max_input_chars') ?? self::DEFAULT_MAX_CHARS;
+        return OrganizationSetting::effectiveFor($user->organization_id)['max_input_chars'];
     }
 }

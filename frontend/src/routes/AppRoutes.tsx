@@ -4,6 +4,8 @@ import { LoginPage } from '../features/auth/LoginPage'
 import { RequireAuth } from '../features/auth/RequireAuth'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { AppShell } from '../features/layout/AppShell'
+import { SecurityPage } from '../features/security/SecurityPage'
+import { SettingsPage } from '../features/settings/SettingsPage'
 import { AnalysisPage } from '../features/workflows/AnalysisPage'
 import { ApprovalPage } from '../features/workflows/ApprovalPage'
 import { ApprovalsPage } from '../features/workflows/ApprovalsPage'
@@ -25,6 +27,8 @@ export function AppRoutes() {
           <Route path="/workflows/:id/approval" element={<ApprovalPage />} />
           <Route path="/approvals" element={<ApprovalsPage />} />
           <Route path="/audit-logs" element={<AuditLogPage />} />
+          <Route path="/security" element={<SecurityPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

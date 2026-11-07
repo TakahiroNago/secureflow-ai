@@ -27,6 +27,8 @@ const EVENT_TYPES = [
   'execution.denied',
   'authz.denied',
   'rate_limit.exceeded',
+  'finding.status_changed',
+  'settings.updated',
 ]
 
 const RESULT_LABELS: Record<string, string> = { success: '成功', failure: '失敗', denied: '拒否' }

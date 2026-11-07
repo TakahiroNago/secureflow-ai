@@ -9,10 +9,15 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\ExecutionController;
 use App\Http\Controllers\Api\V1\SecurityController;
+use App\Http\Controllers\Api\V1\SecurityFindingController;
+use App\Http\Controllers\Api\V1\SecurityScanController;
+use App\Http\Controllers\Api\V1\SettingsController;
 use App\Http\Controllers\Api\V1\WorkflowController;
 use App\Http\Controllers\Api\V1\WorkflowTaskController;
 use App\Http\Controllers\HealthController;
 use App\Models\AuditLog;
+use App\Models\OrganizationSetting;
+use App\Models\SecurityFinding;
 use App\Models\Workflow;
 use Illuminate\Support\Facades\Route;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
@@ -114,6 +119,31 @@ Route::prefix('v1')->middleware('json.body')->group(function (): void {
             Route::post('/audit-logs/verify', [AuditLogController::class, 'verify'])
                 ->middleware(['throttle:audit-verify', 'can:verify,'.AuditLog::class])
                 ->name('audit-logs.verify');
+
+            // docs/api-design.md §3.7. The route lets everyone in; the controller narrows a member's list to their own scans.
+            Route::get('/security/findings', [SecurityFindingController::class, 'index'])
+                ->middleware('can:viewAny,'.SecurityFinding::class)
+                ->name('security.findings.index');
+            Route::patch('/security/findings/{finding}', [SecurityFindingController::class, 'update'])
+                ->middleware('can:update,finding')
+                ->name('security.findings.update');
+            Route::get('/security/scans/{scan}', [SecurityScanController::class, 'show'])
+                ->middleware('can:view,scan')
+                ->name('security.scans.show');
+
+            // docs/api-design.md §3.9. Admin only. No answer holds the key, and the provider cannot be set from here.
+            Route::get('/settings/ai', [SettingsController::class, 'ai'])
+                ->middleware('can:view,'.OrganizationSetting::class)
+                ->name('settings.ai');
+            Route::get('/settings/limits', [SettingsController::class, 'limits'])
+                ->middleware('can:view,'.OrganizationSetting::class)
+                ->name('settings.limits');
+            Route::patch('/settings/limits', [SettingsController::class, 'updateLimits'])
+                ->middleware('can:update,'.OrganizationSetting::class)
+                ->name('settings.limits.update');
+            Route::get('/settings/security', [SettingsController::class, 'security'])
+                ->middleware('can:view,'.OrganizationSetting::class)
+                ->name('settings.security');
 
             Route::scopeBindings()->middleware('can:update,workflow')->group(function (): void {
                 Route::post('/workflows/{workflow}/tasks', [WorkflowTaskController::class, 'store'])->name('workflows.tasks.store');

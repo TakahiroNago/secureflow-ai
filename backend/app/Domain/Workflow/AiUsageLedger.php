@@ -27,11 +27,6 @@ final readonly class AiUsageLedger
 
     public const ORGANIZATION_MONTHLY_LIMIT = 'ORGANIZATION_MONTHLY_LIMIT';
 
-    /** As in the seeder. An organization with no settings row still has limits. */
-    private const DEFAULT_MONTHLY_TOKENS = 1_000_000;
-
-    private const DEFAULT_DAILY_REQUESTS = 100;
-
     public function __construct(private AuditLogger $audit) {}
 
     /**
@@ -39,11 +34,12 @@ final readonly class AiUsageLedger
      */
     public function limitsOf(string $organizationId): array
     {
-        $settings = OrganizationSetting::query()->find($organizationId);
+        // An organization with no settings row still has limits: the model's defaults.
+        $settings = OrganizationSetting::effectiveFor($organizationId);
 
         return [
-            'monthly_tokens' => $settings->monthly_token_limit ?? self::DEFAULT_MONTHLY_TOKENS,
-            'daily_requests' => $settings->user_daily_request_limit ?? self::DEFAULT_DAILY_REQUESTS,
+            'monthly_tokens' => $settings['monthly_token_limit'],
+            'daily_requests' => $settings['user_daily_request_limit'],
         ];
     }
 
