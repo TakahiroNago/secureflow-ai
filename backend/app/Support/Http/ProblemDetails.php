@@ -22,8 +22,8 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 
 /**
- * RFC 9457 errors for the authentication and workflow APIs (docs/api-design.md §1.1). The other errors
- * are unified in step 2-9. Details come from fixed strings, never from exception messages.
+ * RFC 9457 errors for everything under the API (docs/api-design.md §1.1). Health writes its own fixed answers (§3.10).
+ * Details come from fixed strings, never from exception messages.
  */
 final class ProblemDetails
 {
@@ -47,7 +47,7 @@ final class ProblemDetails
             'status' => $status,
             'code' => $code,
             'detail' => $detail,
-            'trace_id' => (string) Str::uuid7(),
+            'trace_id' => app(RequestId::class)->value(),
         ];
 
         if ($errors !== []) {
@@ -97,9 +97,9 @@ final class ProblemDetails
             $exception instanceof PreconditionRequiredException => self::response(
                 428, 'PRECONDITION_REQUIRED', 'Precondition required', 'If-Match ヘッダに現在のリビジョン番号を指定してください。',
             ),
-            $exception instanceof HttpExceptionInterface && $exception->getStatusCode() === 403 && $request->is('api/v1/*') => self::forbidden($exception),
+            $exception instanceof HttpExceptionInterface && $exception->getStatusCode() === 403 => self::forbidden($exception),
             // Laravel has already turned a missing model into this, so the message names no model or id.
-            $exception instanceof HttpExceptionInterface && $exception->getStatusCode() === 404 && $request->is('api/v1/*') => self::response(
+            $exception instanceof HttpExceptionInterface && $exception->getStatusCode() === 404 => self::response(
                 404, 'NOT_FOUND', 'Not found', '対象が見つかりません。',
             ),
             // Decided by exception class, never by message. A dependency failure is not AUTH_FAILED.
@@ -107,11 +107,30 @@ final class ProblemDetails
             $exception instanceof RedisException,
             $exception instanceof QueryException,
             $exception instanceof PDOException => self::unavailable($request),
-            ! $exception instanceof HttpExceptionInterface && $request->is('api/v1/auth/*', 'api/v1/account/*', 'api/v1/analyses*', 'api/v1/workflows*', 'api/v1/approvals*', 'api/v1/audit-logs*', 'api/v1/ai-usage/*', 'api/v1/security/*', 'sanctum/*') => self::response(
-                500, 'INTERNAL_ERROR', 'Internal server error', 'サーバーでエラーが発生しました。',
-            ),
-            default => null,
+            $exception instanceof HttpExceptionInterface => self::http($exception),
+            default => self::response(500, 'INTERNAL_ERROR', 'Internal server error', 'サーバーでエラーが発生しました。'),
         };
+    }
+
+    /**
+     * By status, in a fixed sentence. The exception's message is not read.
+     */
+    private static function http(HttpExceptionInterface $exception): JsonResponse
+    {
+        $status = $exception->getStatusCode();
+
+        [$code, $title, $detail] = match ($status) {
+            400 => ['BAD_REQUEST', 'Bad request', '要求の形式が正しくありません。'],
+            405 => ['METHOD_NOT_ALLOWED', 'Method not allowed', 'この操作はできません。'],
+            413 => ['PAYLOAD_TOO_LARGE', 'Payload too large', '要求が大きすぎます。'],
+            415 => ['UNSUPPORTED_MEDIA_TYPE', 'Unsupported media type', 'application/json で送信してください。'],
+            default => $status >= 500
+                ? ['INTERNAL_ERROR', 'Internal server error', 'サーバーでエラーが発生しました。']
+                : ['REQUEST_FAILED', 'Request failed', '要求を処理できませんでした。'],
+        };
+
+        // Allow, and whatever else the protocol asks for, but nothing that came from a message.
+        return self::response($status, $code, $title, $detail, [], array_intersect_key($exception->getHeaders(), ['Allow' => true, 'Retry-After' => true]));
     }
 
     /**

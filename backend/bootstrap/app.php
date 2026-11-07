@@ -9,11 +9,13 @@ use App\Domain\Workflow\AiLimitExceededException;
 use App\Domain\Workflow\RiskAcknowledgementRequiredException;
 use App\Domain\Workflow\WorkflowConflictException;
 use App\Http\Middleware\EnsureSessionIsCurrent;
+use App\Http\Middleware\NoStoreResponses;
 use App\Http\Middleware\RecordDeniedAttempt;
 use App\Http\Middleware\RejectWhileDatabaseUnavailable;
 use App\Http\Middleware\RequireJsonBody;
 use App\Http\Middleware\RequireStatefulFrontend;
 use App\Http\Middleware\SetOrganizationContext;
+use App\Http\Middleware\ThrottleUnauthenticated;
 use App\Support\Http\PreconditionRequiredException;
 use App\Support\Http\ProblemDetails;
 use App\Support\Http\ServiceUnavailableException;
@@ -37,7 +39,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // Liveness / Readiness are defined in routes/api.php (docs/architecture.md §4.2).
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Before Sanctum's stack, which already turns away a request with no session: the limit for guests is outside it.
+        $middleware->api(prepend: [ThrottleUnauthenticated::class]);
         $middleware->statefulApi();
+        $middleware->prepend(NoStoreResponses::class);
         // An API with no login page: answer 401 whatever the client accepts.
         $middleware->redirectGuestsTo(fn (Request $request) => null);
         // A password is used exactly as typed. The framework's default list omits new_password.

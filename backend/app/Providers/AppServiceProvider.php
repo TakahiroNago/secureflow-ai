@@ -22,6 +22,7 @@ use App\Policies\WorkflowPolicy;
 use App\Support\Database\DatabaseCommandPolicy;
 use App\Support\Database\SingleConnectPostgresConnection;
 use App\Support\Database\TcpTimeoutPostgresConnector;
+use App\Support\Http\RequestId;
 use App\Support\Organization\OrganizationContext;
 use App\Support\Session\RetirementAwareSessionHandler;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -61,6 +62,7 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->bind(TransactionBoundary::class, DatabaseTransactionBoundary::class);
         $this->app->scoped(PendingFingerprintStore::class, RedisPendingFingerprintStore::class);
+        $this->app->scoped(RequestId::class);
         $this->app->scoped(AuditLogger::class);
         $this->app->scoped(OrganizationContext::class);
         $this->app->bind('db.connector.pgsql', TcpTimeoutPostgresConnector::class);
@@ -126,6 +128,13 @@ class AppServiceProvider extends ServiceProvider
                 Limit::perMinute(5)->by(hash('sha256', mb_strtolower(is_string($email) ? $email : '').'|'.$ip)),
                 Limit::perMinute(config()->integer('audit.login_ip_limit_per_minute'))->by('ip|'.$this->addressKey($ip)),
             ];
+        });
+
+        // docs/api-design.md §1.4: everything else, on top of any limit a route has of its own.
+        RateLimiter::for('api-general', function (Request $request): Limit {
+            $user = $request->user();
+
+            return Limit::perMinute(60)->by($user instanceof User ? $user->id : (string) $request->ip());
         });
 
         RateLimiter::for('analyses', function (Request $request): Limit {

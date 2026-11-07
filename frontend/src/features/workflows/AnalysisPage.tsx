@@ -5,10 +5,10 @@ import { fetchAnalysis } from './workflowApi'
 import { analysisErrorMessage, apiErrorMessage } from './labels'
 import { ScanPanel } from './ScanPanel'
 
-const POLL_INTERVAL_MS = 1000
+const POLL_INTERVAL_MS = 2000
 
 /** Longer than the server takes to give up on a running analysis. */
-const MAX_POLLS = 200
+const MAX_POLLS = 100
 
 export function AnalysisPage() {
   const { id = '' } = useParams()

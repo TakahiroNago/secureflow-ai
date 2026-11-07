@@ -19,6 +19,8 @@ VITE=http://localhost:$FRONTEND_PORT
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
+# Fresh addresses each run, so a second run on the same database starts from new users.
+ALICE=alice-$$@example.com BOB=bob-$$@example.com
 pass=0; fail=0
 ok() { echo "  [PASS] $1"; pass=$((pass+1)); }
 ng() { echo "  [FAIL] $1"; fail=$((fail+1)); }
@@ -64,15 +66,17 @@ is "seeding twice changes nothing" "$(sql "SELECT count(*) FROM organizations WH
 is "the seeder creates no user" "$(sql 'SELECT count(*) FROM users')" "$before_users"
 
 echo "== user:create =="
-out=$(create_user alice@example.com "$PW_ALICE" member); is "creates a user" "$?" 0
+# The audit counts below look only at what this run wrote.
+STARTED=$(sql "SELECT now()")
+out=$(create_user $ALICE "$PW_ALICE" member); is "creates a user" "$?" 0
 hasnt "does not print the password" "$out" "$PW_ALICE"
-out=$(create_user bob@example.com "$PW_BOB" admin); is "creates a second user" "$?" 0
+out=$(create_user $BOB "$PW_BOB" admin); is "creates a second user" "$?" 0
 out=$(create_user weak@example.com passwordpassword member); is "refuses a password on the list" "$?" 1
-is "stores Argon2id" "$(docker compose exec -T postgres psql -U postgres -d "$DB_DATABASE" --no-psqlrc -tAc "SELECT left(password, 10) FROM users WHERE email='alice@example.com'")" '$argon2id$'
+is "stores Argon2id" "$(docker compose exec -T postgres psql -U postgres -d "$DB_DATABASE" --no-psqlrc -tAc "SELECT left(password, 10) FROM users WHERE email='$ALICE'")" '$argon2id$'
 
 echo "== CSRF and origins =="
 A=$work/alice.jar; : > "$A"
-call "$A" "$NGINX" POST /api/v1/auth/login "$(login_json alice@example.com "$PW_ALICE")"
+call "$A" "$NGINX" POST /api/v1/auth/login "$(login_json $ALICE "$PW_ALICE")"
 is "login without a CSRF cookie is 419" "$STATUS" 419
 has "in RFC 9457 format" "$HEADERS" '^content-type: application/problem\+json'
 has "with the CSRF code" "$BODY" '"code":"CSRF_TOKEN_MISMATCH"'
@@ -80,10 +84,10 @@ F=$work/foreign.jar; : > "$F"
 csrf "$F" "$NGINX"
 foreign=$(curl -s -o /dev/null -w '%{http_code}' -X POST -b "$F" -H 'Accept: application/json' -H 'Content-Type: application/json' \
   -H 'Origin: https://attacker.example' -H 'Referer: https://attacker.example/' \
-  --data-binary "$(login_json alice@example.com "$PW_ALICE")" "$NGINX/api/v1/auth/login")
+  --data-binary "$(login_json $ALICE "$PW_ALICE")" "$NGINX/api/v1/auth/login")
 is "login from another origin is 419" "$foreign" 419
 noorigin=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Accept: application/json' -H 'Content-Type: application/json' \
-  --data-binary "$(login_json alice@example.com "$PW_ALICE")" "$NGINX/api/v1/auth/login")
+  --data-binary "$(login_json $ALICE "$PW_ALICE")" "$NGINX/api/v1/auth/login")
 is "login with no origin at all is 419" "$noorigin" 419
 is "a bearer token is unauthenticated" "$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: application/json' -H 'Authorization: Bearer 1|abc' "$NGINX/api/v1/auth/me")" 401
 is "a form-encoded body is 415" "$(csrf "$A" "$NGINX"; call "$A" "$NGINX" POST /api/v1/auth/login "" -H 'Content-Type: application/x-www-form-urlencoded' --data 'email=a'; echo "$STATUS")" 415
@@ -94,16 +98,16 @@ call "$A" "$NGINX" POST /api/v1/auth/login "$(login_json nobody@example.com 'a w
 is "unknown address is 401" "$STATUS" 401
 has "with AUTH_FAILED" "$BODY" '"code":"AUTH_FAILED"'
 unknown=$(normalize "$BODY")
-call "$A" "$NGINX" POST /api/v1/auth/login "$(login_json alice@example.com 'a wrong password')"
+call "$A" "$NGINX" POST /api/v1/auth/login "$(login_json $ALICE 'a wrong password')"
 is "wrong password is 401" "$STATUS" 401
 is "and identical" "$(normalize "$BODY")" "$unknown"
 
 echo "== login and session =="
 csrf "$A" "$NGINX"
 before_id=$(awk '$6 ~ /session/ { print $7 }' "$A" | tail -1)
-call "$A" "$NGINX" POST /api/v1/auth/login "$(login_json alice@example.com "$PW_ALICE")"
+call "$A" "$NGINX" POST /api/v1/auth/login "$(login_json $ALICE "$PW_ALICE")"
 is "the right password is 200" "$STATUS" 200
-has "returns the user" "$BODY" '"email":"alice@example.com"'
+has "returns the user" "$BODY" "\"email\":\"$ALICE\""
 hasnt "returns no password or hash" "$BODY" 'argon2|password'
 has "session cookie is HttpOnly" "$HEADERS" '^set-cookie: [a-z0-9_-]*session[^;]*;.*httponly'
 has "session cookie is SameSite=Lax" "$HEADERS" '^set-cookie: [a-z0-9_-]*session[^;]*;.*samesite=lax'
@@ -135,7 +139,7 @@ is "no password hash in the session" "$leak" 0
 echo "== password change =="
 O=$work/alice-other.jar; : > "$O"
 csrf "$O" "$VITE"
-call "$O" "$VITE" POST /api/v1/auth/login "$(login_json alice@example.com "$PW_ALICE")"
+call "$O" "$VITE" POST /api/v1/auth/login "$(login_json $ALICE "$PW_ALICE")"
 is "a second session through the Vite proxy" "$STATUS" 200
 new_key() { cat /proc/sys/kernel/random/uuid; }
 call "$A" "$NGINX" PATCH /api/v1/account/password "{\"current_password\":\"wrong one here\",\"new_password\":\"$PW_ALICE2\"}" -H "Idempotency-Key: $(new_key)"
@@ -148,7 +152,7 @@ call "$A" "$NGINX" PATCH /api/v1/account/password "{\"current_password\":\"$PW_A
 is "the change succeeds" "$STATUS" 200
 call "$A" "$NGINX" PATCH /api/v1/account/password "{\"current_password\":\"$PW_ALICE\",\"new_password\":\"$PW_ALICE2\"}" -H "Idempotency-Key: $KEY"
 is "the same key and content again is 200" "$STATUS" 200
-is "and runs once" "$(sql "SELECT count(*) FROM audit_logs WHERE event_type='auth.password_changed'")" 1
+is "and runs once" "$(sql "SELECT count(*) FROM audit_logs WHERE event_type='auth.password_changed' AND actor_user_id = (SELECT id FROM users WHERE email='$ALICE')")" 1
 call "$A" "$NGINX" PATCH /api/v1/account/password "{\"current_password\":\"$PW_ALICE\",\"new_password\":\"a different pass phrase 12\"}" -H "Idempotency-Key: $KEY"
 is "the same key with other content is 409" "$STATUS" 409
 call "$A" "$NGINX" GET /api/v1/auth/me ""
@@ -168,29 +172,29 @@ is "the old cookie does not work" "$STATUS" 401
 echo "== lock and rate limit =="
 B=$work/bob.jar; : > "$B"
 csrf "$B" "$VITE"
-call "$B" "$VITE" POST /api/v1/auth/login "$(login_json bob@example.com "$PW_BOB")"
+call "$B" "$VITE" POST /api/v1/auth/login "$(login_json $BOB "$PW_BOB")"
 is "bob has a session through the Vite proxy" "$STATUS" 200
 X=$work/attacker.jar; : > "$X"
 csrf "$X" "$NGINX"
-for i in 1 2 3 4 5; do call "$X" "$NGINX" POST /api/v1/auth/login "$(login_json bob@example.com 'a wrong password')"; done
+for i in 1 2 3 4 5; do call "$X" "$NGINX" POST /api/v1/auth/login "$(login_json $BOB 'a wrong password')"; done
 is "the fifth failure is still 401" "$STATUS" 401
-is "the account is locked" "$(sql "SELECT locked_until > now() FROM users WHERE email='bob@example.com'")" t
-call "$X" "$NGINX" POST /api/v1/auth/login "$(login_json bob@example.com 'a wrong password')"
+is "the account is locked" "$(sql "SELECT locked_until > now() FROM users WHERE email='$BOB'")" t
+call "$X" "$NGINX" POST /api/v1/auth/login "$(login_json $BOB 'a wrong password')"
 is "the sixth attempt is 429" "$STATUS" 429
 has "with Retry-After" "$HEADERS" '^retry-after: [0-9]+'
 has "in RFC 9457 format" "$BODY" '"code":"RATE_LIMITED"'
-call "$X" "$NGINX" POST /api/v1/auth/login "$(login_json bob@example.com 'a wrong password')" -H 'X-Forwarded-For: 192.0.2.77'
+call "$X" "$NGINX" POST /api/v1/auth/login "$(login_json $BOB 'a wrong password')" -H 'X-Forwarded-For: 192.0.2.77'
 is "X-Forwarded-For does not get around the limit" "$STATUS" 429
 L=$work/bob-new.jar; : > "$L"
 csrf "$L" "$VITE"
-call "$L" "$VITE" POST /api/v1/auth/login "$(login_json bob@example.com "$PW_BOB")"
+call "$L" "$VITE" POST /api/v1/auth/login "$(login_json $BOB "$PW_BOB")"
 is "the right password is refused while locked" "$STATUS" 401
 has "with the same code" "$BODY" '"code":"AUTH_FAILED"'
 call "$B" "$VITE" GET /api/v1/auth/me ""
 is "bob's existing session survives the lock" "$STATUS" 200
 
 echo "== disabling a user =="
-docker compose exec -T postgres psql -U postgres -d "$DB_DATABASE" --no-psqlrc -qc "UPDATE users SET is_active = false WHERE email='bob@example.com'"
+docker compose exec -T postgres psql -U postgres -d "$DB_DATABASE" --no-psqlrc -qc "UPDATE users SET is_active = false WHERE email='$BOB'"
 call "$B" "$VITE" GET /api/v1/auth/me ""
 is "is_active=false ends the session at once" "$STATUS" 401
 
@@ -200,7 +204,7 @@ is "liveness needs no session" "$(curl -s -o /dev/null -w '%{http_code}' -H "Ref
 hasnt "liveness sets no cookie" "$(curl -s -D - -o /dev/null -H "Referer: $NGINX/" -H 'Accept: application/json' "$NGINX/api/health/live")" '^set-cookie'
 echo "== audit log =="
 for event in auth.login auth.login_failed auth.logout auth.locked auth.password_changed auth.password_change_failed; do
-  is "$event is recorded" "$(sql "SELECT count(*) > 0 FROM audit_logs WHERE event_type='$event'")" t
+  is "$event is recorded" "$(sql "SELECT count(*) > 0 FROM audit_logs WHERE event_type='$event' AND occurred_at >= '$STARTED'")" t
 done
 is "the application role cannot insert directly" "$(docker compose exec -T postgres psql -U postgres -d "$DB_DATABASE" --no-psqlrc -tAc "SELECT has_table_privilege('$DB_USERNAME', 'audit_logs', 'INSERT')")" f
 docker compose exec -T app php artisan audit:verify --all > "$work/verify.txt" 2>&1
