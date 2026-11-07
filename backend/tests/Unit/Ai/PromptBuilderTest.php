@@ -77,3 +77,20 @@ it('holds nothing that a leak would make dangerous', function () {
 
     expect($prompt->systemPrompt)->not->toMatch('/api[_ -]?key|password|token|sk-|https?:/i');
 });
+
+it('PROMPT-01: says what each action means and which permissions it has, from the catalog', function () {
+    $system = (new PromptBuilder)->build('text')->systemPrompt;
+
+    foreach (ActionCatalog::types() as $type) {
+        expect(ActionCatalog::meaning($type))->not->toBe('')
+            ->and($system)->toContain('- '.$type.': '.ActionCatalog::meaning($type).' Permissions: '.implode(', ', ActionCatalog::permissions($type)).'.');
+    }
+});
+
+it('PROMPT-01: asks for the listed permissions, and still for a refused action when it is what is asked', function () {
+    $system = (new PromptBuilder)->build('text')->systemPrompt;
+
+    expect($system)->toContain('exactly the permissions listed')
+        ->and($system)->toContain('choose it even though it will be refused')
+        ->and(PromptBuilder::VERSION)->toBe('2026.11.2');
+});
