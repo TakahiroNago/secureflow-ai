@@ -40,6 +40,8 @@ final readonly class AnalysisProcessor
 
     public const ERROR_OUTPUT_BLOCKED = 'AI_OUTPUT_BLOCKED';
 
+    public const ERROR_LIMIT_EXCEEDED = 'AI_LIMIT_EXCEEDED';
+
     public function __construct(
         private AiGateway $gateway,
         private PromptBuilder $prompts,
@@ -47,6 +49,7 @@ final readonly class AnalysisProcessor
         private WorkflowCreator $creator,
         private AuditLogger $audit,
         private ScanRecorder $recorder,
+        private AiUsageLedger $usage,
     ) {}
 
     public function process(string $analysisId): void
@@ -70,6 +73,15 @@ final readonly class AnalysisProcessor
             return;
         }
 
+        $refusal = $this->usage->refusalFor($user);
+
+        if ($refusal !== null) {
+            $this->usage->recordRefusal($user, $analysisId, $refusal);
+            $this->fail($analysisId, self::ERROR_LIMIT_EXCEEDED);
+
+            return;
+        }
+
         try {
             $prompt = $this->prompts->build((string) $analysis->input_masked);
             $scanned = $this->outputs->scan($this->callAi($user, $analysisId, $prompt)->content, $prompt->canary);
@@ -81,8 +93,8 @@ final readonly class AnalysisProcessor
             }
 
             $this->creator->create($analysis, $user, $scanned->tasks, $scanned->result);
-        } catch (AiProviderException) {
-            $this->fail($analysisId, self::ERROR_AI_UNAVAILABLE);
+        } catch (AiProviderException $exception) {
+            $this->fail($analysisId, $exception->failure->isInvalidOutput() ? InvalidAiOutputException::CODE : self::ERROR_AI_UNAVAILABLE);
         } catch (InvalidAiOutputException|InvalidPlanException) {
             $this->fail($analysisId, InvalidAiOutputException::CODE);
         } catch (ServiceUnavailableException|QueryException|PDOException) {
@@ -91,35 +103,31 @@ final readonly class AnalysisProcessor
     }
 
     /**
-     * ai.call says that a call was made and how it ended, with no text. If it cannot be written, the analysis goes on:
-     * the critical log has it. The tokens and the limits arrive with the real provider in step 2-8.
+     * The log and ai.call say that a call was made, what it used and how it ended, with no text. If they cannot be
+     * written, the analysis goes on: the critical log has it.
      *
      * @throws AiProviderException
      */
     private function callAi(User $user, string $analysisId, BuiltPrompt $prompt): AiResponse
     {
+        $started = hrtime(true);
+
         try {
             $response = $this->gateway->generate($prompt->systemPrompt, $prompt->input);
         } catch (AiProviderException $exception) {
-            $this->recordCall($user, $analysisId, 'failure', $exception->failure->value);
+            $this->usage->recordFailure($user, $analysisId, $exception->failure, $exception->tokens, self::millisecondsSince($started));
 
             throw $exception;
         }
 
-        $this->recordCall($user, $analysisId, 'success', null);
+        $this->usage->recordSuccess($user, $analysisId, $response, self::millisecondsSince($started));
 
         return $response;
     }
 
-    private function recordCall(User $user, string $analysisId, string $result, ?string $reason): void
+    private static function millisecondsSince(int|float $started): int
     {
-        $this->audit->recordAfterTransaction(
-            AuditEntry::byUserOn(AuditEventType::AiCall, $user, 'ai_analysis', $analysisId, array_filter([
-                'provider' => config()->string('ai.provider'),
-                'reason_code' => $reason,
-            ], fn (?string $value) => $value !== null), $result),
-            'ai_call_unrecorded',
-        );
+        return (int) round((hrtime(true) - $started) / 1_000_000);
     }
 
     /**

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AccountPasswordController;
+use App\Http\Controllers\Api\V1\AiUsageController;
 use App\Http\Controllers\Api\V1\AnalysisController;
 use App\Http\Controllers\Api\V1\ApprovalController;
 use App\Http\Controllers\Api\V1\AuditLogController;
@@ -46,6 +47,10 @@ Route::prefix('v1')->middleware('json.body')->group(function (): void {
         Route::get('/dashboard/summary', [DashboardController::class, 'summary'])
             ->middleware('can:viewAny,'.Workflow::class)
             ->name('dashboard.summary');
+
+        Route::get('/ai-usage/summary', [AiUsageController::class, 'summary'])
+            ->middleware('can:viewAny,'.Workflow::class)
+            ->name('ai-usage.summary');
 
         Route::post('/security/scan-preview', [SecurityController::class, 'scanPreview'])
             ->middleware(['throttle:scan-preview', 'can:create,'.Workflow::class])

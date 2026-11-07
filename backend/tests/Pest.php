@@ -198,7 +198,9 @@ function resetWorkflowTables(): void
     $db->statement('ALTER TABLE workflow_revisions DISABLE TRIGGER USER');
     $db->statement('ALTER TABLE approvals DISABLE TRIGGER USER');
     $db->statement('ALTER TABLE security_scans DISABLE TRIGGER USER');
-    $db->statement('TRUNCATE ai_analysis_requests, jobs, failed_jobs, workflow_executions, approvals, workflow_tasks, workflow_revisions, workflows, security_findings, security_scans');
+    $db->statement('ALTER TABLE ai_usage_logs DISABLE TRIGGER USER');
+    $db->statement('TRUNCATE ai_usage_logs, ai_analysis_requests, jobs, failed_jobs, workflow_executions, approvals, workflow_tasks, workflow_revisions, workflows, security_findings, security_scans');
+    $db->statement('ALTER TABLE ai_usage_logs ENABLE TRIGGER USER');
     $db->statement('ALTER TABLE security_scans ENABLE TRIGGER USER');
     $db->statement('ALTER TABLE workflow_revisions ENABLE TRIGGER USER');
     $db->statement('ALTER TABLE approvals ENABLE TRIGGER USER');

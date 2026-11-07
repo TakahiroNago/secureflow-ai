@@ -50,7 +50,11 @@ x-laravel-env: &laravel-env
   SESSION_DRIVER: redis
   CACHE_STORE: redis
   QUEUE_CONNECTION: database
-  AI_PROVIDER: mock
+  # The real provider only on your own say: docs/security-design.md §6.1. The key is never written here.
+  AI_PROVIDER: ${AI_PROVIDER:-mock}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_MODEL: ${OPENAI_MODEL:-}
+  OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
   AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-30}
   AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-2000}
   # Tuning values. A variable that is not listed here never reaches Laravel, whatever .env says.

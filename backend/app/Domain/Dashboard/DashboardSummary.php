@@ -4,6 +4,7 @@ namespace App\Domain\Dashboard;
 
 use App\Domain\Workflow\WorkflowStatus;
 use App\Models\AiAnalysisRequest;
+use App\Models\AiUsageLog;
 use App\Models\SecurityScan;
 use App\Models\User;
 use App\Models\Workflow;
@@ -47,7 +48,7 @@ final readonly class DashboardSummary
             'pending_approval' => $byStatus[WorkflowStatus::Pending->value],
             'analyses_this_month' => $this->analysesThisMonth($user),
             'security' => $this->security($user),
-            'ai_usage' => ['tokens' => null, 'estimated_cost' => null, 'available_from_step' => '2-8'],
+            'ai_usage' => $this->aiUsage($user),
             'self_test' => ['latest' => null, 'available_from_step' => '3-3'],
             'recent_operations' => $this->recentOperations($user),
         ];
@@ -97,6 +98,23 @@ final readonly class DashboardSummary
         return [
             'warnings' => $scans()->where('decision', ScanDecision::Warn->value)->count(),
             'findings' => (int) $scans()->sum('findings_count'),
+        ];
+    }
+
+    /**
+     * This month, and the cost is an estimate. The mock counts no tokens, so with it these stay at zero.
+     *
+     * @return array{tokens: int, estimated_cost: float}
+     */
+    private function aiUsage(User $user): array
+    {
+        $rows = fn () => AiUsageLog::query()
+            ->where('created_at', '>=', now('UTC')->startOfMonth())
+            ->when($this->isMember($user), fn ($query) => $query->where('user_id', $user->id));
+
+        return [
+            'tokens' => (int) $rows()->sum('total_tokens'),
+            'estimated_cost' => (int) $rows()->sum('estimated_cost_micros') / 1_000_000,
         ];
     }
 

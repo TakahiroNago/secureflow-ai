@@ -56,6 +56,7 @@ export const ACTION_TYPES = ['text.analyze', 'text.summarize', 'report.draft', '
 const ANALYSIS_ERRORS: Record<string, string> = {
   AI_UNAVAILABLE: 'AI を利用できませんでした。しばらく待ってから再度お試しください。',
   AI_INVALID_OUTPUT: 'AI の応答が正しい形式ではなかったため、ワークフローを作成しませんでした。',
+  AI_LIMIT_EXCEEDED: 'AI の利用上限に達したため、分析しませんでした。',
   AI_OUTPUT_BLOCKED: 'AI の応答に秘密情報や攻撃と思われる内容、またはシステムプロンプトの一部が含まれていたため、ワークフローを作成しませんでした。',
   USER_INACTIVE: 'このアカウントは無効です。',
   ANALYSIS_STALE: '処理が時間内に完了しませんでした。再度お試しください。',
@@ -132,6 +133,8 @@ export function apiErrorMessage(error: unknown): string {
       return '検査により処理を停止しました。何も保存していません。検出された箇所を確認してください。'
     case 'VALIDATION_FAILED':
       return Object.values(error.fieldErrors).flat().includes(MASKED_TOO_LONG) ? MASKED_TOO_LONG : '入力内容を確認してください。'
+    case 'AI_LIMIT_EXCEEDED':
+      return 'AI の利用上限に達しました。上限が戻るまで分析できません。'
     case 'RATE_LIMITED':
       return '回数の上限に達しました。しばらく待ってから再度お試しください。'
     case 'FORBIDDEN':

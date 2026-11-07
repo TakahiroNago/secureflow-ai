@@ -297,6 +297,15 @@ is "the admin verifies it" "$(field data.valid)" True
 [ "$(field data.checked_count)" -gt 0 ] && ok "and rows were checked" || ng "and rows were checked"
 hasnt "the chain is not named" "$BODY" 'chain_id'
 
+echo "== the use of the AI =="
+is "the analysis is in the usage log" "$(su_sql "SELECT status FROM ai_usage_logs WHERE analysis_request_id='$analysis'")" success
+hasnt "with no text" "$(su_sql "SELECT row_to_json(u)::text FROM ai_usage_logs u WHERE analysis_request_id='$analysis'")" "$MARKER"
+call "$A" GET /api/v1/ai-usage/summary?period=day
+is "the member reads their use" "$STATUS" 200
+is "not the budget of the organization" "$(field data.limits.organization_monthly_tokens)" None
+call "$B" GET /api/v1/ai-usage/summary
+is "the admin reads the organization's" "$([ "$(field data.limits.organization_monthly_tokens.limit)" -gt 0 ] && echo yes)" yes
+
 echo "== the audit chain =="
 is "the creation is recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='workflow.created' AND resource_id='$workflow'")" 1
 is "the edits are recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='workflow.updated' AND resource_id='$workflow'")" 3

@@ -4,6 +4,7 @@ namespace App\Support\Http;
 
 use App\Domain\Execution\IdempotencyKeyReusedException;
 use App\Domain\Security\InputBlockedException;
+use App\Domain\Workflow\AiLimitExceededException;
 use App\Domain\Workflow\RiskAcknowledgementRequiredException;
 use App\Domain\Workflow\WorkflowConflictException;
 use App\Http\Resources\ScanStatus;
@@ -87,6 +88,9 @@ final class ProblemDetails
             $exception instanceof RiskAcknowledgementRequiredException => self::response(
                 422, 'RISK_ACK_REQUIRED', 'Risk acknowledgement required', 'リスクを確認してから承認してください。',
             ),
+            $exception instanceof AiLimitExceededException => self::response(
+                429, 'AI_LIMIT_EXCEEDED', 'AI limit exceeded', 'AI の利用上限に達しました。上限が戻るまで分析できません。',
+            ),
             $exception instanceof IdempotencyKeyReusedException => self::response(
                 422, 'IDEMPOTENCY_KEY_REUSED', 'Idempotency key reused', 'この冪等性キーは別の実行に使われています。',
             ),
@@ -103,7 +107,7 @@ final class ProblemDetails
             $exception instanceof RedisException,
             $exception instanceof QueryException,
             $exception instanceof PDOException => self::unavailable($request),
-            ! $exception instanceof HttpExceptionInterface && $request->is('api/v1/auth/*', 'api/v1/account/*', 'api/v1/analyses*', 'api/v1/workflows*', 'api/v1/approvals*', 'api/v1/audit-logs*', 'api/v1/security/*', 'sanctum/*') => self::response(
+            ! $exception instanceof HttpExceptionInterface && $request->is('api/v1/auth/*', 'api/v1/account/*', 'api/v1/analyses*', 'api/v1/workflows*', 'api/v1/approvals*', 'api/v1/audit-logs*', 'api/v1/ai-usage/*', 'api/v1/security/*', 'sanctum/*') => self::response(
                 500, 'INTERNAL_ERROR', 'Internal server error', 'サーバーでエラーが発生しました。',
             ),
             default => null,

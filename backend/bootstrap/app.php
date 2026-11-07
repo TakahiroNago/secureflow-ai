@@ -5,6 +5,7 @@ use App\Audit\AuditFailure;
 use App\Audit\OutageLog;
 use App\Audit\RefusalRecorder;
 use App\Domain\Execution\IdempotencyKeyReusedException;
+use App\Domain\Workflow\AiLimitExceededException;
 use App\Domain\Workflow\RiskAcknowledgementRequiredException;
 use App\Domain\Workflow\WorkflowConflictException;
 use App\Http\Middleware\EnsureSessionIsCurrent;
@@ -118,5 +119,6 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->dontReport(WorkflowConflictException::class);
         $exceptions->dontReport(RiskAcknowledgementRequiredException::class);
         $exceptions->dontReport(IdempotencyKeyReusedException::class);
+        $exceptions->dontReport(AiLimitExceededException::class);
         $exceptions->dontReport(PreconditionRequiredException::class);
     })->create();

@@ -1,7 +1,7 @@
 # SecureFlow AI — API設計書
 
-- 版：v1.11（2026-11-07）
-- 状態：確定（v1.11：工程2-7 の監査ログの API を反映。v1.10：工程2-6 の実行の API を反映。v1.9：工程2-5 の提出、reopen、承認の API を反映。v1.8：工程2-4 の出力検証とプロンプト構築を反映。v1.7：工程2-3 の入力検査の組み込みを反映。v1.6：工程1-7 のダッシュボードを反映。v1.5：工程1-6 の分析とワークフローの API を反映。v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.12（2026-11-07）
+- 状態：確定（v1.12：工程2-8 の利用上限と利用状況を反映。v1.11：工程2-7 の監査ログの API を反映。v1.10：工程2-6 の実行の API を反映。v1.9：工程2-5 の提出、reopen、承認の API を反映。v1.8：工程2-4 の出力検証とプロンプト構築を反映。v1.7：工程2-3 の入力検査の組み込みを反映。v1.6：工程1-7 のダッシュボードを反映。v1.5：工程1-6 の分析とワークフローの API を反映。v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -195,10 +195,13 @@ IP 単位の制限は、NAT 配下など同じ送信元 IP を共有する利用
 | `pending_approval` | `pending` のワークフロー数 |
 | `analyses_this_month` | 今月（UTC）の分析の依頼数 |
 | `security` | 工程2-3 から実数を返す。`warnings` は全体判定が `warn` の検査の数、`findings` は検出の合計（`security_scans.findings_count`）。集計の範囲は他の項目と同じ（member は自分のみ）。**0 は「検出しなかった」ことのみを意味し、安全であることを意味しない** |
-| `ai_usage`、`self_test` | 工程2-8、3-3 までは値を `null` で返し、`available_from_step` を付ける。**0 を返さない。**「0件」は実績がないことと区別できないため |
+| `ai_usage` | 工程2-8 から今月の `tokens` と `estimated_cost`（USD の推定値）を返す。範囲は他と同じ。モックはトークンを数えないため 0 となる |
+| `self_test` | 工程3-3 までは値を `null` で返し、`available_from_step` を付ける。**0 を返さない。**「0件」は実績がないことと区別できないため |
 | `recent_operations` | 最新10件。`auth.login`、`auth.logout`、`workflow.created`、`workflow.updated` のみ。member は自分の操作のみ。**IP アドレス、metadata、ハッシュを返さない。** システムチェーンを含まない |
 
-`ai-usage/summary` は工程2-8 で実装する。
+`ai-usage/summary`（工程2-8）：`period` は `day` または `month`（既定）。member は自分の分、admin / auditor は組織全体を返す。`requests`、`tokens`（`input`、`output`、`total`）、`estimated_cost_usd`（推定値）、`limits.user_daily_requests`（`used`、`limit`、`ratio`）、`limits.organization_monthly_tokens`（member には `null`）。上限で拒否した分は `requests` に数えない。
+
+`POST /analyses` は上限に達していると 429 `AI_LIMIT_EXCEEDED` を返し、何も検査せず保存しない。待機中に上限へ達した分析は `failed`（`AI_LIMIT_EXCEEDED`）となる。
 
 ### 3.3 入力検査・AI分析
 

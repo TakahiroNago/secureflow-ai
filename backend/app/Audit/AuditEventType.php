@@ -55,7 +55,7 @@ enum AuditEventType: string
             self::ExecutionStarted => ['execution_id', 'revision_no'],
             self::ExecutionCompleted => ['execution_id'],
             self::ExecutionFailed => ['execution_id', 'reason_code'],
-            self::AiCall => ['provider', 'reason_code'],
+            self::AiCall => ['provider', 'model', 'total_tokens', 'reason_code'],
             self::AuthzDenied => ['route', 'status'],
             self::RateLimitExceeded => ['route'],
             self::AnalysisFailed => ['reason_code', 'analysis_id'],

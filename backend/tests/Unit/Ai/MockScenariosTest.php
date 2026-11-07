@@ -117,8 +117,14 @@ it('AI-MOCK-01: a request has no place for tools or for who is asking', function
     expect($fields)->toBe(['systemPrompt', 'input', 'maxOutputTokens', 'timeoutSeconds']);
 });
 
-it('AI-MOCK-01: nothing in app/Ai reaches the network, a process or a file', function () {
+it('AI-MOCK-01: nothing in app/Ai but the real provider reaches the network, a process or a file', function () {
     foreach (aiSourceFiles() as $source) {
+        if (str_contains($source, 'final readonly class OpenAiProvider')) {
+            expect($source)->not->toMatch('/\b(curl_|fsockopen|stream_socket|shell_exec|proc_open|file_get_contents|Process::)/');
+
+            continue;
+        }
+
         expect($source)->not->toMatch('/\b(Http::|curl_|fsockopen|stream_socket|Guzzle|shell_exec|proc_open|file_get_contents|Process::)/');
     }
 });

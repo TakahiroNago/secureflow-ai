@@ -23,18 +23,28 @@ final readonly class AnalysisService
         private AuditAvailability $availability,
         private InputScanner $scanner,
         private ScanRecorder $recorder,
+        private AiUsageLedger $usage,
     ) {}
 
     /**
      * Only the masked text goes any further. The row, its scan and the job commit together, so none can exist
      * without the others. A stop keeps the scan and nothing else: no row, no job, and so no AI call.
      *
+     * @throws AiLimitExceededException before anything is looked at or kept
      * @throws InputBlockedException
      * @throws ServiceUnavailableException
      */
     public function request(User $user, #[SensitiveParameter] string $input): AiAnalysisRequest
     {
         $this->availability->assertAvailable();
+
+        $refusal = $this->usage->refusalFor($user);
+
+        if ($refusal !== null) {
+            $this->usage->recordRefusal($user, null, $refusal);
+
+            throw new AiLimitExceededException('AI limit exceeded');
+        }
 
         $result = $this->scanner->scanText($input);
 
