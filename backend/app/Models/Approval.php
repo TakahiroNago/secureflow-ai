@@ -6,6 +6,7 @@ use App\Support\Organization\BelongsToOrganization;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * Append-only (docs/database-design.md §3.8). Whether an approval is still valid is calculated, never stored.
@@ -20,12 +21,25 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $comment
  * @property bool $acknowledged_risks
  * @property CarbonInterface $created_at
+ * @property-read User $decider
  */
 class Approval extends Model
 {
     use BelongsToOrganization, HasUuids;
 
     public const UPDATED_AT = null;
+
+    public const APPROVED = 'approved';
+
+    public const REJECTED = 'rejected';
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function decider(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'decided_by');
+    }
 
     /**
      * @return array<string, string>

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Domain\Workflow\WorkflowEditor;
+use App\Domain\Workflow\WorkflowSubmission;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ListWorkflowsRequest;
 use App\Http\Requests\UpdateWorkflowRequest;
@@ -15,6 +16,7 @@ use App\Models\WorkflowExecution;
 use App\Models\WorkflowRevision;
 use App\Support\Http\IfMatch;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 final class WorkflowController extends Controller
@@ -57,6 +59,26 @@ final class WorkflowController extends Controller
         return self::resource($workflow);
     }
 
+    public function submit(Request $request, Workflow $workflow, WorkflowSubmission $submission): WorkflowResource
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $submission->submit($user, $workflow);
+
+        return self::resource($workflow);
+    }
+
+    public function reopen(Request $request, Workflow $workflow, WorkflowEditor $editor): WorkflowResource
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $editor->reopen($user, $workflow);
+
+        return self::resource($workflow);
+    }
+
     /**
      * What happened, without the content of the plans: a revision's snapshot stays on the server.
      */
@@ -68,7 +90,7 @@ final class WorkflowController extends Controller
             'revisions' => WorkflowRevision::query()->where('workflow_id', $id)->orderByDesc('revision_no')
                 ->get(['id', 'revision_no', 'plan_hash', 'policy_version', 'scan_decision', 'change_type', 'created_by', 'created_at']),
             'approvals' => Approval::query()->where('workflow_id', $id)->orderByDesc('created_at')
-                ->get(['id', 'workflow_revision_id', 'decision', 'decided_by', 'created_at']),
+                ->get(['id', 'workflow_revision_id', 'decision', 'decided_by', 'comment', 'created_at']),
             'executions' => WorkflowExecution::query()->where('workflow_id', $id)->orderByDesc('created_at')
                 ->get(['id', 'workflow_revision_id', 'status', 'requested_by', 'error_code', 'created_at', 'finished_at']),
         ]]);

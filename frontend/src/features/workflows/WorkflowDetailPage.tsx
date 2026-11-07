@@ -2,8 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { ApiError } from '../../api/client'
-import { addTask, blockedScan, deleteTask, fetchWorkflow, updateTask, updateTitle, type Task, type TaskFields, type Workflow } from './workflowApi'
-import { apiErrorMessage, PRIORITY_LABELS, scanLabel, SEVERITY_LABELS, STATUS_LABELS } from './labels'
+import { addTask, blockedScan, deleteTask, fetchWorkflow, reopenWorkflow, submitWorkflow, updateTask, updateTitle, type Task, type TaskFields, type Workflow } from './workflowApi'
+import { apiErrorMessage, NO_APPROVER_MESSAGE, PRIORITY_LABELS, scanLabel, SEVERITY_LABELS, STATUS_LABELS } from './labels'
 import { ScanPanel } from './ScanPanel'
 import { TaskForm } from './TaskForm'
 import { UnscannedNotice } from './UnscannedNotice'
@@ -116,8 +116,51 @@ export function WorkflowDetailPage() {
         <dd>{current.max_severity === null ? 'なし' : SEVERITY_LABELS[current.max_severity]}</dd>
       </dl>
 
+      {current.decision !== null && (
+        <div className="rounded-md p-3 text-sm ring-1 ring-slate-200">
+          <p>
+            {current.decision.decision === 'approved' ? '承認' : '却下'}：{current.decision.decided_by.name}
+          </p>
+          {current.decision.comment !== null && <p className="mt-1 whitespace-pre-wrap">{current.decision.comment}</p>}
+        </div>
+      )}
+
+      {current.status === 'pending' && !current.approver_available && (
+        <p role="alert" className="rounded-md bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200">
+          {NO_APPROVER_MESSAGE}
+        </p>
+      )}
+
       {current.scan.status === 'not_scanned' && <UnscannedNotice />}
       <ScanPanel scan={current.scan} />
+
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        {current.can_submit && (
+          <button
+            type="button"
+            className="rounded-md bg-slate-900 px-3 py-2 text-white disabled:opacity-50"
+            disabled={change.isPending}
+            onClick={() => { change.mutate(() => submitWorkflow(id)) }}
+          >
+            承認を依頼する
+          </button>
+        )}
+        {current.can_reopen && (
+          <button
+            type="button"
+            className="rounded-md border border-slate-300 px-3 py-2 disabled:opacity-50"
+            disabled={change.isPending}
+            onClick={() => { change.mutate(() => reopenWorkflow(id)) }}
+          >
+            下書きに戻す
+          </button>
+        )}
+        {current.can_view_approval && (
+          <Link className="underline" to={`/workflows/${encodeURIComponent(id)}/approval`}>
+            承認の画面を開く
+          </Link>
+        )}
+      </div>
 
       {change.isError && (
         <p role="alert" className="text-sm text-red-700">

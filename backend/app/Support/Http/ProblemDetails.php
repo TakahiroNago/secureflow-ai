@@ -3,6 +3,7 @@
 namespace App\Support\Http;
 
 use App\Domain\Security\InputBlockedException;
+use App\Domain\Workflow\RiskAcknowledgementRequiredException;
 use App\Domain\Workflow\WorkflowConflictException;
 use App\Http\Resources\ScanStatus;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -82,6 +83,9 @@ final class ProblemDetails
             $exception instanceof WorkflowConflictException => self::response(
                 409, $exception->problemCode, 'Conflict', $exception->detail,
             ),
+            $exception instanceof RiskAcknowledgementRequiredException => self::response(
+                422, 'RISK_ACK_REQUIRED', 'Risk acknowledgement required', 'リスクを確認してから承認してください。',
+            ),
             $exception instanceof PreconditionRequiredException => self::response(
                 428, 'PRECONDITION_REQUIRED', 'Precondition required', 'If-Match ヘッダに現在のリビジョン番号を指定してください。',
             ),
@@ -95,7 +99,7 @@ final class ProblemDetails
             $exception instanceof RedisException,
             $exception instanceof QueryException,
             $exception instanceof PDOException => self::unavailable($request),
-            ! $exception instanceof HttpExceptionInterface && $request->is('api/v1/auth/*', 'api/v1/account/*', 'api/v1/analyses*', 'api/v1/workflows*', 'api/v1/security/*', 'sanctum/*') => self::response(
+            ! $exception instanceof HttpExceptionInterface && $request->is('api/v1/auth/*', 'api/v1/account/*', 'api/v1/analyses*', 'api/v1/workflows*', 'api/v1/approvals*', 'api/v1/security/*', 'sanctum/*') => self::response(
                 500, 'INTERNAL_ERROR', 'Internal server error', 'サーバーでエラーが発生しました。',
             ),
             default => null,

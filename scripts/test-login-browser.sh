@@ -48,7 +48,11 @@ for name in chromium firefox webkit; do
   printf '%s\n%s\n' "$pw" "$pw" | docker compose exec -T app php artisan user:create \
     --organization='Default Organization' --name="$email" --email="$email" --role=member > /dev/null 2>&1 \
     || { echo 'could not create a user' >&2; exit 2; }
-  printf '%s\t%s\t%s\n' "$name" "$email" "$pw" >> "$work/users.txt"
+  admin="approver-$$-$RANDOM-$name@example.com"; admin_pw="start pass phrase $(cat /proc/sys/kernel/random/uuid)"
+  printf '%s\n%s\n' "$admin_pw" "$admin_pw" | docker compose exec -T app php artisan user:create \
+    --organization='Default Organization' --name="$admin" --email="$admin" --role=admin > /dev/null 2>&1 \
+    || { echo 'could not create an admin' >&2; exit 2; }
+  printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$email" "$pw" "$admin" "$admin_pw" >> "$work/users.txt"
 done
 
 cat > "$work/run.mjs" <<'JS'
@@ -71,7 +75,7 @@ const check = (label, ok, got = '') => {
   console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${label}${ok ? '' : ` (got ${got})`}`);
 };
 for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
-  const [name, email, password] = line.split('\t');
+  const [name, email, password, adminEmail, adminPassword] = line.split('\t');
   console.log(`\n== ${name} ==`);
   const browser = await browsers[name].launch();
   const context = await browser.newContext();
@@ -140,6 +144,7 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   await page.getByRole('button', { name: '分析する' }).click();
   await page.getByRole('button', { name: '編集' }).first().waitFor({ timeout: 30000 }).catch(() => {});
   check('the analysis opens a workflow', /^\/workflows\/[0-9a-f-]{36}$/.test(new URL(page.url()).pathname), page.url());
+  const workflowPath = new URL(page.url()).pathname;
   await page.getByRole('button', { name: '編集' }).first().click({ timeout: 5000 });
   await page.getByLabel('タイトル').fill('<b>画面から編集</b>');
   await page.getByLabel('説明').fill('<img src=x onerror="window.pwned=1"><script>window.pwned=1</script>');
@@ -159,12 +164,51 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.screenshot({ path: `dashboard-${name}.png`, fullPage: true });
 
+  // Asking for an approval, on the real screens.
+  await page.goto(`${BASE}${workflowPath}`);
+  await page.getByRole('button', { name: '承認を依頼する' }).click({ timeout: 10000 });
+  await page.getByText('承認待ち', { exact: true }).waitFor({ timeout: 10000 }).catch(() => {});
+  check('the owner submits it', await page.getByText('承認待ち', { exact: true }).isVisible());
+  check('and there is someone to approve it', !(await page.getByText('承認可能な管理者がいないため', { exact: false }).isVisible()));
+  check('a member has no list of approvals', (await page.getByRole('link', { name: '承認待ち' }).count()) === 0);
+
   await page.getByRole('button', { name: 'ログアウト' }).click({ timeout: 5000 }).catch(() => check('there is a logout button', false, 'none'));
   await page.getByRole('heading', { name: 'ログイン' }).waitFor({ timeout: 10000 }).catch(() => {});
   check('logging out shows the login screen', new URL(page.url()).pathname === '/login', page.url());
   await page.reload();
   await page.waitForTimeout(1500);
   check('and after a reload it is still logged out', new URL(page.url()).pathname === '/login', page.url());
+
+  // The other person, deciding on what the first one sent.
+  await page.getByLabel('メールアドレス').fill(adminEmail);
+  await page.getByLabel('パスワード').fill(adminPassword);
+  await page.getByRole('button', { name: 'ログイン' }).click();
+  await page.getByRole('link', { name: '承認待ち' }).click({ timeout: 10000 });
+  const item = page.locator(`a[href="${workflowPath}/approval"]`);
+  await item.waitFor({ timeout: 10000 }).catch(() => {});
+  check('the admin finds it in the list', await item.isVisible());
+  await item.click({ timeout: 5000 });
+  const approve = page.getByRole('button', { name: '承認する' });
+  await approve.waitFor({ timeout: 10000 }).catch(() => {});
+  for (const label of ['実行する処理', '使用する AI 機能', '対象データ', '必要な権限', '実行による影響']) {
+    check(`the approval screen shows: ${label}`, await page.getByText(label, { exact: true }).first().isVisible());
+  }
+  check('and the result of the scan, with what it cannot find', await page.getByText('検出されなかった情報が存在しないことは保証されません', { exact: false }).isVisible());
+  check('and the hash being approved', (await page.getByText(/^[0-9a-f]{64}$/).count()) === 1);
+  check('and the edit, as text', await page.getByRole('heading', { name: '1. <b>画面から編集</b>' }).isVisible());
+  if (await page.getByRole('checkbox').count()) await page.getByRole('checkbox').check();
+  await page.getByLabel('コメント（任意）').fill('<img src=x onerror="window.pwned=1"> 担当 reviewer@example.com');
+  await approve.click({ timeout: 5000 });
+  const decided = page.getByText('承認済み', { exact: true });
+  await decided.waitFor({ timeout: 10000 }).catch(() => {});
+  check('it is approved', await decided.isVisible());
+  check('the comment is kept masked', await page.getByText('担当 [EMAIL_REDACTED]', { exact: false }).isVisible());
+  check('and as text', (await page.locator('main img, section img').count()) === 0 && (await page.evaluate(() => window.pwned)) === undefined);
+  check('still nothing failed on the page', problems.length === 0, problems.join('; '));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE}${workflowPath}/approval`);
+  await page.getByRole('heading', { name: /^承認：/ }).waitFor({ timeout: 10000 }).catch(() => {});
+  await page.screenshot({ path: `approval-${name}.png`, fullPage: true });
   await browser.close();
 }
 console.log(`\nResult: ${fails} failed`);
@@ -174,5 +218,5 @@ JS
 in_image --network "$NET" -e PORT="$NGINX_PORT" "$IMAGE" node run.mjs
 status=$?
 # To look at the screens: BROWSER_SCREENSHOTS=<directory>
-[ -z "${BROWSER_SCREENSHOTS:-}" ] || cp "$work"/dashboard-*.png "$BROWSER_SCREENSHOTS"/
+[ -z "${BROWSER_SCREENSHOTS:-}" ] || cp "$work"/dashboard-*.png "$work"/approval-*.png "$BROWSER_SCREENSHOTS"/
 exit "$status"

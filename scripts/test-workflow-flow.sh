@@ -57,13 +57,17 @@ SECRET="gh""p_$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 36)"
 TASK='{"title":"編集後","description":"説明","action_type":"report.draft","steps":["手順"],"priority":"high","target_data":"対象","impact_summary":"影響"}'
 USER_A=flow-a-$$@example.com
 USER_B=flow-b-$$@example.com
+USER_C=flow-c-$$@example.com
+COMMENT_MARKER="co-$(tr -dc 'a-z' < /dev/urandom | head -c 8)@example.com"
 
 docker compose exec -T app php artisan db:seed --force > /dev/null 2>&1
 create_user "$USER_A" "$PASSWORD" member
 create_user "$USER_B" "$PASSWORD" admin
-A=$work/a.jar; B=$work/b.jar
+create_user "$USER_C" "$PASSWORD" admin
+A=$work/a.jar; B=$work/b.jar; C=$work/c.jar
 login "$A" "$USER_A" "$PASSWORD"; is "the member logs in" "$STATUS" 200
 login "$B" "$USER_B" "$PASSWORD"; is "the admin logs in" "$STATUS" 200
+login "$C" "$USER_C" "$PASSWORD"; is "the second admin logs in" "$STATUS" 200
 
 echo "== an analysis through the real worker =="
 call "$A" POST /api/v1/analyses "{\"input\":\"$MARKER\"}"
@@ -135,10 +139,79 @@ is "an edit with a secret is refused" "$STATUS" 422
 call "$A" GET "/api/v1/workflows/$workflow"
 is "and changes nothing" "$(field data.current_revision.no)" 3
 
+echo "== submitting, deciding and reopening =="
+identity() { # the plan as it stands, in the JSON the screen sends
+  call "$A" GET "/api/v1/workflows/$workflow"
+  printf '"revision_no":%s,"plan_hash":"%s"' "$(field data.current_revision.no)" "$(field data.current_revision.plan_hash)"
+}
+call "$B" POST "/api/v1/workflows/$workflow/submit"
+is "only the owner submits" "$STATUS" 403
+call "$A" POST "/api/v1/workflows/$workflow/submit"
+is "the owner submits" "$STATUS" 200
+is "it waits" "$(field data.status)" pending
+is "someone can approve it" "$(field data.approver_available)" True
+plan=$(identity)
+
+call "$B" GET /api/v1/approvals?status=pending
+is "the admin sees the list" "$STATUS" 200
+call "$A" GET /api/v1/approvals
+is "the member does not" "$STATUS" 403
+call "$B" GET "/api/v1/workflows/$workflow/approval-context"
+is "the admin may approve it" "$(field data.can_approve)" True
+is "what was found has to be confirmed" "$(field data.requires_risk_acknowledgement)" True
+is "the notice is there too" "$([ -n "$(field data.security.limitations_notice)" ] && echo yes)" yes
+call "$A" GET "/api/v1/workflows/$workflow/approval-context"
+is "the owner only looks" "$(field data.cannot_approve_reason)" ROLE_NOT_ADMIN
+
+call "$A" POST "/api/v1/workflows/$workflow/approve" "{$plan,\"acknowledged_risks\":true}"
+is "the member cannot approve" "$(field code)" APPROVER_ROLE_REQUIRED
+call "$B" POST "/api/v1/workflows/$workflow/approve" "{$plan,\"acknowledged_risks\":false}"
+is "not without the confirmation" "$(field code)" RISK_ACK_REQUIRED
+call "$B" POST "/api/v1/workflows/$workflow/approve" "{\"revision_no\":1,\"plan_hash\":\"$hash\",\"acknowledged_risks\":true}"
+is "not an old plan" "$(field code)" PLAN_HASH_MISMATCH
+call "$B" POST "/api/v1/workflows/$workflow/approve" "{$plan,\"acknowledged_risks\":true,\"comment\":\"key $SECRET\"}"
+is "not with a secret in the comment" "$(field code)" INPUT_BLOCKED
+hasnt "the answer does not repeat it" "$BODY" "$SECRET"
+
+call "$B" POST "/api/v1/workflows/$workflow/reject" "{$plan,\"reason\":\"$COMMENT_MARKER\"}"
+is "the admin rejects" "$(field data.status)" rejected
+is "the reason is masked" "$(field data.decision.comment)" '[EMAIL_REDACTED]'
+call "$A" POST "/api/v1/workflows/$workflow/submit"
+is "a rejected plan cannot be submitted" "$(field code)" WORKFLOW_INVALID_STATE
+call "$A" POST "/api/v1/workflows/$workflow/reopen"
+is "the owner reopens it" "$(field data.status)" draft
+is "in a new revision" "$(field data.current_revision.no)" 4
+call "$A" POST "/api/v1/workflows/$workflow/submit"
+is "and submits it again" "$(field data.status)" pending
+plan=$(identity)
+
+echo "== two admins decide at the same moment =="
+race=$work/race; mkdir -p "$race"
+decide_at_once() { # jar output
+  local token
+  token=$(awk '$6 == "XSRF-TOKEN" { print $7 }' "$1" | tail -1)
+  curl -s -o "$2" -w '%{http_code}\n' --max-time 30 -X POST -b "$1" \
+    -H 'Accept: application/json' -H "Origin: $BASE" -H "Referer: $BASE/" -H 'Content-Type: application/json' \
+    -H "X-XSRF-TOKEN: $(printf '%b' "${token//%/\\x}")" \
+    --data-binary "{$plan,\"acknowledged_risks\":true}" "$BASE/api/v1/workflows/$workflow/approve" > "$2.status"
+}
+i=0
+for jar in "$B" "$C" "$B" "$C"; do i=$((i+1)); decide_at_once "$jar" "$race/$i" & done
+wait
+is "exactly one is accepted" "$(cat "$race"/*.status | grep -c '^200$')" 1
+is "the others are refused" "$(cat "$race"/*.status | grep -c '^409$')" 3
+is "because it is already decided" "$(grep -l '"ALREADY_DECIDED"' "$race"/[0-9] | wc -l | tr -d ' ')" 3
+is "one decision exists" "$(su_sql "SELECT count(*) FROM approvals a JOIN workflows w ON w.current_revision_id = a.workflow_revision_id WHERE w.id='$workflow'")" 1
+
+echo "== an edit takes the approval back =="
+call "$A" PUT "/api/v1/workflows/$workflow/tasks/$task" "$TASK" -H 'If-Match: "4"'
+is "back to a draft" "$(field data.status)" draft
+is "with no decision on it" "$(field data.decision)" None
+
 echo "== nothing as it was typed is kept anywhere =="
 dump=$(docker compose exec -T postgres pg_dump -U postgres --data-only "$DB_DATABASE" < /dev/null)
 logs=$(docker compose logs --no-color app worker scheduler nginx 2>/dev/null)
-for text in "$MARKER" "$EDIT_MARKER" "$SECRET" 'Ignore previous instructions'; do
+for text in "$MARKER" "$EDIT_MARKER" "$COMMENT_MARKER" "$SECRET" 'Ignore previous instructions'; do
   hasnt "not in the database" "$dump" "$text"
   hasnt "not in the logs" "$logs" "$text"
 done
@@ -146,7 +219,12 @@ if grep -q 'EMAIL_REDACTED' <<< "$dump"; then ok "the check can find stored text
 
 echo "== the audit chain =="
 is "the creation is recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='workflow.created' AND resource_id='$workflow'")" 1
-is "the edits are recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='workflow.updated' AND resource_id='$workflow'")" 2
+is "the edits are recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='workflow.updated' AND resource_id='$workflow'")" 3
+is "the submissions are recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='workflow.submitted' AND resource_id='$workflow'")" 2
+is "the reopening is recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='workflow.reopened' AND resource_id='$workflow'")" 1
+is "the rejection is recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='approval.rejected' AND resource_id='$workflow'")" 1
+is "the approval is recorded once" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='approval.approved' AND resource_id='$workflow'")" 1
+is "the refused attempts are recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='approval.denied' AND resource_id='$workflow'")" 2
 [ "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='security.blocked'")" -ge 3 ] && ok "the stops are recorded" || ng "the stops are recorded"
 docker compose exec -T app php artisan audit:verify --all > "$work/verify" 2>&1
 is "the chains verify" "$?" 0

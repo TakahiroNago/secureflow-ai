@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AccountPasswordController;
 use App\Http\Controllers\Api\V1\AnalysisController;
+use App\Http\Controllers\Api\V1\ApprovalController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\SecurityController;
@@ -66,6 +67,27 @@ Route::prefix('v1')->middleware('json.body')->group(function (): void {
         Route::patch('/workflows/{workflow}', [WorkflowController::class, 'update'])
             ->middleware('can:update,workflow')
             ->name('workflows.update');
+
+        Route::post('/workflows/{workflow}/submit', [WorkflowController::class, 'submit'])
+            ->middleware('can:submit,workflow')
+            ->name('workflows.submit');
+        Route::post('/workflows/{workflow}/reopen', [WorkflowController::class, 'reopen'])
+            ->middleware('can:reopen,workflow')
+            ->name('workflows.reopen');
+
+        Route::get('/approvals', [ApprovalController::class, 'index'])
+            ->middleware('can:viewApprovals,'.Workflow::class)
+            ->name('approvals.index');
+        Route::get('/workflows/{workflow}/approval-context', [ApprovalController::class, 'context'])
+            ->middleware('can:viewApprovalContext,workflow')
+            ->name('workflows.approval-context');
+        // The denial is recorded before the policy refuses, and after the limit: a refusal writes to the chain.
+        Route::post('/workflows/{workflow}/approve', [ApprovalController::class, 'approve'])
+            ->middleware(['throttle:approval-decisions', 'approval.denial:approve', 'can:approve,workflow'])
+            ->name('workflows.approve');
+        Route::post('/workflows/{workflow}/reject', [ApprovalController::class, 'reject'])
+            ->middleware(['throttle:approval-decisions', 'approval.denial:reject', 'can:reject,workflow'])
+            ->name('workflows.reject');
 
         Route::scopeBindings()->middleware('can:update,workflow')->group(function (): void {
             Route::post('/workflows/{workflow}/tasks', [WorkflowTaskController::class, 'store'])->name('workflows.tasks.store');

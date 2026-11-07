@@ -9,6 +9,7 @@ use App\Models\WorkflowRevision;
 use App\Models\WorkflowTask;
 use App\Security\Policy\ActionCatalog;
 use App\Security\Policy\PolicyDecision;
+use Illuminate\Database\Eloquent\Collection;
 
 /**
  * A revision is the immutable record of the tasks as they are now (docs/database-design.md §2), and of the
@@ -19,6 +20,8 @@ final class WorkflowRevisions
     public const CHANGE_AI_GENERATED = 'ai_generated';
 
     public const CHANGE_USER_EDIT = 'user_edit';
+
+    public const CHANGE_REOPEN = 'reopen';
 
     /**
      * Inside the caller's transaction, with the workflow row locked.
@@ -31,25 +34,7 @@ final class WorkflowRevisions
     {
         $tasks = WorkflowTask::query()->where('workflow_id', $workflow->id)->orderBy('position')->get();
 
-        $snapshot = PlanHasher::normalize([
-            'hash_version' => PlanHasher::HASH_VERSION,
-            'organization_id' => $workflow->organization_id,
-            'workflow_id' => $workflow->id,
-            'revision_no' => $revisionNo,
-            'policy_version' => ActionCatalog::VERSION,
-            'tasks' => $tasks->map(fn (WorkflowTask $task) => [
-                'position' => $task->position,
-                'title' => $task->title,
-                'description' => $task->description,
-                'action_type' => $task->action_type,
-                'steps' => $task->steps,
-                'priority' => $task->priority,
-                'target_data' => $task->target_data,
-                'impact_summary' => $task->impact_summary,
-                'permissions' => $task->derived_permissions,
-                'policy_decision' => $task->policy_decision,
-            ])->values()->all(),
-        ]);
+        $snapshot = self::snapshotOf($workflow, $revisionNo, ActionCatalog::VERSION, $tasks);
 
         $revision = new WorkflowRevision;
         $revision->forceFill([
@@ -67,6 +52,37 @@ final class WorkflowRevisions
         ])->save();
 
         return $revision;
+    }
+
+    /**
+     * The normalized plan of these tasks, in the form stored and hashed.
+     *
+     * @param  Collection<int, WorkflowTask>  $tasks
+     * @return array<string, mixed>
+     *
+     * @throws InvalidPlanException
+     */
+    public static function snapshotOf(Workflow $workflow, int $revisionNo, string $policyVersion, Collection $tasks): array
+    {
+        return PlanHasher::normalize([
+            'hash_version' => PlanHasher::HASH_VERSION,
+            'organization_id' => $workflow->organization_id,
+            'workflow_id' => $workflow->id,
+            'revision_no' => $revisionNo,
+            'policy_version' => $policyVersion,
+            'tasks' => $tasks->map(fn (WorkflowTask $task) => [
+                'position' => $task->position,
+                'title' => $task->title,
+                'description' => $task->description,
+                'action_type' => $task->action_type,
+                'steps' => $task->steps,
+                'priority' => $task->priority,
+                'target_data' => $task->target_data,
+                'impact_summary' => $task->impact_summary,
+                'permissions' => $task->derived_permissions,
+                'policy_decision' => $task->policy_decision,
+            ])->values()->all(),
+        ]);
     }
 
     /**
