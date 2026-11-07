@@ -73,7 +73,7 @@ Phase 0 時点で実際に採用し、固定しているバージョンです。
 | | TypeScript | 6.0.3 | 同上 |
 | | Tailwind CSS | 4.3.4 | 同上 |
 | | ESLint / typescript-eslint | 10.14.0 / 8.72.1 | 同上 |
-| | Vitest / jsdom / Testing Library | 5.1.0 / 30.1.3 / 16.3.3 | 同上 |
+| | Vitest / @vitest/coverage-v8 / jsdom / Testing Library | 5.1.0 / 5.1.0 / 30.1.3 / 16.3.3 | 同上 |
 | | React Router / TanStack Query / zod | 8.5.1 / 5.105.3 / 4.6.7 | 同上 |
 | | Recharts | 3.10.1 | 同上 |
 | CI | actions/checkout | v7.0.1（SHA 固定） | `.github/workflows/ci.yml` |
@@ -236,6 +236,7 @@ docker compose run --rm --no-deps test php vendor/bin/phpstan analyse --memory-l
 docker compose run --rm --no-deps frontend npm run lint
 docker compose run --rm --no-deps frontend npm run typecheck
 docker compose run --rm --no-deps frontend npm test
+docker compose run --rm --no-deps frontend npm run test:coverage   # カバレッジ（docs/test-strategy.md §3）
 docker compose run --rm --no-deps frontend npm run build
 
 # 基盤（ロール・ポート・Redis 認証・ヘルスチェック・SPA 配信）
@@ -283,7 +284,7 @@ docker compose run --rm --no-deps frontend npm audit
 | security | Pest の `security` グループ（ST-01〜39 とコーパスの合否）、コーパス評価レポート（ジョブサマリと artifact） |
 | sast-sca | Semgrep（独自ルール `.semgrep/secureflow.yml` と、ルール自体の負のテスト）、Trivy（依存関係・Dockerfile・compose・秘密情報と、PHP イメージ・固定済みの全イメージ。HIGH 以上で修正版のあるものは失敗） |
 | backend | PostgreSQL / Redis 起動、基盤検証、Pint、Larastan、Pest（カバレッジ付き。`scripts/check-coverage.py` が目標を確認）、composer audit |
-| frontend | ESLint、型チェック、Vitest、ビルド、npm audit |
+| frontend | ESLint、型チェック、Vitest（カバレッジ付き。行 70% 未満で失敗）、ビルド、npm audit |
 | stack | 全サービス起動、マイグレーション、`verify-infra.sh`、認証の通し確認、公開ポート検査と healthcheck の負のテスト |
 
 ワークフローの権限は `contents: read` のみ。CI の `.env` は実行ごとに使い捨ての値を生成し、実際の AI API キーは使用しません。
