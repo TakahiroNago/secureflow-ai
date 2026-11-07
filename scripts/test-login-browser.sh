@@ -84,8 +84,11 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   const context = await browser.newContext();
   const page = await context.newPage();
   // A page that breaks the CSP goes on working, so this has to be looked for.
+  // A screenshot in WebKit adds a <style> of Playwright's own, which the CSP refuses as it should: not the app's.
+  let shooting = false;
+  const screenshot = async (path) => { shooting = true; try { await page.screenshot({ path, fullPage: true }); await page.waitForTimeout(200); } finally { shooting = false; } };
   const violations = [];
-  page.on('console', (m) => { if (/Content Security Policy|Content-Security-Policy/i.test(m.text())) violations.push(`after "${step}" on ${new URL(page.url()).pathname}: ${m.text().slice(0, 160)}`); });
+  page.on('console', (m) => { if (/Content Security Policy|Content-Security-Policy/i.test(m.text())) if (!shooting) violations.push(`after "${step}" on ${new URL(page.url()).pathname}: ${m.text().slice(0, 160)}`); });
   // Only what is sent after the login has answered: before that, 401 is the right answer.
   let loggedIn = false;
   const sentAfterLogin = new Set();
@@ -168,10 +171,7 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   check('the chart is drawn', (await page.locator('.recharts-bar-rectangle').count()) > 0);
   check('nothing failed on the page', problems.length === 0, problems.join('; '));
   await page.setViewportSize({ width: 1280, height: 900 });
-  // caret 'initial': hiding the caret makes Playwright add a <style>, which the CSP refuses as it should.
-  step = 'the screenshot of the dashboard';
-  await page.screenshot({ path: `dashboard-${name}.png`, fullPage: true, caret: 'initial' });
-  step = 'after the screenshot of the dashboard';
+  await screenshot(`dashboard-${name}.png`);
 
   // Asking for an approval, on the real screens.
   await page.goto(`${BASE}${workflowPath}`);
@@ -237,7 +237,7 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE}${workflowPath}/approval`);
   await page.getByRole('heading', { name: /^承認：/ }).waitFor({ timeout: 10000 }).catch(() => {});
-  await page.screenshot({ path: `approval-${name}.png`, fullPage: true, caret: 'initial' });
+  await screenshot(`approval-${name}.png`);
   await browser.close();
 }
 console.log(`\nResult: ${fails} failed`);
