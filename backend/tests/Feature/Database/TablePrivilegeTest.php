@@ -35,6 +35,7 @@ it('grants the application role exactly the designed table privileges', function
     'workflow_revisions' => ['workflow_revisions', ['SELECT', 'INSERT']],
     'approvals' => ['approvals', ['SELECT', 'INSERT']],
     'ai_analysis_requests' => ['ai_analysis_requests', ['SELECT', 'INSERT']],
+    'ai_usage_logs' => ['ai_usage_logs', ['SELECT', 'INSERT']],
     'jobs' => ['jobs', ['SELECT', 'INSERT', 'UPDATE', 'DELETE']],
     'failed_jobs' => ['failed_jobs', ['SELECT', 'INSERT', 'DELETE']],
     'security_scans' => ['security_scans', ['SELECT', 'INSERT']],

@@ -9,8 +9,11 @@ use RuntimeException;
  */
 final class AiProviderException extends RuntimeException
 {
-    public function __construct(public readonly AiFailure $failure)
-    {
+    public function __construct(
+        public readonly AiFailure $failure,
+        public readonly ?int $retryAfterSeconds = null,
+        public readonly ?AiTokens $tokens = null,
+    ) {
         parent::__construct('The AI provider failed: '.$failure->value);
     }
 }

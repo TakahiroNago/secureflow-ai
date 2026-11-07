@@ -1,7 +1,7 @@
 # SecureFlow AI — データベース設計書
 
-- 版：v1.10（2026-11-07）
-- 状態：確定（v1.10：工程2-4 の出力検証とプロンプト構築を反映。v1.9：工程2-3 の入力検査の組み込みを反映。v1.8：工程1-6 の分析の依頼とキューのテーブルを反映。v1.7：工程1-5 のワークフローのテーブルの判断を反映。v1.6：工程1-3 の監査ログハッシュチェーンを反映。v1.5：テスト専用 app ロールを追加。v1.4：テスト専用 owner ロールとコマンド制限を追加。v1.3：工程1-1 の設計レビューを反映。v1.2：列挙列の NOT NULL 方針を明記。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.11（2026-11-07）
+- 状態：確定（v1.11：工程2-8 の ai_usage_logs を反映。v1.10：工程2-4 の出力検証とプロンプト構築を反映。v1.9：工程2-3 の入力検査の組み込みを反映。v1.8：工程1-6 の分析の依頼とキューのテーブルを反映。v1.7：工程1-5 のワークフローのテーブルの判断を反映。v1.6：工程1-3 の監査ログハッシュチェーンを反映。v1.5：テスト専用 app ロールを追加。v1.4：テスト専用 owner ロールとコマンド制限を追加。v1.3：工程1-1 の設計レビューを反映。v1.2：列挙列の NOT NULL 方針を明記。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - DBMS：PostgreSQL 18.6（インフラ要件。`compose.yaml` でタグを固定する）
 
 ---
@@ -457,7 +457,7 @@ PHP の検証器（`AuditChainVerifier`）は `audit_append()` の補助関数�
 |---|---|---|
 | id | uuid PK | |
 | organization_id / user_id | uuid | |
-| analysis_request_id / workflow_id | uuid NULL | |
+| analysis_request_id | uuid NULL | 工程2-8。ワークフローは分析から辿れるため `workflow_id` は持たない |
 | provider / model | varchar(32) / varchar(64) | |
 | purpose | varchar(24) CHECK IN ('task_generation','self_test') | |
 | prompt_tokens / completion_tokens / total_tokens | integer | |
@@ -468,7 +468,7 @@ PHP の検証器（`AuditChainVerifier`）は `audit_append()` の補助関数�
 | provider_request_id | varchar(128) NULL | |
 | created_at | timestamptz | |
 
-プロンプト・応答本文は**保存しない**。
+プロンプト・応答本文は**保存しない**。トークン数と推定費用は、数えていない場合（モック、上限による拒否、タイムアウト）は NULL で、0 と区別する。`model` も NULL を許す。
 
 ### 3.14 security_test_runs / security_test_results（results は不変）
 

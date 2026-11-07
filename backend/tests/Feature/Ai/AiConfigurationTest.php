@@ -27,8 +27,16 @@ function aiWebBoot(array $environment): ProcessResult
     ]);
 }
 
+const REVIEWED_OPENAI = ['APP_ENV' => 'local', 'AI_PROVIDER' => 'openai', 'OPENAI_API_KEY' => 'test-key-not-a-real-one', 'OPENAI_MODEL' => 'gpt-6-luna', 'OPENAI_BASE_URL' => 'https://api.openai.com/v1'];
+
 $bad = [
-    'the real provider, before step 2-8' => [['APP_ENV' => 'local', 'AI_PROVIDER' => 'openai']],
+    'the real provider with no key' => [[...REVIEWED_OPENAI, 'OPENAI_API_KEY' => '']],
+    'the real provider with a key that is not one' => [[...REVIEWED_OPENAI, 'OPENAI_API_KEY' => 'two words']],
+    'the real provider with no model' => [[...REVIEWED_OPENAI, 'OPENAI_MODEL' => '']],
+    'the real provider with a model nobody reviewed' => [[...REVIEWED_OPENAI, 'OPENAI_MODEL' => 'gpt-6-astra']],
+    'the real provider with another address' => [[...REVIEWED_OPENAI, 'OPENAI_BASE_URL' => 'https://somewhere.example/v1']],
+    'the real provider over plain HTTP' => [[...REVIEWED_OPENAI, 'OPENAI_BASE_URL' => 'http://api.openai.com/v1']],
+    'the real provider in staging' => [[...REVIEWED_OPENAI, 'APP_ENV' => 'staging']],
     'an unknown value' => [['APP_ENV' => 'local', 'AI_PROVIDER' => 'other']],
     'an empty value' => [['APP_ENV' => 'local', 'AI_PROVIDER' => '']],
     'a differently cased value' => [['APP_ENV' => 'local', 'AI_PROVIDER' => 'Mock']],
@@ -56,6 +64,22 @@ it('AI-CONF-01: the web application starts with the mock in development and test
 
     expect($result->output())->toContain('started');
 })->with(['local', 'testing']);
+
+it('AI-CONF-01: the real provider starts when everything is as reviewed', function () {
+    expect(aiWebBoot(REVIEWED_OPENAI)->output())->toContain('started');
+
+    $result = aiArtisan(REVIEWED_OPENAI, 'queue:work', 'sync', '--stop-when-empty');
+
+    expect($result->output().$result->errorOutput())->not->toContain('AI_PROVIDER')
+        ->and($result->successful())->toBeTrue();
+});
+
+it('AI-CONF-01: a refusal never repeats the key', function () {
+    $result = aiArtisan([...REVIEWED_OPENAI, 'OPENAI_API_KEY' => 'secret words', 'OPENAI_MODEL' => 'gpt-6-astra'], 'queue:work', 'sync', '--stop-when-empty');
+
+    expect($result->successful())->toBeFalse()
+        ->and($result->output().$result->errorOutput())->not->toContain('secret words');
+});
 
 it('AI-CONF-01: the worker starts with the mock in development', function () {
     $result = aiArtisan(['APP_ENV' => 'local', 'AI_PROVIDER' => 'mock'], 'queue:work', 'sync', '--stop-when-empty');
@@ -88,5 +112,5 @@ it('AI-CONF-01: the application gets the mock with its normal answers, and the s
 
     expect(app(AiProvider::class))->toBeInstanceOf(MockAiProvider::class)
         ->and(app(AiGateway::class)->generate('s', 'i')->content)->toBe((new MockAiProvider(MockScenario::Normal))->generate(new AiRequest('s', 'i', 1, 1))->content)
-        ->and(app(AiGateway::class)->worstCaseSeconds())->toBe(24);
+        ->and(app(AiGateway::class)->worstCaseSeconds())->toBe(31);
 });

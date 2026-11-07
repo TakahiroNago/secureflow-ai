@@ -101,8 +101,8 @@ it('AI-GW-01: does not retry an answer that is invalid, because it does not read
 });
 
 it('AI-GW-01: knows how long one call can take, for the time limit of the job in step 1-6', function () {
-    expect((new AiGateway(scriptedProvider(), 30, 2000))->worstCaseSeconds())->toBe(93)
-        ->and((new AiGateway(scriptedProvider(), 10, 2000))->worstCaseSeconds())->toBe(33);
+    expect((new AiGateway(scriptedProvider(), 30, 2000))->worstCaseSeconds())->toBe(100)
+        ->and((new AiGateway(scriptedProvider(), 10, 2000))->worstCaseSeconds())->toBe(40);
 });
 
 it('AI-GW-01: says nothing about the request or the answer in a failure', function () {

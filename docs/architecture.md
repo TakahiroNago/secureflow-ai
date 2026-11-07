@@ -1,7 +1,7 @@
 # SecureFlow AI — アーキテクチャ設計書
 
-- 版：v1.10（2026-11-07）
-- 状態：確定（v1.10：工程2-6 の実行ジョブと worker のキューを反映。v1.9：工程2-4 の出力検証とプロンプト構築を反映。v1.8：工程2-3 の入力検査の組み込みを反映。v1.7：工程1-6 のキューの方式、時間制限、停滞回収を反映。v1.6：環境変数を Compose からコンテナへ渡す条件を明記。v1.5：工程1-4 の AI の起動条件と再試行を反映。v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.11（2026-11-07）
+- 状態：確定（v1.11：工程2-8 の実接続の条件を反映。v1.10：工程2-6 の実行ジョブと worker のキューを反映。v1.9：工程2-4 の出力検証とプロンプト構築を反映。v1.8：工程2-3 の入力検査の組み込みを反映。v1.7：工程1-6 のキューの方式、時間制限、停滞回収を反映。v1.6：環境変数を Compose からコンテナへ渡す条件を明記。v1.5：工程1-4 の AI の起動条件と再試行を反映。v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - 関連：[database-design.md](database-design.md) / [api-design.md](api-design.md) / [security-design.md](security-design.md) / [threat-model.md](threat-model.md) / [test-strategy.md](test-strategy.md) / [development-roadmap.md](development-roadmap.md)
 
 ---
@@ -303,8 +303,8 @@ Draft ──submit──▶ Pending ──approve──▶ Approved ──execut
 | `REDIS_PASSWORD` | Redis認証 | 必須 |
 | `AI_PROVIDER` | `mock` / `openai` | `mock` |
 | `OPENAI_API_KEY` | APIキー（画面からは設定不可・表示不可） | 空 |
-| `OPENAI_MODEL` | 使用モデル名（Phase 2実装前に確定） | 空 |
-| `OPENAI_BASE_URL` | 送信先（固定値。画面から変更不可） | `https://api.openai.com/v1` |
+| `OPENAI_MODEL` | 使用モデル名。確認済みの `gpt-6-luna` のみ（[security-design.md §6.1](security-design.md)） | 空 |
+| `OPENAI_BASE_URL` | 送信先の確認用。確認済みの値と一致しなければ起動しない。要求は定数を使う | `https://api.openai.com/v1` |
 | `AI_TIMEOUT_SECONDS` / `AI_MAX_OUTPUT_TOKENS` | 呼び出し制限 | 30 / 2000 |
 | `SESSION_IDLE_MINUTES` / `SESSION_ABSOLUTE_HOURS` | セッション期限。`SESSION_IDLE_MINUTES` は `config/session.php` の `lifetime` に対応付ける（Laravel 標準の `SESSION_LIFETIME` は使わない）。`SESSION_ABSOLUTE_HOURS` は絶対期限のミドルウェアが参照する | 30 / 12 |
 | `SANCTUM_STATEFUL_DOMAINS` | SPA認証を許可する `ホスト:ポート`（カンマ区切り、ワイルドカードなし）。開発環境では Compose が `localhost:${NGINX_PORT}`、`127.0.0.1:${NGINX_PORT}`、`localhost:${FRONTEND_PORT}`、`127.0.0.1:${FRONTEND_PORT}` を設定する | 上記 |

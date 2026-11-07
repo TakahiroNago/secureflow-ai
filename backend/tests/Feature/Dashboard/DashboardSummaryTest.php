@@ -121,7 +121,7 @@ it('counts this month only, in UTC', function () {
 it('says that what does not exist yet does not exist: null, never 0', function (string $role) {
     $summary = summaryOf(userIn($this->org->id, $role));
 
-    expect($summary['ai_usage'])->toBe(['tokens' => null, 'estimated_cost' => null, 'available_from_step' => '2-8'])
+    expect($summary['ai_usage'])->toEqual(['tokens' => 0, 'estimated_cost' => 0])
         ->and($summary['self_test'])->toBe(['latest' => null, 'available_from_step' => '3-3']);
 })->with(['admin', 'member', 'auditor']);
 
@@ -201,7 +201,7 @@ it('answers each role over HTTP with its own numbers', function (string $who, in
     loggedIn($this, $this->{$who})->send('GET', DASHBOARD)
         ->assertOk()
         ->assertJsonPath('data.workflows.total', $total)
-        ->assertJsonPath('data.ai_usage.tokens', null);
+        ->assertJsonPath('data.ai_usage.tokens', 0);
 })->with([
     'member' => ['member', 4],
     'admin' => ['admin', 6],

@@ -155,7 +155,7 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   await page.getByRole('link', { name: 'ダッシュボード' }).click();
   await page.getByText('今月の分析回数').waitFor({ timeout: 10000 }).catch(() => {});
   check('the dashboard counts it', (await page.locator('dt:text-is("ワークフロー数") + dd').textContent()) === '1');
-  check('what does not exist yet is not a zero', (await page.locator('dt:text-is("AI トークン") + dd').textContent()) === '未実装');
+  check('the mock counts no tokens', (await page.locator('dt:text-is("AI トークン") + dd').textContent()) === '0');
   check('no warning was raised', (await page.locator('dt:text-is("セキュリティ警告") + dd').textContent()) === '0');
   check('what the scans found is counted', Number(await page.locator('dt:text-is("検出されたリスク") + dd').textContent()) >= 2);
   await page.locator('.recharts-bar-rectangle').first().waitFor({ timeout: 5000 }).catch(() => {});

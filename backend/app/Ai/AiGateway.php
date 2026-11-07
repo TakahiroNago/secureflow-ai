@@ -6,14 +6,16 @@ use App\Ai\Contracts\AiProvider;
 use Illuminate\Support\Sleep;
 
 /**
- * The only way to call a provider. The usage limits and the usage log arrive with the real provider in
- * step 2-8. What it returns is untrusted: see OutputValidator.
+ * The only way to call a provider. What it returns is untrusted: see OutputValidator.
  */
 final class AiGateway
 {
     private const MAX_ATTEMPTS = 3;
 
     private const FIRST_BACKOFF_SECONDS = 1;
+
+    /** A provider's Retry-After is followed up to this: the job has a time limit. */
+    private const MAX_WAIT_SECONDS = 5;
 
     public function __construct(
         private readonly AiProvider $provider,
@@ -35,9 +37,10 @@ final class AiGateway
                 if ($attempt >= self::MAX_ATTEMPTS || ! $exception->failure->isRetryable()) {
                     throw $exception;
                 }
-            }
 
-            Sleep::for(self::FIRST_BACKOFF_SECONDS * 2 ** ($attempt - 1))->seconds();
+                $backoff = self::FIRST_BACKOFF_SECONDS * 2 ** ($attempt - 1);
+                Sleep::for(min(max($backoff, $exception->retryAfterSeconds ?? 0), self::MAX_WAIT_SECONDS))->seconds();
+            }
         }
     }
 
@@ -47,11 +50,6 @@ final class AiGateway
      */
     public function worstCaseSeconds(): int
     {
-        $backoff = 0;
-        for ($attempt = 1; $attempt < self::MAX_ATTEMPTS; $attempt++) {
-            $backoff += self::FIRST_BACKOFF_SECONDS * 2 ** ($attempt - 1);
-        }
-
-        return self::MAX_ATTEMPTS * $this->timeoutSeconds + $backoff;
+        return self::MAX_ATTEMPTS * $this->timeoutSeconds + (self::MAX_ATTEMPTS - 1) * self::MAX_WAIT_SECONDS;
     }
 }

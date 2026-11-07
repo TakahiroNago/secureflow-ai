@@ -7,5 +7,10 @@ namespace App\Ai;
  */
 final readonly class AiResponse
 {
-    public function __construct(public string $content) {}
+    public function __construct(
+        public string $content,
+        public ?AiTokens $tokens = null,
+        public ?string $model = null,
+        public ?string $requestId = null,
+    ) {}
 }
