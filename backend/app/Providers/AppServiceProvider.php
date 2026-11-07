@@ -17,6 +17,7 @@ use App\Models\AiAnalysisRequest;
 use App\Models\User;
 use App\Models\Workflow;
 use App\Policies\AnalysisPolicy;
+use App\Policies\AuditLogPolicy;
 use App\Policies\WorkflowPolicy;
 use App\Support\Database\DatabaseCommandPolicy;
 use App\Support\Database\SingleConnectPostgresConnection;
@@ -151,6 +152,16 @@ class AppServiceProvider extends ServiceProvider
             $user = $request->user();
 
             return Limit::perMinute(30)->by($user instanceof User ? $user->id : (string) $request->ip());
+        });
+
+        // Provisional, not measured. It is heavy work. Per organization, and someone who is going to be refused
+        // anyway uses none of it: a member must not be able to stop an auditor from verifying.
+        RateLimiter::for('audit-verify', function (Request $request): Limit {
+            $user = $request->user();
+
+            return $user instanceof User && in_array($user->role, AuditLogPolicy::ROLES, true)
+                ? Limit::perMinute(3)->by($user->organization_id)
+                : Limit::none();
         });
 
         RateLimiter::for('account-password', function (Request $request): Limit {

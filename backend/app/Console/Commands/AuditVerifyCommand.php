@@ -4,12 +4,9 @@ namespace App\Console\Commands;
 
 use App\Audit\AuditCanonicalizer;
 use App\Audit\AuditChainVerifier;
-use App\Audit\AuditEntry;
-use App\Audit\AuditEventType;
-use App\Audit\AuditLogger;
+use App\Audit\VerificationFailureReporter;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use stdClass;
 use Throwable;
 
@@ -23,7 +20,7 @@ final class AuditVerifyCommand extends Command
 
     protected $description = 'Recompute the audit hash chains';
 
-    public function handle(AuditChainVerifier $verifier, AuditLogger $logger): int
+    public function handle(AuditChainVerifier $verifier, VerificationFailureReporter $reporter): int
     {
         try {
             $anchors = $this->anchors();
@@ -68,19 +65,7 @@ final class AuditVerifyCommand extends Command
             return 0;
         }
 
-        Log::critical('audit.verification_failed', [
-            'metric' => 'audit.verification_failed',
-            'chain_id' => $firstFailure['chain_id'],
-            'first_broken_seq' => $firstFailure['first_broken_seq'],
-            'reason_code' => $firstFailure['reason_code'],
-        ]);
-
-        // One attempt per run. Its failure is not recorded again and does not change the exit code.
-        $logger->recordAfterTransaction(AuditEntry::system(AuditEventType::VerificationFailed, result: 'failure', metadata: [
-            'chain_id' => $firstFailure['chain_id'],
-            'first_broken_seq' => (int) $firstFailure['first_broken_seq'],
-            'reason_code' => (string) $firstFailure['reason_code'],
-        ]), 'verification_failure_unrecorded');
+        $reporter->report($firstFailure);
 
         return 1;
     }

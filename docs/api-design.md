@@ -1,7 +1,7 @@
 # SecureFlow AI — API設計書
 
-- 版：v1.10（2026-11-07）
-- 状態：確定（v1.10：工程2-6 の実行の API を反映。v1.9：工程2-5 の提出、reopen、承認の API を反映。v1.8：工程2-4 の出力検証とプロンプト構築を反映。v1.7：工程2-3 の入力検査の組み込みを反映。v1.6：工程1-7 のダッシュボードを反映。v1.5：工程1-6 の分析とワークフローの API を反映。v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.11（2026-11-07）
+- 状態：確定（v1.11：工程2-7 の監査ログの API を反映。v1.10：工程2-6 の実行の API を反映。v1.9：工程2-5 の提出、reopen、承認の API を反映。v1.8：工程2-4 の出力検証とプロンプト構築を反映。v1.7：工程2-3 の入力検査の組み込みを反映。v1.6：工程1-7 のダッシュボードを反映。v1.5：工程1-6 の分析とワークフローの API を反映。v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -73,10 +73,11 @@
 | `POST /analyses`、`POST /security/scan-preview` | 10回/分 | ユーザー |
 | `POST /workflows/{id}/approve`、`POST /workflows/{id}/reject` | 30回/分（工程2-5。**実測に基づかない暫定値。** 拒否も監査に記録するため、記録の量の上限も兼ねる） | ユーザー |
 | `POST /workflows/{id}/execute` | 30回/分（工程2-6。**実測に基づかない暫定値。** 拒否の記録の量の上限も兼ねる） | ユーザー |
+| `POST /audit-logs/verify` | 3回/分（工程2-7。**実測に基づかない暫定値。** admin・auditor のみが消費し、拒否される member は使い切れない） | 組織 |
 | `POST /security/test-runs` | 3回/時 | 組織 |
 | その他API | 60回/分 | ユーザー（未認証はIP） |
 
-超過時は 429 と `Retry-After` を返し、監査ログ `rate_limit.exceeded` を記録する（工程2-7。未認証の超過は大量発生しうるため、キーごとに集約して記録する）。
+超過時は 429 と `Retry-After` を返し、監査ログ `rate_limit.exceeded` を記録する（工程2-7。利用者または IP、ルートごとに1分1件へ集約する。[security-design.md §16.7](security-design.md)）。
 
 IP 単位の制限は、NAT 配下など同じ送信元 IP を共有する利用者全員に合算される。**信頼できるリバースプロキシと接続元 IP の取得方法を確定するまで、公開環境へ移行しない。**影響と送信元 IP の前提は [security-design.md §16.5.4](security-design.md) を参照する。
 
@@ -393,6 +394,12 @@ IP 単位の制限は、NAT 配下など同じ送信元 IP を共有する利用
 |---|---|---|---|
 | GET | `/api/v1/audit-logs?event_type=&actor_user_id=&result=&severity=&from=&to=&cursor=` | admin / auditor | 組織内のみ。更新・削除APIは**存在しない** |
 | POST | `/api/v1/audit-logs/verify` | admin / auditor | 工程2-7で実装。**認証ユーザーの組織のチェーンのみ**検証する。`{valid, checked_count, first_broken_seq, reason_code}`（`id` はチェーン順序ではないため返さない）。`chain_id` を入力として受け取らず、システムチェーンは検証・参照できない |
+
+**工程2-7 の補足：**
+
+- `audit-logs` の応答は `event_id`、`chain_seq`、`event_type`、`result`、`severity`、`actor`（`type`、`id`、`name`）、`resource`（`type`、`id`）、`ip_address`、`request_id`、`metadata`、`occurred_at` である。`hash`、`prev_hash`、`chain_id` は返さない。
+- 並びは `chain_seq` の降順で、カーソル方式（既定50件、最大100件）。`occurred_at` は順序の根拠にしない。未知の `event_type`、`result`、`severity` と、`chain_id` などの未知の項目は 422。
+- `verify` は改ざんを検出しても 200 で `valid: false` を返す。検出は API の障害ではない。成功は保証ではない（§16.3 の限界。画面に常に表示する）。保管した先頭との照合はコマンドのみである。
 
 ### 3.9 設定
 

@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router'
+import { AuditLogPage } from '../features/audit/AuditLogPage'
 import { LoginPage } from '../features/auth/LoginPage'
 import { RequireAuth } from '../features/auth/RequireAuth'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
@@ -23,6 +24,7 @@ export function AppRoutes() {
           <Route path="/workflows/:id" element={<WorkflowDetailPage />} />
           <Route path="/workflows/:id/approval" element={<ApprovalPage />} />
           <Route path="/approvals" element={<ApprovalsPage />} />
+          <Route path="/audit-logs" element={<AuditLogPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

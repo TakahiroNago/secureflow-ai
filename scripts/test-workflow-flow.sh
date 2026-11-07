@@ -279,6 +279,24 @@ for text in "$MARKER" "$EDIT_MARKER" "$COMMENT_MARKER" "$SECRET" 'Ignore previou
 done
 if grep -q 'EMAIL_REDACTED' <<< "$dump"; then ok "the check can find stored text"; else ng "the check can find stored text"; fi
 
+echo "== the audit log over HTTP =="
+call "$B" GET '/api/v1/audit-logs?limit=100'
+is "the admin reads it" "$STATUS" 200
+hasnt "with no hash in it" "$BODY" 'prev_hash'
+call "$A" GET /api/v1/audit-logs
+is "the member does not" "$STATUS" 403
+call "$A" POST /api/v1/audit-logs/verify
+is "or verify it" "$STATUS" 403
+is "and that is recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='authz.denied' AND actor_user_id=(SELECT id FROM users WHERE email='$USER_A') AND metadata->>'route'='audit-logs.index'")" 1
+call "$A" GET /api/v1/workflows/019a0000-0000-7000-8000-00000000000a
+is "asking for what does not exist" "$STATUS" 404
+hasnt "the id is not kept" "$(su_sql "SELECT metadata::text FROM audit_logs WHERE event_type='authz.denied'")" '019a0000-0000-7000-8000-00000000000a'
+is "the AI call is recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='ai.call' AND resource_id='$analysis'")" 1
+call "$B" POST /api/v1/audit-logs/verify
+is "the admin verifies it" "$(field data.valid)" True
+[ "$(field data.checked_count)" -gt 0 ] && ok "and rows were checked" || ng "and rows were checked"
+hasnt "the chain is not named" "$BODY" 'chain_id'
+
 echo "== the audit chain =="
 is "the creation is recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='workflow.created' AND resource_id='$workflow'")" 1
 is "the edits are recorded" "$(su_sql "SELECT count(*) FROM audit_logs WHERE event_type='workflow.updated' AND resource_id='$workflow'")" 3

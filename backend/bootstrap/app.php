@@ -3,6 +3,7 @@
 use App\Audit\AuditAvailability;
 use App\Audit\AuditFailure;
 use App\Audit\OutageLog;
+use App\Audit\RefusalRecorder;
 use App\Domain\Execution\IdempotencyKeyReusedException;
 use App\Domain\Workflow\RiskAcknowledgementRequiredException;
 use App\Domain\Workflow\WorkflowConflictException;
@@ -60,7 +61,11 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->dontFlash(['password', 'current_password', 'new_password', 'input']);
 
-        $exceptions->render(fn (Throwable $exception, Request $request) => ProblemDetails::fromThrowable($exception, $request));
+        $exceptions->render(function (Throwable $exception, Request $request) {
+            app(RefusalRecorder::class)->note($exception, $request);
+
+            return ProblemDetails::fromThrowable($exception, $request);
+        });
 
         // The message of a query exception contains the SQL with its bindings, such as a password
         // hash or an email address. Log only what identifies the failure.

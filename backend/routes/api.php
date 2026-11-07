@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\AccountPasswordController;
 use App\Http\Controllers\Api\V1\AnalysisController;
 use App\Http\Controllers\Api\V1\ApprovalController;
+use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\ExecutionController;
@@ -10,6 +11,7 @@ use App\Http\Controllers\Api\V1\SecurityController;
 use App\Http\Controllers\Api\V1\WorkflowController;
 use App\Http\Controllers\Api\V1\WorkflowTaskController;
 use App\Http\Controllers\HealthController;
+use App\Models\AuditLog;
 use App\Models\Workflow;
 use Illuminate\Support\Facades\Route;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
@@ -96,6 +98,13 @@ Route::prefix('v1')->middleware('json.body')->group(function (): void {
         Route::get('/workflows/{workflow}/executions', [ExecutionController::class, 'index'])
             ->middleware('can:view,workflow')
             ->name('workflows.executions');
+
+        Route::get('/audit-logs', [AuditLogController::class, 'index'])
+            ->middleware('can:viewAny,'.AuditLog::class)
+            ->name('audit-logs.index');
+        Route::post('/audit-logs/verify', [AuditLogController::class, 'verify'])
+            ->middleware(['throttle:audit-verify', 'can:verify,'.AuditLog::class])
+            ->name('audit-logs.verify');
 
         Route::scopeBindings()->middleware('can:update,workflow')->group(function (): void {
             Route::post('/workflows/{workflow}/tasks', [WorkflowTaskController::class, 'store'])->name('workflows.tasks.store');
