@@ -78,6 +78,16 @@ final readonly class AuditEntry
         );
     }
 
+    /**
+     * Something the system did to a resource of an organization, with no user behind it at that moment.
+     *
+     * @param  array<string, string|int|bool>  $metadata
+     */
+    public static function systemOn(AuditEventType $type, string $organizationId, string $resourceType, string $resourceId, array $metadata = [], string $result = 'success'): self
+    {
+        return new self($type, $organizationId, 'system', null, $result, $resourceType, $resourceId, self::allowed($type, $metadata));
+    }
+
     public function chainKind(): string
     {
         return $this->organizationId === null ? 'system' : 'organization';

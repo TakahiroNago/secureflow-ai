@@ -107,7 +107,7 @@ final class ApprovalEligibility
      *
      * @param  Collection<int, WorkflowTask>  $tasks
      */
-    private static function planIsIntact(Workflow $workflow, WorkflowRevision $revision, Collection $tasks): bool
+    public static function planIsIntact(Workflow $workflow, WorkflowRevision $revision, Collection $tasks): bool
     {
         if (! PlanHasher::matches($revision->plan_snapshot, $revision->plan_hash)) {
             return false;
@@ -128,7 +128,7 @@ final class ApprovalEligibility
      *
      * @param  Collection<int, WorkflowTask>  $tasks
      */
-    private static function hasForbiddenAction(Collection $tasks): bool
+    public static function hasForbiddenAction(Collection $tasks): bool
     {
         return $tasks->contains(fn (WorkflowTask $task) => $task->policy_decision !== PolicyDecision::Allowed->value
             || WorkflowRevisions::derived($task->action_type)['policy_decision'] !== PolicyDecision::Allowed->value);

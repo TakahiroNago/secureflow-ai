@@ -74,6 +74,7 @@ const workflow = (overrides = {}) => ({
   can_edit: true,
   can_submit: false,
   can_reopen: false,
+  can_execute: false,
   can_view_approval: false,
   approver_available: true,
   decision: null,
@@ -807,5 +808,114 @@ describe('the approvals list', () => {
     open('/approvals')
 
     expect(await screen.findByText('承認待ちのワークフローはありません。')).toBeInTheDocument()
+  })
+})
+
+describe('execution', () => {
+  const executeRoute = `POST /api/v1/workflows/${WORKFLOW_ID}/execute`
+  const detailRoute = `GET /api/v1/workflows/${WORKFLOW_ID}`
+  const historyRoute = `GET /api/v1/workflows/${WORKFLOW_ID}/executions`
+  const accepted = () => json({ data: { execution_id: 'e', status: 'queued' } }, 202)
+  const execution = (overrides = {}) => ({ id: 'e', status: 'completed', revision_no: 3, error_code: null, result: null, created_at: null, finished_at: null, ...overrides })
+  const keyOf = (call: Parameters<typeof fetch>) => headersOf(call)['Idempotency-Key']
+
+  it('runs an approved plan, with a key, and says it is only simulated', async () => {
+    let status = 'approved'
+    const spy = server({
+      [detailRoute]: () => json({ data: workflow({ status, can_execute: status === 'approved' }) }),
+      [historyRoute]: () => json({ data: [execution({ result: { simulated: true, tasks: [{ position: 1, action_type: 'report.draft', summary: '下書きを生成しました' }] } })] }),
+      [executeRoute]: () => {
+        status = 'completed'
+        return accepted()
+      },
+    })
+    open(`/workflows/${WORKFLOW_ID}`)
+
+    expect(await screen.findByText('模擬実行です。', { exact: false })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '模擬実行する' }))
+
+    expect(await screen.findByText('1. report.draft：下書きを生成しました')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '模擬実行する' })).not.toBeInTheDocument()
+    expect(keyOf(callsTo(spy, executeRoute)[0] as Parameters<typeof fetch>)).toMatch(/^[0-9a-f]{32}$/)
+  })
+
+  it('sends the same key again when the answer was lost', async () => {
+    const answers = [new Response(null, { status: 503 }), accepted()]
+    const spy = server({
+      [detailRoute]: () => json({ data: workflow({ status: 'approved', can_execute: true }) }),
+      [executeRoute]: () => answers.shift() as Response,
+    })
+    open(`/workflows/${WORKFLOW_ID}`)
+
+    fireEvent.click(await screen.findByRole('button', { name: '模擬実行する' }))
+    await screen.findByRole('alert')
+    fireEvent.click(screen.getByRole('button', { name: '模擬実行する' }))
+
+    await waitFor(() => { expect(callsTo(spy, executeRoute)).toHaveLength(2) })
+    const [first, second] = callsTo(spy, executeRoute) as [Parameters<typeof fetch>, Parameters<typeof fetch>]
+    expect(keyOf(second)).toBe(keyOf(first))
+  })
+
+  it('takes a new key after a refusal', async () => {
+    const answers = [problem(409, 'POLICY_VIOLATION'), problem(409, 'POLICY_VIOLATION')]
+    const spy = server({
+      [detailRoute]: () => json({ data: workflow({ status: 'approved', can_execute: true }) }),
+      [executeRoute]: () => answers.shift() as Response,
+    })
+    open(`/workflows/${WORKFLOW_ID}`)
+
+    fireEvent.click(await screen.findByRole('button', { name: '模擬実行する' }))
+    expect(await screen.findByText('ポリシーの確認で実行できませんでした', { exact: false })).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: '模擬実行する' }))
+
+    await waitFor(() => { expect(callsTo(spy, executeRoute)).toHaveLength(2) })
+    const [first, second] = callsTo(spy, executeRoute) as [Parameters<typeof fetch>, Parameters<typeof fetch>]
+    expect(keyOf(second)).not.toBe(keyOf(first))
+  })
+
+  it.each([
+    ['APPROVAL_NOT_VALID', '有効な承認がない'],
+    ['EXECUTION_ALREADY_EXISTS', 'すでに実行に使われています'],
+    ['SCAN_REQUIRED', '未検査のリビジョンは'],
+  ])('says why it was refused, in its own words: %s', async (code, message) => {
+    server({
+      [detailRoute]: () => json({ data: workflow({ status: 'approved', can_execute: true }) }),
+      [executeRoute]: () => problem(409, code),
+    })
+    open(`/workflows/${WORKFLOW_ID}`)
+
+    fireEvent.click(await screen.findByRole('button', { name: '模擬実行する' }))
+
+    expect(await screen.findByText(message, { exact: false })).toBeInTheDocument()
+    expect(screen.queryByText('server text that is not shown')).not.toBeInTheDocument()
+  })
+
+  it('shows a failure, and offers to go back to a draft', async () => {
+    server({
+      [detailRoute]: () => json({ data: workflow({ status: 'failed', can_edit: false, can_reopen: true }) }),
+      [historyRoute]: () => json({ data: [execution({ status: 'failed', error_code: 'EXECUTION_STALE' })] }),
+    })
+    open(`/workflows/${WORKFLOW_ID}`)
+
+    expect(await screen.findByText('処理が時間内に完了しなかった', { exact: false })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '下書きに戻す' })).toBeInTheDocument()
+  })
+
+  it('has no button for someone who cannot execute', async () => {
+    server({ [detailRoute]: () => json({ data: workflow({ status: 'approved', can_execute: false }) }) })
+    open(`/workflows/${WORKFLOW_ID}`)
+
+    await screen.findByRole('heading', { level: 2 })
+    expect(screen.queryByRole('button', { name: '模擬実行する' })).not.toBeInTheDocument()
+  })
+
+  it('refuses a result that claims not to be simulated', async () => {
+    server({
+      [detailRoute]: () => json({ data: workflow({ status: 'completed', can_edit: false }) }),
+      [historyRoute]: () => json({ data: [execution({ result: { simulated: false, tasks: [] } })] }),
+    })
+    open(`/workflows/${WORKFLOW_ID}`)
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
   })
 })

@@ -1,7 +1,7 @@
 # SecureFlow AI — アーキテクチャ設計書
 
-- 版：v1.9（2026-11-07）
-- 状態：確定（v1.9：工程2-4 の出力検証とプロンプト構築を反映。v1.8：工程2-3 の入力検査の組み込みを反映。v1.7：工程1-6 のキューの方式、時間制限、停滞回収を反映。v1.6：環境変数を Compose からコンテナへ渡す条件を明記。v1.5：工程1-4 の AI の起動条件と再試行を反映。v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.10（2026-11-07）
+- 状態：確定（v1.10：工程2-6 の実行ジョブと worker のキューを反映。v1.9：工程2-4 の出力検証とプロンプト構築を反映。v1.8：工程2-3 の入力検査の組み込みを反映。v1.7：工程1-6 のキューの方式、時間制限、停滞回収を反映。v1.6：環境変数を Compose からコンテナへ渡す条件を明記。v1.5：工程1-4 の AI の起動条件と再試行を反映。v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - 関連：[database-design.md](database-design.md) / [api-design.md](api-design.md) / [security-design.md](security-design.md) / [threat-model.md](threat-model.md) / [test-strategy.md](test-strategy.md) / [development-roadmap.md](development-roadmap.md)
 
 ---
@@ -233,9 +233,11 @@ Draft ──submit──▶ Pending ──approve──▶ Approved ──execut
 | ジョブ | キュー | 再試行 | 一意性 | 障害時 |
 |---|---|---|---|---|
 | AnalyzeWorkflowJob | `ai` | AI呼び出しはGateway内で最大2回。ジョブ自体は1回 | `queued → processing` の条件付き UPDATE（DB で判定。`ShouldBeUnique` は使わない） | `failed` に遷移、監査ログ `analysis.failed` |
-| ExecuteWorkflowJob | `execution` | **自動再試行しない**（承認は1回限り消費） | `ShouldBeUnique`（execution_id）＋DB一意制約 | Failed、reopen→再承認が必要 |
+| ExecuteWorkflowJob | `execution` | **自動再試行しない**（承認は1回限り消費） | `queued → running` の条件付き UPDATE＋DB一意制約（`ShouldBeUnique` は使わない） | Failed、reopen→再承認が必要 |
 | RunSecuritySelfTestJob | `selftest` | なし | 同時に1件のみ | run を failed |
-| 停滞回収（scheduler、毎分） | — | — | — | heartbeatがタイムアウトした Running 実行・processing 分析を Failed 化し監査ログ |
+| 停滞回収（scheduler、毎分） | — | — | — | heartbeatがタイムアウトした Running 実行・processing 分析を Failed 化し監査ログ（`executions:reap-stale`、`analysis:recover`） |
+
+**worker のキュー（工程2-6）：** 1つの worker が `--queue=ai,execution` を処理する。そのため、分析の処理中は実行が最大120秒ほど待つことがある。時間制限は `ExecuteWorkflowJob` 60秒 < `retry_after` 180秒 < 停滞回収 300秒である。
 
 ジョブには ID のみを渡す（本文をキューに載せない）。
 
@@ -284,7 +286,7 @@ Draft ──submit──▶ Pending ──approve──▶ Approved ──execut
 | 事項 | 内容 |
 |---|---|
 | 永続化の方式 | **Redis AOF、DB キュー、Outbox パターンなどを比較して決定する。** 投入の取りこぼし（強制終了で投入元に伝わらない消失）と、古いスナップショットからの復活の両方を判断の対象とする |
-| 冪等性 | 上記のとおり DB で判定する。設計済みの `ShouldBeUnique` と DB の一意制約の組み合わせ（上の表の `ExecuteWorkflowJob`）を、再現した復活のケースで確認する |
+| 冪等性 | 上記のとおり DB で判定する。工程2-6 で `ExecuteWorkflowJob` も条件付き UPDATE と一意制約にした（`ShouldBeUnique` は使わない） |
 | `failed_jobs` と業務の成否の区別 | **`failed_jobs` の記録と実際の業務処理の成否を区別する。** 再現のとおり、完了したジョブが `MaxAttemptsExceededException` で失敗として記録されるため、`failed_jobs` だけで業務の失敗と判断しない。業務の状態は DB を正とする。テーブルと権限は [database-design.md §3.15](database-design.md) |
 | `timeout` と `retry_after` | **`timeout` と `retry_after` の関係を設計し、検証する。** 現在は `retry_after=90` でジョブの `timeout` は未設定であり、`retry_after` より長いジョブが並行して再度取り出される可能性がある（未検証） |
 

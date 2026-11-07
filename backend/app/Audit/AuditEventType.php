@@ -24,6 +24,10 @@ enum AuditEventType: string
     case ApprovalApproved = 'approval.approved';
     case ApprovalRejected = 'approval.rejected';
     case ApprovalDenied = 'approval.denied';
+    case ExecutionStarted = 'execution.started';
+    case ExecutionCompleted = 'execution.completed';
+    case ExecutionFailed = 'execution.failed';
+    case ExecutionDenied = 'execution.denied';
     case AnalysisFailed = 'analysis.failed';
     case SecurityScan = 'security.scan';
     case SecurityBlocked = 'security.blocked';
@@ -44,7 +48,10 @@ enum AuditEventType: string
             self::WorkflowUpdated => ['revision_no', 'change'],
             self::WorkflowSubmitted, self::WorkflowReopened => ['revision_no'],
             self::ApprovalApproved, self::ApprovalRejected => ['revision_no', 'plan_hash'],
-            self::ApprovalDenied => ['reason_code'],
+            self::ApprovalDenied, self::ExecutionDenied => ['reason_code'],
+            self::ExecutionStarted => ['execution_id', 'revision_no'],
+            self::ExecutionCompleted => ['execution_id'],
+            self::ExecutionFailed => ['execution_id', 'reason_code'],
             self::AnalysisFailed => ['reason_code', 'analysis_id'],
             self::SecurityScan => ['target_type', 'decision', 'max_severity', 'findings_count'],
             self::SecurityBlocked => ['reason_code'],
@@ -55,8 +62,8 @@ enum AuditEventType: string
     public function severity(): ?string
     {
         return match ($this) {
-            self::LoginFailed, self::PasswordChangeFailed, self::AnalysisFailed => 'low',
-            self::Locked, self::SecurityBlocked, self::ApprovalDenied => 'medium',
+            self::LoginFailed, self::PasswordChangeFailed, self::AnalysisFailed, self::ExecutionFailed => 'low',
+            self::Locked, self::SecurityBlocked, self::ApprovalDenied, self::ExecutionDenied => 'medium',
             self::EventsSuppressed => 'high',
             self::VerificationFailed => 'critical',
             default => null,

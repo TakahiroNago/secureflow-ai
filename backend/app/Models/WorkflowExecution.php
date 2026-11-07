@@ -23,10 +23,19 @@ use Illuminate\Database\Eloquent\Model;
  * @property CarbonInterface|null $finished_at
  * @property array<string, mixed>|null $result
  * @property string|null $error_code
+ * @property CarbonInterface|null $created_at
  */
 class WorkflowExecution extends Model
 {
     use BelongsToOrganization, HasUuids;
+
+    public const STATUS_QUEUED = 'queued';
+
+    public const STATUS_RUNNING = 'running';
+
+    public const STATUS_COMPLETED = 'completed';
+
+    public const STATUS_FAILED = 'failed';
 
     /**
      * @return array<string, string>

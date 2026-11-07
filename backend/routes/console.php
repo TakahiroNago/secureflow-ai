@@ -12,3 +12,4 @@ Artisan::command('inspire', function () {
 // LOG_CHANNEL=stderr that would discard the gauge and the suppressed totals (AUDIT-MON-01).
 Schedule::call(fn () => Artisan::call('audit:housekeeping'))->name('audit:housekeeping')->everyMinute();
 Schedule::call(fn () => Artisan::call('analysis:recover'))->name('analysis:recover')->everyMinute();
+Schedule::call(fn () => Artisan::call('executions:reap-stale'))->name('executions:reap-stale')->everyMinute();

@@ -3,10 +3,11 @@
 use App\Audit\AuditAvailability;
 use App\Audit\AuditFailure;
 use App\Audit\OutageLog;
+use App\Domain\Execution\IdempotencyKeyReusedException;
 use App\Domain\Workflow\RiskAcknowledgementRequiredException;
 use App\Domain\Workflow\WorkflowConflictException;
 use App\Http\Middleware\EnsureSessionIsCurrent;
-use App\Http\Middleware\RecordApprovalDenial;
+use App\Http\Middleware\RecordDeniedAttempt;
 use App\Http\Middleware\RejectWhileDatabaseUnavailable;
 use App\Http\Middleware\RequireJsonBody;
 use App\Http\Middleware\RequireStatefulFrontend;
@@ -45,7 +46,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'json.body' => RequireJsonBody::class,
             'session.current' => EnsureSessionIsCurrent::class,
             'org.context' => SetOrganizationContext::class,
-            'approval.denial' => RecordApprovalDenial::class,
+            'denied.attempt' => RecordDeniedAttempt::class,
         ]);
         // Without this the framework moves authentication first, and it reads the users table.
         $middleware->prependToPriorityList(AuthenticatesRequests::class, RejectWhileDatabaseUnavailable::class);
@@ -111,5 +112,6 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->dontReport(ServiceUnavailableException::class);
         $exceptions->dontReport(WorkflowConflictException::class);
         $exceptions->dontReport(RiskAcknowledgementRequiredException::class);
+        $exceptions->dontReport(IdempotencyKeyReusedException::class);
         $exceptions->dontReport(PreconditionRequiredException::class);
     })->create();

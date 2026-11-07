@@ -204,6 +204,14 @@ for (const line of readFileSync('users.txt', 'utf8').trim().split('\n')) {
   check('it is approved', await decided.isVisible());
   check('the comment is kept masked', await page.getByText('担当 [EMAIL_REDACTED]', { exact: false }).isVisible());
   check('and as text', (await page.locator('main img, section img').count()) === 0 && (await page.evaluate(() => window.pwned)) === undefined);
+
+  // Running it, as the same admin. The worker is real.
+  await page.getByRole('button', { name: '模擬実行する' }).click({ timeout: 5000 });
+  const finished = page.getByText('リビジョン 2：完了');
+  await finished.waitFor({ timeout: 30000 }).catch(() => {});
+  check('it runs, and the history says so', await finished.isVisible());
+  check('the result says it was only simulated', await page.getByText('模擬実行。外部への操作はありません', { exact: false }).first().isVisible());
+  check('the button is gone', (await page.getByRole('button', { name: '模擬実行する' }).count()) === 0);
   check('still nothing failed on the page', problems.length === 0, problems.join('; '));
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE}${workflowPath}/approval`);

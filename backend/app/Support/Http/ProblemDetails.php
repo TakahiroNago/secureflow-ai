@@ -2,6 +2,7 @@
 
 namespace App\Support\Http;
 
+use App\Domain\Execution\IdempotencyKeyReusedException;
 use App\Domain\Security\InputBlockedException;
 use App\Domain\Workflow\RiskAcknowledgementRequiredException;
 use App\Domain\Workflow\WorkflowConflictException;
@@ -85,6 +86,9 @@ final class ProblemDetails
             ),
             $exception instanceof RiskAcknowledgementRequiredException => self::response(
                 422, 'RISK_ACK_REQUIRED', 'Risk acknowledgement required', 'リスクを確認してから承認してください。',
+            ),
+            $exception instanceof IdempotencyKeyReusedException => self::response(
+                422, 'IDEMPOTENCY_KEY_REUSED', 'Idempotency key reused', 'この冪等性キーは別の実行に使われています。',
             ),
             $exception instanceof PreconditionRequiredException => self::response(
                 428, 'PRECONDITION_REQUIRED', 'Precondition required', 'If-Match ヘッダに現在のリビジョン番号を指定してください。',
