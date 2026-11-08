@@ -71,7 +71,11 @@ it('ST-06: an admin starts a run, and everyone in the organization reads the run
 it('starts a run: queued, recorded in the chain, and the job on its own queue', function () {
     $response = loggedIn($this, $this->admin)->send('POST', TEST_RUNS_URI)->assertStatus(202);
 
-    expect($response->json('data'))->toMatchArray(['status' => 'queued', 'total' => 0, 'passed' => 0, 'failed' => 0, 'finished_at' => null])
+    // Identical, not equal: a null count (the instance before the row was read back) must not pass as 0.
+    expect($response->json('data.status'))->toBe('queued')
+        ->and([$response->json('data.total'), $response->json('data.passed'), $response->json('data.failed')])->toBe([0, 0, 0])
+        ->and($response->json('data.finished_at'))->toBeNull()
+        ->and($response->json('data.created_at'))->toBeString()
         ->and($response->json('data.triggered_by'))->toBe(['id' => $this->admin->id, 'name' => $this->admin->name])
         ->and($response->json('data'))->not->toHaveKey('results');
 

@@ -1,0 +1,16 @@
+{
+  "name": "secureflow-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "SecureFlow AI — real browsers against a running stack (docs/test-strategy.md §10, §33). Run through scripts/test-e2e.sh.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "24.19.2",
+    "typescript": "5.9.3"
+  }
+}

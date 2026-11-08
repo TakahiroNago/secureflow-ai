@@ -55,7 +55,7 @@ function AiSection() {
   )
 }
 
-function LimitsForm({ limits }: { limits: Limits }) {
+function LimitsForm({ limits, onSaved }: { limits: Limits; onSaved: () => void }) {
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState<Record<LimitField, string>>({
     monthly_token_limit: String(limits.monthly_token_limit),
@@ -67,6 +67,7 @@ function LimitsForm({ limits }: { limits: Limits }) {
     mutationFn: updateLimits,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['settings', 'limits'] })
+      onSaved()
     },
   })
 
@@ -122,7 +123,6 @@ function LimitsForm({ limits }: { limits: Limits }) {
           {apiErrorMessage(save.error)}
         </p>
       )}
-      {save.isSuccess && <p className="text-sm text-emerald-800">保存しました。</p>}
       <button type="submit" className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50" disabled={save.isPending}>
         保存
       </button>
@@ -132,6 +132,8 @@ function LimitsForm({ limits }: { limits: Limits }) {
 
 function LimitsSection() {
   const limits = useQuery({ queryKey: ['settings', 'limits'], queryFn: fetchLimits, retry: false })
+  // Outside the form: a save remounts the form with the new values (its key), which would drop the message.
+  const [saved, setSaved] = useState(false)
 
   return (
     <section className={cardClass}>
@@ -145,7 +147,8 @@ function LimitsSection() {
       )}
       {limits.data && (
         <>
-          <LimitsForm key={limits.data.updated_at ?? 'defaults'} limits={limits.data} />
+          <LimitsForm key={limits.data.updated_at ?? 'defaults'} limits={limits.data} onSaved={() => { setSaved(true) }} />
+          {saved && <p className="text-sm text-emerald-800">保存しました。</p>}
           <p className="text-xs text-slate-500">
             {limits.data.updated_at === null ? '既定値を使用しています。' : `最終更新：${limits.data.updated_at}（${limits.data.updated_by?.name ?? '-'}）`}
           </p>

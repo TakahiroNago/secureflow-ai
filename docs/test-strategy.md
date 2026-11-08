@@ -1,7 +1,7 @@
 # SecureFlow AI — テスト戦略
 
-- 版：v1.21（2026-11-08）
-- 状態：確定（v1.21：工程3-3 のテストを追加。v1.20：工程3-1・3-5 のテストと CI のジョブを反映。v1.19：工程2-10 のテストを追加。v1.18：工程2-9 のテストを追加。v1.17：工程2-8 のテストを追加。v1.16：工程2-7 のテストと検証 API の測定を追加。v1.15：工程2-6 のテストと worker の強制終了の結果を追加。v1.14：工程2-5 のテストを追加。v1.13：工程2-4 のテストと実測を追加。v1.12：工程2-3 の統合テストと実測を追加。v1.11：工程2-2 のインジェクション検出のテストと実測を追加。v1.10：工程2-1 の検出とマスキングのテストを追加。v1.9：工程1-7 のダッシュボードのテストを追加。v1.8：工程1-6 の分析とワークフロー API のテストを追加。v1.7：工程1-5 のワークフロー基盤のテストを追加。v1.6：AUDIT-LOAD-01 の測定結果を追加。v1.5：工程1-4 の AI 基盤のテストを追加。v1.4：工程1-3 の監査ログテストを追加。v1.3：工程1-2 の認証テストを追加。v1.2：工程1-1 の設計レビューと検査の修正を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.22（2026-11-08）
+- 状態：確定（v1.22：工程3-4 の E2E を追加。v1.21：工程3-3 のテストを追加。v1.20：工程3-1・3-5 のテストと CI のジョブを反映。v1.19：工程2-10 のテストを追加。v1.18：工程2-9 のテストを追加。v1.17：工程2-8 のテストを追加。v1.16：工程2-7 のテストと検証 API の測定を追加。v1.15：工程2-6 のテストと worker の強制終了の結果を追加。v1.14：工程2-5 のテストを追加。v1.13：工程2-4 のテストと実測を追加。v1.12：工程2-3 の統合テストと実測を追加。v1.11：工程2-2 のインジェクション検出のテストと実測を追加。v1.10：工程2-1 の検出とマスキングのテストを追加。v1.9：工程1-7 のダッシュボードのテストを追加。v1.8：工程1-6 の分析とワークフロー API のテストを追加。v1.7：工程1-5 のワークフロー基盤のテストを追加。v1.6：AUDIT-LOAD-01 の測定結果を追加。v1.5：工程1-4 の AI 基盤のテストを追加。v1.4：工程1-3 の監査ログテストを追加。v1.3：工程1-2 の認証テストを追加。v1.2：工程1-1 の設計レビューと検査の修正を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -144,8 +144,10 @@ MockAiProvider はテスト設定（コンストラクタ引数）でのみ応�
 
 ## 10. E2E シナリオ（要件9）
 
-1. member がログイン → 2. 業務内容を入力 → 3. スキャンプレビューと限界文言を確認 → 4. AI（モック）がタスク生成 → 5. 検査結果を確認 → 6. 提出 → 7. member は承認できないことを確認 → 8. admin がログインし承認 → 9. member が実行 → 10. 模擬実行が完了し結果が保存 → 11. admin/auditor が監査ログで一連の履歴を確認。
-追加：承認後編集で再承認要求、XSS出力のテキスト表示、自己診断の実行と結果表示。
+1. member がログイン → 2. 業務内容を入力 → 3. スキャンプレビューと限界文言を確認 → 4. AI（モック）がタスク生成 → 5. 検査結果を確認 → 6. 提出 → 7. member は承認できないことを確認 → 8. admin がログインし承認 → 9. admin が実行 → 10. 模擬実行が完了し結果が保存 → 11. admin/auditor が監査ログで一連の履歴を確認。
+追加：承認後編集で再承認要求、XSS出力のテキスト表示、自己診断の実行と結果表示、同時 2 回の実行要求（§8）、セキュリティ管理と設定の画面、ロールごとの表示。
+
+工程3-4 で `e2e/` の Playwright のプロジェクトにした（§33）。`scripts/test-e2e.sh` が使い捨ての環境に利用者を作り、Playwright のイメージの中で nginx が配信するビルド済みの画面を操作する。9 は member でも admin でもよく（auditor 以外が実行できる）、E2E では承認した admin がそのまま実行する。AI の出力はモックの固定応答で、リクエストからシナリオを選べないため、AI 出力の XSS（ST-10）は Vitest（§9）と自己診断で確認し、E2E は利用者の入力のマークアップ（編集、承認のコメント、対策状況のメモ）がテキストとして描画されることを確認する。
 
 ## 11. CI（GitHub Actions）
 
@@ -155,11 +157,11 @@ MockAiProvider はテスト設定（コンストラクタ引数）でのみ応�
 | backend | Pint（--test）、Larastan、Pest（全件、`--coverage`）、`scripts/check-coverage.py`（§3 の目標。工程3-1）、composer audit ※PostgreSQL・Redis サービスコンテナ。スキーマ作成は owner、テスト実行は app ロール |
 | security | Pest group security（ST-01〜39 と、コーパスの合否。ファイルの場所を問わない）、`security:corpus-report`（ジョブサマリと artifact）。**工程3-1 から実施** |
 | frontend | ESLint、tsc --noEmit、Vitest、ビルド、npm audit |
-| stack | 全サービス起動、マイグレーション、`verify-infra.sh`、認証・分析の通し確認、実ブラウザ、nginx の応答、公開ポートと healthcheck の負のテスト |
+| stack | 全サービス起動、マイグレーション、`verify-infra.sh`、認証・分析の通し確認、nginx の応答、公開ポートと healthcheck の負のテスト |
 | sast-sca | Semgrep（独自ルールのみ。`.semgrep/secureflow.yml` と、ルール自体の負のテスト `scripts/test-semgrep-rules.sh`）、Trivy（fs：依存関係・Dockerfile・compose・秘密情報。image：PHP イメージと固定済みの全イメージ。HIGH 以上で修正版のあるものは失敗）。**工程3-5 から実施。** composer audit と npm audit は backend / frontend ジョブのまま |
-| e2e | Docker Compose 起動 → Playwright（工程3-4） |
+| e2e | Docker Compose 起動、マイグレーション、`scripts/test-e2e.sh`（`e2e/` の Playwright を Chromium、Firefox、WebKit で。画面の保存、報告、失敗のトレースを artifact に）。**工程3-4 から実施** |
 
-Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・ビルドを実施し、stack は工程1-2 で、security と sast-sca は工程3-1・3-5 で追加した。e2e は工程3-4 で追加する。
+Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・ビルドを実施し、stack は工程1-2 で、security と sast-sca は工程3-1・3-5 で、e2e は工程3-4 で追加した（実ブラウザの段階は stack から e2e に移した）。
 
 ## 12. Phase 0 基盤テスト
 
@@ -260,7 +262,7 @@ Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・�
 | AUDIT-SESSION-01 | パスワード変更後のセッション（`scripts/test-session-invalidation.sh`、Pest） | 変更後に実際の認証済み API を呼び出して確認する。①変更を実行したセッションは維持される。②変更前から存在した他のセッションは 401 になる（同じキー・同じ内容の再試行を最初の要求とした場合、同時に送った場合を含む）。③再ログイン後の新しいセッションは、同じキー・同じ内容の再試行で 200 となり、再実行されない。④**同じセッションからの並行要求（`scripts/test-password-concurrency.sh`）で、200 と新しいセッションの Cookie が各1件のみ、有効なセッションIDが1つのみ、Redis に保存されたセッションが増えない。古いIDの要求が削除済みのセッションを書き戻さず、Cookie を返さない** |
 | AUDIT-SESSION-02 | 並行する要求とセッションの終了（`scripts/test-session-race.sh`、Pest。使い捨ての環境） | セッションを読み込み、保存する前の要求を止めた状態で、ログイン済みの `GET` とログアウト、ログイン済みの `GET` とパスワード変更、ログインのない `GET` とログインを重ねる。止めない実際の重複として、`GET` 4件とログアウトも重ねる。古いIDが Redis に復活しない。古い Cookie が 401。止めた要求がセッションと CSRF の Cookie を返さない。通常のログアウトと再ログインが動作する。**同期点はスクリプトの実行中のみ隔離環境の `bootstrap/providers.php` に追加し、終了時に戻す。本番のコードは参照しない** |
 | AUDIT-SESSION-03 | 応答の到着順とセッションの Cookie（`scripts/test-session-cookie-order.sh`、`scripts/test-session-browser.sh`、Pest。使い捨ての環境） | 完了した `GET` の応答を止め、ログアウトまたはパスワード変更の応答より後に届ける。curl は到着順に Cookie を適用する。実ブラウザは Chromium、Firefox、WebKit で、中継のプロキシが応答を止める（アプリの変更なし）。古いIDが Redis に復活しない。最終の Cookie で `auth/me` が 401。`csrf-cookie` は廃止済みのIDに Cookie を返さない。Cookie を消さない再ログインは、`Sec-Fetch-Site` を送るブラウザで 200、送らないクライアントで 419 となり、Cookie を消すと 200。止めない重複の頻度も記録する。古いIDで送った `csrf-cookie` が変更の後に処理されても、新しいセッションの Cookie が変わらないことを確認する |
-| AUTH-E2E-01 | 実際のログイン画面（`scripts/test-login-browser.sh`、Vitest。使い捨ての環境と CI） | nginx が配信するビルド済みの画面を、Chromium、Firefox、WebKit で操作する。入力とクリックでログインし、「ようこそ」の画面に留まる。ログインの完了後に送った `auth/me` がすべて 200。再読み込みでログインが続く。ログアウトでログイン画面に戻り、再読み込みでも戻らない。ページの `Referrer-Policy` は `no-referrer` のまま |
+| AUTH-E2E-01 | 実際のログイン画面（`e2e/tests/main-flow.spec.ts`、Vitest。使い捨ての環境と CI） | nginx が配信するビルド済みの画面を、Chromium、Firefox、WebKit で操作する。入力とクリックでログインし、「ようこそ」の画面に留まる。ログインの完了後に送った `auth/me` がすべて 200。再読み込みでログインが続く。ログアウトでログイン画面に戻り、再読み込みでも戻らない。ページの `Referrer-Policy` は `no-referrer` のまま |
 | AUDIT-CSRF-01 | 419 と 401 の区別 | Cookie なし、セッションの不在・期限切れ、ログインのないセッションは、状態を変更する要求でも 401。ログイン済みのセッションで CSRF トークンなしは 419。ログイン API の CSRF トークンなしは 419。並行試験で 419 が出る場合は注記として記録する |
 | AUDIT-WORKER-01 | キューの障害（`scripts/test-worker-failure.sh`。使い捨ての環境。工程1-6 で DB キュー向けに置き換えた） | [§19](#19-工程1-6-の分析とワークフロー-api-のテスト) を参照。Redis キューで再現した現象は [architecture.md §10](architecture.md) に記録している |
 | AUDIT-E2E-01 | 実際の HTTP での通し確認（`scripts/test-auth-flow.sh`） | 工程1-2 の「監査ログが0件」の確認を、イベントが記録され `audit:verify --all` が成功する確認に置き換える |
@@ -505,7 +507,7 @@ Redis の停止（`docker compose stop`）と凍結（`docker compose pause`）�
 | DASH-02 | 未実装の項目 | `null` を返し、0 を返さない。画面は「未実装」と表示する | 同上、`frontend/src/features/dashboard/dashboard.test.tsx` |
 | DASH-03 | 最近の操作 | member は自分の操作のみ。許可した種類のみ。システムチェーンを含まない。IP と metadata を返さない。新しい順に10件 | 同上 |
 | DASH-04 | 画面 | 数値とグラフの表の対応。応答の検証。文字列をマークアップとして描画しない | `frontend/src/features/dashboard/dashboard.test.tsx` |
-| AUTH-E2E-01（拡張） | 実ブラウザ3種 | ログインから入力、分析、編集を経てダッシュボードの集計とグラフまでの通し確認。画面の例外がないこと | `scripts/test-login-browser.sh` |
+| AUTH-E2E-01（拡張） | 実ブラウザ3種 | ログインから入力、分析、編集を経てダッシュボードの集計とグラフまでの通し確認。画面の例外がないこと | `e2e/tests/main-flow.spec.ts` |
 
 ## 21. 工程2-1 の検出とマスキングのテスト
 
@@ -639,7 +641,7 @@ Redis の停止（`docker compose stop`）と凍結（`docker compose pause`）�
 | APPROVAL-RATE-01 | レート制限 | 31回目は 429 で、拒否の記録は 30件で止まる | 同上 |
 | APPROVAL-RACE-01 | 同時の決定（実 HTTP） | 2人の admin による4つの同時要求で1件のみ成功し、3件が 409 `ALREADY_DECIDED`、決定と監査は1件 | `scripts/test-workflow-flow.sh` |
 | APPROVAL-UI-01 | 画面 | 要件の表示項目、限界文言、送るハッシュ、リスク確認、変更時の再読み込みと確認の取り消し、理由の表示、テキストとしての描画、応答の検証 | `frontend/src/features/workflows/workflows.test.tsx` |
-| APPROVAL-E2E-01 | 実ブラウザ | 提出から別の利用者の承認まで（Chromium、Firefox、WebKit） | `scripts/test-login-browser.sh` |
+| APPROVAL-E2E-01 | 実ブラウザ | 提出から別の利用者の承認まで（Chromium、Firefox、WebKit） | `e2e/tests/main-flow.spec.ts` |
 
 **制限：** AI はモックのみである。リスク確認は承認者が内容を理解したことを保証しない。実行時の再検証（ST-08、ST-37 の実行の部分、AUTH-LOCK-03 の実行の部分）は工程2-6 で確認する。
 
@@ -659,7 +661,7 @@ Redis の停止（`docker compose stop`）と凍結（`docker compose pause`）�
 | EXEC-RUN-01 | 模擬実行 | タスクの行でなくスナップショットを実行する。結果にタスクの文を含めない。全ての許可された操作にハンドラがあり、禁止操作にはない。ジョブの開始時の再確認 | `ExecutionApiTest.php` |
 | EXEC-AUDIT-01 | 監査 | 記録できなければ実行は成立しない（503）。完了を記録できなければ Failed。拒否は記録できなくても同じ応答 | 同上 |
 | EXEC-UI-01 | 画面 | ボタン、模擬実行の表示、同じキーの再送（503 の後）、拒否の後の新しいキー、理由の表示、履歴、`simulated: false` の拒否 | `frontend/src/features/workflows/workflows.test.tsx` |
-| EXEC-E2E-01 | 実ブラウザ | 提出、承認から実行、結果の表示まで（CI で確認） | `scripts/test-login-browser.sh` |
+| EXEC-E2E-01 | 実ブラウザ | 提出、承認から実行、結果の表示まで（CI で確認） | `e2e/tests/main-flow.spec.ts` |
 
 **ST-33 の実測（2026-11-07、隔離クローン）：** worker を実行の途中で SIGKILL した。アプリにテスト用のコードを入れず、ワークフローの行をロックして、実行の開始と完了の間で止めた。行は `running` のまま、結果はなく、ワークフローも Running のままであることを確認した。その後、次のとおり回収された。
 
@@ -686,7 +688,7 @@ Redis の停止（`docker compose stop`）と凍結（`docker compose pause`）�
 | AUDIT-VRATE-01 | 検証の制限 | 組織ごとに3回/分。member の拒否は枠を消費しない | 同上 |
 | AUDIT-AI-01 | `ai.call` | 成功と失敗の種類、本文を含まない、記録の失敗で分析が止まらない | 同上 |
 | AUDIT-UI-01 | 画面 | 一覧、フィルタ、カーソル、テキストとしての描画、検証の結果と常時の注意書き、役割ごとのメニュー、応答の検証 | `frontend/src/features/audit/audit.test.tsx` |
-| AUDIT-E2E-01 | 実ブラウザ | 監査ログの表示と検証（CI で確認） | `scripts/test-login-browser.sh` |
+| AUDIT-E2E-01 | 実ブラウザ | 監査ログの表示と検証（CI で確認） | `e2e/tests/main-flow.spec.ts`、`e2e/tests/roles.spec.ts` |
 
 **検証 API の測定（2026-11-07、隔離クローン。この開発機の値であり、性能を保証しない）：** 実際の HTTP で、nginx と php-fpm を通して測った。測定の行は測定の後に削除した。
 
@@ -745,7 +747,7 @@ Redis の停止（`docker compose stop`）と凍結（`docker compose pause`）�
 | ST-29 | 例外の応答とログ | 全経路で RFC 9457。内部情報なし。`trace_id` がログと共通。ログの個人情報と秘密情報、例外のメッセージ、オブジェクト、検査できない文字列、長い文字列。全チャンネルに適用。未知の項目名を返さない | 同上 |
 | ST-32 | SQL インジェクション | ログイン、フィルタ、パスの ID、入力の本文 | 同上 |
 | HDR-01 | ヘッダと nginx の応答 | ページ、資産、404、ヘルスチェック、API、nginx 自身の応答のすべてで設計どおりのヘッダ。413、429、502（app の停止。接続の待ちが切れれば 504）が RFC 9457。`.env` が読めない。**504 は同じ設定だが実際には発生させていない** | `scripts/test-nginx-errors.sh`（CI） |
-| CSP-01 | CSP の違反 | 実ブラウザの全画面の流れで違反なし（CI）。WebKit で画面の保存の間に Playwright 自身が加える `<style>` は除く。違反は直前の段階と画面とともに記録する | `scripts/test-login-browser.sh` |
+| CSP-01 | CSP の違反 | 実ブラウザの全画面の流れで違反なし（CI）。WebKit で画面の保存の間に Playwright 自身が加える `<style>` は除く。違反は直前の段階と画面とともに記録する | `e2e/fixtures.ts`（全 spec） |
 
 **変異試験：** 25件すべてを試験で検出した。初回は26件中2件が残った。1件は試験の穴で補った（記録の入れ子の深さの上限）。1件はヘルスチェックを RFC 9457 の対象から外す条件で、ヘルスチェックは自身の固定の応答を返すため冗長なコードとして削除した。
 
@@ -767,7 +769,7 @@ Redis の停止（`docker compose stop`）と凍結（`docker compose pause`）�
 | SEC-UI-01 | 画面（セキュリティ管理） | 抜粋をテキストとして描画、注意書き、member に変更の操作がない、絞り込みの問い合わせ、admin の変更と送る内容、次の状態のみ提示、409 の表示、カーソル、応答の検証、自己診断は未実装の表示 | `frontend/src/features/security/security.test.tsx` |
 | SET-UI-01 | 画面（設定） | admin にのみ AI・上限・セキュリティの区画を表示し、member はそれらを問い合わせない。キーの値を表示しない。変わった上限のみ送る。範囲外は送らない。パスワードの変更は `Idempotency-Key` を付け、503 の再試行では同じキー、内容が変わると新しいキー。確認の不一致は送らない | `frontend/src/features/settings/settings.test.tsx` |
 
-**制限：** 対策状況の変更は検出の記録を書き換えない（状態の列のみ）。member の一覧は検査の `user_id` に基づく。画面の確認は Vitest のみで、実ブラウザの流れ（`scripts/test-login-browser.sh`）にはこの 2 画面を加えていない。
+**制限：** 対策状況の変更は検出の記録を書き換えない（状態の列のみ）。member の一覧は検査の `user_id` に基づく。実ブラウザでの 2 画面の確認は工程3-4 の E2E-05（§33）。
 
 **変異試験：** 20件のうち19件を試験で検出した。残る1件（行ロックの下での遷移の再確認の削除）は、要求の読み取りと行ロックの間に状態が変わる場合の試験（FIND-STATUS-02）で補い、検出した。
 
@@ -805,6 +807,23 @@ Redis の停止（`docker compose stop`）と凍結（`docker compose pause`）�
 
 **所要時間：** 26 ケースで約 3 秒（ケースの合計 3,008 ms、最長 575 ms。HTTP での開始から完了の確認まで 4.6 秒。2026-11-08、作業用クローンの Docker 上で計測）。
 
-**制限：** ST-22 の「同時 2 リクエスト」は 1 プロセスの自己診断では再現できず、同一キーの再送・別キー・DB の一意制約で確認する（同時実行は CI の Concurrency テスト）。ST-20 の「古いハッシュでの承認の 409」は API の経路で監査の拒否記録を伴うため、自己診断ではハッシュの不一致と計画の整合性で確認する（API の 409 は CI）。ST-28 は組織のチェーンの検証と変更の拒否で、`audit:head` との照合は含まない。ケースの実行中は組織の監査チェーンのヘッドを短時間ロックする。実ブラウザでの画面の確認は工程3-4 に含める。
+**制限：** ST-22 の「同時 2 リクエスト」は 1 プロセスの自己診断では再現できず、同一キーの再送・別キー・DB の一意制約で確認する（同時実行は CI の Concurrency テスト）。ST-20 の「古いハッシュでの承認の 409」は API の経路で監査の拒否記録を伴うため、自己診断ではハッシュの不一致と計画の整合性で確認する（API の 409 は CI）。ST-28 は組織のチェーンの検証と変更の拒否で、`audit:head` との照合は含まない。ケースの実行中は組織の監査チェーンのヘッドを短時間ロックする。実ブラウザでの画面の確認は工程3-4 の E2E-04（§33）。
 
 **変異試験：** 2026-11-08 に `SelfTestRuns`・`SelfTestRunner`・`SecurityTestRunPolicy`・`selftest:recover`・ケース・Resource に 13 の変異を入れ、`SelfTestRunnerTest`・`SelfTestApiTest`・`EndpointIsolationTest` が 11 を検出した。変異で見つけた不具合：完了の `selftest.completed` が失敗したケースがあっても `success` を記録していた（修正し、SELFTEST-API-02 に追加）。生き残り 2 件：(1) start の「進行中の run があれば 409」のアプリ側の確認を外しても、DB の部分一意索引と一意制約違反の捕捉が同じ 409 を返す（二重の防御で、どちらが残っても足りる）。(2) ST-19 の `reason_is_secret` を常に真にしても検出されない。ケースの判定そのものを検証するには出力の走査器を差し替える必要があり、同じ判定は CI の ST-19（§5）が検証する。
+
+## 33. 工程3-4 の E2E（Playwright）
+
+`e2e/` の `@playwright/test`（1.56.1）のプロジェクト。`scripts/test-e2e.sh` が使い捨ての環境（CI、またはプロジェクト名を明示した手元の複製）に Playwright のプロジェクトごとの利用者（member・admin・auditor と、パスワード変更専用の member）を `user:create` で作り、認証情報はリポジトリの外の一時ファイルで読み取り専用のままコンテナに渡す。ブラウザは Playwright のイメージ（digest 固定）の中で、コンテナ内の TCP 転送を通して `localhost:<NGINX_PORT>` の nginx が配信するビルド済みの画面を操作する。すべての spec は fixture で CSP の違反と画面の例外を集め、1 件でも失敗にする（CSP-01）。画面の保存、HTML の報告、失敗のトレースは `e2e/output/` に残り、CI は artifact `e2e-output` にする。
+
+| ID | 対象 | 内容 | ブラウザ | ファイル |
+|---|---|---|---|---|
+| E2E-01 | §10 の 1〜11 | member のログインと維持、限界文言、マスクの確認、秘密情報での停止と該当箇所の選択、分析、マークアップの編集のテキスト描画、ダッシュボードの集計、提出、member に承認一覧がない、admin の承認画面（5 項目・限界文言・ハッシュ・コメントのマスク）、模擬実行、監査ログと検証、`Referrer-Policy` | Chromium、Firefox、WebKit | `e2e/tests/main-flow.spec.ts` |
+| E2E-02 | ST-09 | 承認後の編集で下書きに戻り、承認と実行ボタンが消え、リビジョンが進む。再提出と再承認の後に新しいリビジョンだけが実行される | Chromium | `e2e/tests/reapproval.spec.ts` |
+| E2E-03 | ST-22（§8） | ブラウザのセッションから別キーの実行要求を同時に 2 回送り、1 件が受理、1 件が 409。履歴の実行は 1 件 | Chromium | `e2e/tests/double-execution.spec.ts` |
+| E2E-04 | SELFTEST-UI-01 | admin が自己診断を開始し、画面が完了まで追従して 26 / 26 合格、結果表 26 行、CI のみの 13 件。ダッシュボードのタイル。member は結果を見られるが開始できない | Chromium | `e2e/tests/self-test.spec.ts` |
+| E2E-05 | 工程2-10 の画面 | 秘密情報の検出が一覧に出て本文は出ない。member は変更できず、admin が対策状況を変更してメモがマスクされテキストで描画される。利用上限の変更が保存され再読み込みで残る。member のパスワード変更の後、古いパスワードは拒否され新しいもので入れる | Chromium | `e2e/tests/security-settings.spec.ts` |
+| E2E-06 | ST-06 | auditor は監査ログを読んで検証でき、承認一覧・新規作成・自己診断の開始・対策状況の変更がない。member は監査ログのリンクがなく、アドレスで開くと権限がない旨の表示で記録は出ない | Chromium | `e2e/tests/roles.spec.ts` |
+
+**所要時間：** 全 8 テスト（E2E-01 を 3 ブラウザ、追加の 5 本を Chromium）で 1.5 分（2 ワーカー、手元の Docker、2026-11-08）。E2E-06 は検証の制限（3 回/分）の待ちを含めて 46 秒。ジョブは環境の起動とイメージの取得を含む。
+
+**制限：** モックの AI 出力はリクエストから選べないため、AI 出力の XSS は E2E に含めない（§10）。自己診断の開始は組織あたり 3 回/時のため、追加の spec は Chromium のみで 1 回だけ実行する。同時 2 回の実行要求はブラウザの `fetch` で送り、画面のボタンの連打ではない（ボタンは送信中に無効になる）。手元での実行は TLS を検査するソフトの例外（Playwright のイメージと npm レジストリ）が必要で、2026-11-08 に手元でも 3 ブラウザで確認した。

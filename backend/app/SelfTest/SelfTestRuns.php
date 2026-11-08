@@ -67,7 +67,8 @@ final readonly class SelfTestRuns
 
                 RunSecuritySelfTestJob::dispatch($run->id, $admin->organization_id);
 
-                return $run;
+                // The counts and the timestamps are the row's defaults, which the instance does not have.
+                return $run->refresh();
             });
         } catch (QueryException $exception) {
             if ($exception->getCode() === self::UNIQUE_VIOLATION && str_contains($exception->getMessage(), 'security_test_runs_one_active_unique')) {
