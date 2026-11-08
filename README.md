@@ -45,7 +45,7 @@ migrate（owner ロール：マイグレーション専用・都度実行）
 backend/    Laravel API（app/, config/, routes/, tests/）
 frontend/   React + TypeScript + Vite + Tailwind CSS
 docker/     nginx / php / postgres の設定と初期化スクリプト
-scripts/    init-env.sh（.env 生成）、add-test-roles.sh（既存環境の更新）、verify-infra.sh（基盤検証）、check-published-ports.sh（公開ポート検査）、test-*.sh（検査の負のテストと認証の通し確認）、test-audit-load.py（負荷と障害の測定。使い捨ての環境でのみ）、build-password-list.sh（漏洩パスワード辞書の再作成）
+scripts/    init-env.sh（.env 生成）、add-test-roles.sh（既存環境の更新）、verify-infra.sh（基盤検証）、check-published-ports.sh（公開ポート検査）、test-*.sh（検査の負のテストと認証の通し確認）、test-e2e.sh（`e2e/` の Playwright を実ブラウザで。使い捨ての環境でのみ）、test-audit-load.py（負荷と障害の測定。使い捨ての環境でのみ）、build-password-list.sh（漏洩パスワード辞書の再作成）
 docs/       要件定義・設計書
 .github/    GitHub Actions（CI）
 ```
@@ -238,6 +238,10 @@ docker compose run --rm --no-deps frontend npm run typecheck
 docker compose run --rm --no-deps frontend npm test
 docker compose run --rm --no-deps frontend npm run test:coverage   # カバレッジ（docs/test-strategy.md §3）
 docker compose run --rm --no-deps frontend npm run build
+
+# E2E（e2e/ の Playwright。Chromium・Firefox・WebKit でビルド済みの画面を操作。ユーザーを作成するため、
+# プロジェクト名の明示が必要です。結果と画面の保存は e2e/output/）
+SECUREFLOW_ALLOW_FAILURE_INJECTION=<プロジェクト名> bash scripts/test-e2e.sh
 
 # 基盤（ロール・ポート・Redis 認証・ヘルスチェック・SPA 配信）
 bash scripts/verify-infra.sh

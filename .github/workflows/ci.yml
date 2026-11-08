@@ -20,6 +20,8 @@ env:
   SEMGREP_IMAGE: semgrep/semgrep:1.183.0@sha256:2e45517a85e13a9cca14a2a00df6bb48affd66b8ebfae1b0991cd57578362fb0
   NODE_IMAGE: node:24.22.2-alpine3.24
   PHP_IMAGE: secureflow-php:dev
+  # The browsers of e2e/package.json's @playwright/test version (scripts/test-e2e.sh).
+  PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.56.1-noble@sha256:f1e7e01021efd65dd1a2c56064be399f3e4de00fd021ac561325f2bfbb2b837a
 
 jobs:
   secret-scan:
@@ -175,9 +177,6 @@ jobs:
       - name: An analysis and an edit over real HTTP, with the real worker
         run: bash scripts/test-workflow-flow.sh
 
-      - name: Login screen in real browsers (AUTH-E2E-01)
-        run: bash scripts/test-login-browser.sh
-
       - name: What nginx answers by itself, and the headers
         run: bash scripts/test-nginx-errors.sh
 
@@ -189,6 +188,64 @@ jobs:
 
       - name: Worker and scheduler healthcheck negative tests
         run: bash scripts/test-worker-healthcheck.sh
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v --remove-orphans
+
+  # The real screens in real browsers against the whole stack (docs/test-strategy.md §10, §33).
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Create CI-only .env (random throwaway secrets)
+        run: bash scripts/init-env.sh
+
+      - name: Build PHP image
+        run: docker compose build app
+
+      - name: composer install
+        run: |
+          docker run --rm -u "$(id -u):$(id -g)" -e COMPOSER_HOME=/tmp/composer \
+            -v "$PWD/backend":/var/www/html -w /var/www/html "$PHP_IMAGE" \
+            composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Frontend install and build
+        run: |
+          docker run --rm -u "$(id -u):$(id -g)" \
+            -e npm_config_cache=/tmp/npm -e npm_config_update_notifier=false -e npm_config_fund=false \
+            -v "$PWD/frontend":/app -w /app "$NODE_IMAGE" sh -c 'npm ci --no-audit && npm run build'
+
+      - name: Type-check the suite
+        run: |
+          docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -e npm_config_cache=/tmp/npm \
+            -v "$PWD/e2e":/work -w /work "$PLAYWRIGHT_IMAGE" sh -c 'npm ci --no-audit --no-fund && npx tsc --noEmit'
+
+      - name: docker compose up
+        run: docker compose up -d --wait
+
+      - name: Run migrations (owner role, migrate service)
+        run: docker compose run --rm -T migrate
+
+      - name: Playwright (Chromium, Firefox, WebKit)
+        run: bash scripts/test-e2e.sh
+
+      # The screens as the browsers saw them, the report, and the traces of what failed.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: e2e-output
+          path: e2e/output
+          if-no-files-found: ignore
 
       - name: Logs on failure
         if: failure()
