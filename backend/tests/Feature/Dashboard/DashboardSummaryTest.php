@@ -122,7 +122,7 @@ it('says that what does not exist yet does not exist: null, never 0', function (
     $summary = summaryOf(userIn($this->org->id, $role));
 
     expect($summary['ai_usage'])->toEqual(['tokens' => 0, 'estimated_cost' => 0])
-        ->and($summary['self_test'])->toBe(['latest' => null, 'available_from_step' => '3-3']);
+        ->and($summary['self_test'])->toBe(['latest' => null]);
 })->with(['admin', 'member', 'auditor']);
 
 // ---- Recent operations --------------------------------------------------------------------------

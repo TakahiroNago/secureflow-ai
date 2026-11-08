@@ -21,7 +21,18 @@ const summarySchema = z.object({
   analyses_this_month: z.number(),
   security: z.object({ warnings: z.number().nullable(), findings: z.number().nullable() }),
   ai_usage: z.object({ tokens: z.number().nullable(), estimated_cost: z.number().nullable() }),
-  self_test: z.object({ latest: z.unknown() }),
+  self_test: z.object({
+    latest: z
+      .object({
+        id: z.string(),
+        status: z.enum(['queued', 'running', 'completed', 'failed']),
+        total: z.number(),
+        passed: z.number(),
+        failed: z.number(),
+        finished_at: z.string().nullable(),
+      })
+      .nullable(),
+  }),
   recent_operations: z.array(
     z.object({
       id: z.string(),

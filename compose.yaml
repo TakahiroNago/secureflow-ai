@@ -182,7 +182,7 @@ services:
     environment:
       <<: *laravel-env
     # The time limit stays above AiGateway::worstCaseSeconds() and below retry_after (scripts/test-compose-env.sh).
-    command: ["php", "artisan", "queue:work", "database", "--queue=ai,execution", "--sleep=1", "--tries=1", "--timeout=120", "--max-time=3600"]
+    command: ["php", "artisan", "queue:work", "database", "--queue=ai,execution,selftest", "--sleep=1", "--tries=1", "--timeout=120", "--max-time=3600"]
     networks: [data]
     healthcheck:
       # Liveness: the code is mounted, Laravel boots and PID 1 is the real worker. It does not look

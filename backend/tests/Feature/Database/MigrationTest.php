@@ -16,7 +16,7 @@ const STEP_1_6_TABLES = ['ai_analysis_requests', 'approvals', 'audit_chain_heads
 
 const STEP_2_3_TABLES = ['ai_analysis_requests', 'approvals', 'audit_chain_heads', 'audit_logs', 'failed_jobs', 'jobs', 'organization_settings', 'organizations', 'security_findings', 'security_scans', 'users', 'workflow_executions', 'workflow_revisions', 'workflow_tasks', 'workflows'];
 
-const LATEST_TABLES = ['ai_analysis_requests', 'ai_usage_logs', 'approvals', 'audit_chain_heads', 'audit_logs', 'failed_jobs', 'jobs', 'organization_settings', 'organizations', 'security_findings', 'security_scans', 'users', 'workflow_executions', 'workflow_revisions', 'workflow_tasks', 'workflows'];
+const LATEST_TABLES = ['ai_analysis_requests', 'ai_usage_logs', 'approvals', 'audit_chain_heads', 'audit_logs', 'failed_jobs', 'jobs', 'organization_settings', 'organizations', 'security_findings', 'security_scans', 'security_test_results', 'security_test_runs', 'users', 'workflow_executions', 'workflow_revisions', 'workflow_tasks', 'workflows'];
 
 function publicTables(): array
 {
@@ -33,6 +33,14 @@ function prerequisitesExist(): array
     ];
 }
 
+// The steps that roll back through the named migration, counted from the latest: a new migration moves them all by one.
+function stepsBackThrough(string $migration): int
+{
+    $names = array_map('basename', glob(database_path('migrations/*.php')) ?: []);
+
+    return count(array_filter($names, fn (string $name) => strcmp($name, $migration) >= 0));
+}
+
 it('migrates up, rolls back completely and migrates up again', function () {
     $connection = ['--database' => TestDatabaseGuard::OWNER_CONNECTION, '--force' => true];
 
@@ -43,7 +51,7 @@ it('migrates up, rolls back completely and migrates up again', function () {
         ->and(prerequisitesExist())->toBe(['function' => 1, 'citext' => 1]);
 
     try {
-        expect(Artisan::call('migrate:rollback', $connection + ['--step' => 10]))->toBe(0)
+        expect(Artisan::call('migrate:rollback', $connection + ['--step' => stepsBackThrough('2026_11_04_000001')]))->toBe(0)
             ->and(publicTables())->toBe([])
             ->and(prerequisitesExist())->toBe(['function' => 0, 'citext' => 0]);
     } finally {
@@ -63,7 +71,7 @@ it('AUDIT-MIG-01: rolling back only the chain step restores the step 1-1 privile
     resetWorkflowTables();
 
     try {
-        expect(Artisan::call('migrate:rollback', $connection + ['--step' => 5]))->toBe(0)
+        expect(Artisan::call('migrate:rollback', $connection + ['--step' => stepsBackThrough('2026_11_04_000006')]))->toBe(0)
             ->and(publicTables())->toBe(['audit_logs', 'organization_settings', 'organizations', 'users'])
             ->and(ownerDb()->selectOne("SELECT count(*) AS n FROM pg_proc WHERE proname LIKE 'audit\\_%'")->n)->toBe(0)
             ->and(appDb()->selectOne("SELECT has_column_privilege(current_user, 'audit_logs', 'event_id', 'INSERT') AS granted")->granted)->toBeTrue();
@@ -83,7 +91,7 @@ it('AUDIT-MIG-01: refuses to run in either direction while audit_logs has rows',
     appendAudit();
 
     try {
-        expect(fn () => Artisan::call('migrate:rollback', $connection + ['--step' => 5]))
+        expect(fn () => Artisan::call('migrate:rollback', $connection + ['--step' => stepsBackThrough('2026_11_04_000006')]))
             ->toThrow(RuntimeException::class, 'audit_logs has rows')
             ->and(publicTables())->toBe(STEP_1_3_TABLES);
     } finally {
@@ -102,7 +110,7 @@ it('refuses to restore NOT NULL while a workflow has no stored input', function 
     workflowOf($creator, ['source_input_masked' => null]);
 
     try {
-        expect(fn () => Artisan::call('migrate:rollback', $connection + ['--step' => 3]))
+        expect(fn () => Artisan::call('migrate:rollback', $connection + ['--step' => stepsBackThrough('2026_11_06_000002')]))
             ->toThrow(RuntimeException::class, 'no stored input')
             ->and(publicTables())->toBe(STEP_1_6_TABLES);
     } finally {
@@ -122,9 +130,10 @@ it('refuses to drop the workflow tables while a revision exists, and keeps them 
 
     try {
         // The step before this one had no scans, so an unscanned revision is the row it can have.
-        Artisan::call('migrate:rollback', $connection + ['--step' => 2]);
+        Artisan::call('migrate:rollback', $connection + ['--step' => stepsBackThrough('2026_11_06_000003')]);
         insertRevision(appDb(), $workflow, ['scan_id' => null]);
 
+        // From the step 1-6 state: its own step, then the workflow step refuses.
         expect(fn () => Artisan::call('migrate:rollback', $connection + ['--step' => 2]))
             ->toThrow(RuntimeException::class, 'workflow_revisions has rows')
             ->and(publicTables())->toBe(STEP_1_5_TABLES);
@@ -149,7 +158,7 @@ it('rolls the workflow step back completely, including the key added to users', 
     expect($objects())->toBe(['functions' => 2, 'users_key' => 1]);
 
     try {
-        expect(Artisan::call('migrate:rollback', $connection + ['--step' => 4]))->toBe(0)
+        expect(Artisan::call('migrate:rollback', $connection + ['--step' => stepsBackThrough('2026_11_06_000001')]))->toBe(0)
             ->and(publicTables())->toBe(STEP_1_3_TABLES)
             ->and($objects())->toBe(['functions' => 0, 'users_key' => 0]);
     } finally {
@@ -167,7 +176,7 @@ it('keeps rows from before step 2-3 as they are, and refuses new ones like them'
     $workflow = workflowOf($creator);
 
     try {
-        expect(Artisan::call('migrate:rollback', $connection + ['--step' => 2]))->toBe(0);
+        expect(Artisan::call('migrate:rollback', $connection + ['--step' => stepsBackThrough('2026_11_06_000003')]))->toBe(0);
         $revision = insertRevision(appDb(), $workflow, ['scan_id' => null]);
     } finally {
         $status = Artisan::call('migrate', $connection);
@@ -193,7 +202,7 @@ it('refuses to roll back while a scan exists, because the record would be lost',
     insertScan(appDb(), $creator->organization_id);
 
     try {
-        expect(fn () => Artisan::call('migrate:rollback', $connection + ['--step' => 2]))
+        expect(fn () => Artisan::call('migrate:rollback', $connection + ['--step' => stepsBackThrough('2026_11_06_000003')]))
             ->toThrow(RuntimeException::class, 'security_scans has rows')
             ->and(publicTables())->toBe(STEP_2_3_TABLES);
     } finally {

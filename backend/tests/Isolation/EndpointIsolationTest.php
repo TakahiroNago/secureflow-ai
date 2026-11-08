@@ -10,6 +10,7 @@ use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -37,6 +38,7 @@ const RESOURCE_ENDPOINTS = [
     ['GET', 'api/v1/workflows/{workflow}/executions'],
     ['PATCH', 'api/v1/security/findings/{finding}'],
     ['GET', 'api/v1/security/scans/{scan}'],
+    ['GET', 'api/v1/security/test-runs/{run}'],
 ];
 
 const VALID_TASK = [
@@ -50,6 +52,8 @@ function fullOrganization(): array
     $owner = userIn($org->id);
 
     $scan = insertScan(appDb(), $owner->organization_id, ['user_id' => $owner->id]);
+    $run = (string) Str::uuid7();
+    appDb()->table('security_test_runs')->insert(['id' => $run, 'organization_id' => $owner->organization_id, 'triggered_by' => $owner->id, 'status' => 'completed', 'created_at' => now()->toIso8601String(), 'updated_at' => now()->toIso8601String()]);
     $finding = insertFinding(appDb(), $owner->organization_id, $scan);
 
     $analysis = app(OrganizationContext::class)->run($org->id, function () use ($owner, $scan) {
@@ -69,12 +73,13 @@ function fullOrganization(): array
         'task' => (string) DB::table('workflow_tasks')->where('workflow_id', $workflow)->value('id'),
         'scan' => $scan,
         'finding' => $finding,
+        'run' => $run,
     ];
 }
 
 function requestFrom(TestCase $test, User $user, string $method, string $uri, array $target): TestResponse
 {
-    $path = '/'.strtr($uri, ['{analysis}' => $target['analysis'], '{workflow}' => $target['workflow'], '{task}' => $target['task'], '{scan}' => $target['scan'], '{finding}' => $target['finding']]);
+    $path = '/'.strtr($uri, ['{analysis}' => $target['analysis'], '{workflow}' => $target['workflow'], '{task}' => $target['task'], '{scan}' => $target['scan'], '{finding}' => $target['finding'], '{run}' => $target['run']]);
     $body = in_array($method, ['PUT', 'POST'], true) ? VALID_TASK : ($method === 'PATCH' ? ['title' => 'x'] : null);
 
     return loggedIn($test, $user, ip: '203.0.113.'.random_int(30, 250))->send($method, $path, $body, ['HTTP_IF_MATCH' => '"1"']);

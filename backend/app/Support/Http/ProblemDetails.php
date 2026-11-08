@@ -9,6 +9,7 @@ use App\Domain\Workflow\AiLimitExceededException;
 use App\Domain\Workflow\RiskAcknowledgementRequiredException;
 use App\Domain\Workflow\WorkflowConflictException;
 use App\Http\Resources\ScanStatus;
+use App\SelfTest\SelfTestConflictException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\QueryException;
@@ -87,6 +88,9 @@ final class ProblemDetails
                 409, $exception->problemCode, 'Conflict', $exception->detail,
             ),
             $exception instanceof FindingConflictException => self::response(
+                409, $exception->problemCode, 'Conflict', $exception->detail,
+            ),
+            $exception instanceof SelfTestConflictException => self::response(
                 409, $exception->problemCode, 'Conflict', $exception->detail,
             ),
             $exception instanceof RiskAcknowledgementRequiredException => self::response(

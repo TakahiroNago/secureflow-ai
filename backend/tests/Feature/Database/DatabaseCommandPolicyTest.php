@@ -93,7 +93,7 @@ it('allows rollback on the development side through the managed procedure', func
     );
 
     expect($result->successful())->toBeTrue()
-        ->and($result->output())->toContain('DROP TABLE ai_usage_logs')
+        ->and($result->output())->toContain('DROP TABLE security_test_runs')
         ->and(testTablesExist())->toBeTrue();
 });
 

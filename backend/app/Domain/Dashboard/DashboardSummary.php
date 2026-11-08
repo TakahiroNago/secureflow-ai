@@ -6,6 +6,7 @@ use App\Domain\Workflow\WorkflowStatus;
 use App\Models\AiAnalysisRequest;
 use App\Models\AiUsageLog;
 use App\Models\SecurityScan;
+use App\Models\SecurityTestRun;
 use App\Models\User;
 use App\Models\Workflow;
 use App\Models\WorkflowExecution;
@@ -49,8 +50,28 @@ final readonly class DashboardSummary
             'analyses_this_month' => $this->analysesThisMonth($user),
             'security' => $this->security($user),
             'ai_usage' => $this->aiUsage($user),
-            'self_test' => ['latest' => null, 'available_from_step' => '3-3'],
+            'self_test' => ['latest' => $this->latestSelfTest()],
             'recent_operations' => $this->recentOperations($user),
+        ];
+    }
+
+    /**
+     * The organization's latest run, whatever its state, for every role (docs/api-design.md §2). Null until one exists:
+     * that is "never run", which no count could say.
+     *
+     * @return array{id: string, status: string, total: int, passed: int, failed: int, finished_at: string|null}|null
+     */
+    private function latestSelfTest(): ?array
+    {
+        $run = SecurityTestRun::query()->orderByDesc('created_at')->orderByDesc('id')->first();
+
+        return $run === null ? null : [
+            'id' => $run->id,
+            'status' => $run->status,
+            'total' => $run->total,
+            'passed' => $run->passed,
+            'failed' => $run->failed,
+            'finished_at' => $run->finished_at?->toIso8601ZuluString(),
         ];
     }
 

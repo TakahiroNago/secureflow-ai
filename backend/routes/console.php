@@ -13,3 +13,4 @@ Artisan::command('inspire', function () {
 Schedule::call(fn () => Artisan::call('audit:housekeeping'))->name('audit:housekeeping')->everyMinute();
 Schedule::call(fn () => Artisan::call('analysis:recover'))->name('analysis:recover')->everyMinute();
 Schedule::call(fn () => Artisan::call('executions:reap-stale'))->name('executions:reap-stale')->everyMinute();
+Schedule::call(fn () => Artisan::call('selftest:recover'))->name('selftest:recover')->everyMinute();

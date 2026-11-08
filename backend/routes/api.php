@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\ExecutionController;
 use App\Http\Controllers\Api\V1\SecurityController;
 use App\Http\Controllers\Api\V1\SecurityFindingController;
 use App\Http\Controllers\Api\V1\SecurityScanController;
+use App\Http\Controllers\Api\V1\SecurityTestRunController;
 use App\Http\Controllers\Api\V1\SettingsController;
 use App\Http\Controllers\Api\V1\WorkflowController;
 use App\Http\Controllers\Api\V1\WorkflowTaskController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\HealthController;
 use App\Models\AuditLog;
 use App\Models\OrganizationSetting;
 use App\Models\SecurityFinding;
+use App\Models\SecurityTestRun;
 use App\Models\Workflow;
 use Illuminate\Support\Facades\Route;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
@@ -131,6 +133,17 @@ Route::prefix('v1')->middleware('json.body')->group(function (): void {
             Route::get('/security/scans/{scan}', [SecurityScanController::class, 'show'])
                 ->middleware('can:view,scan')
                 ->name('security.scans.show');
+
+            // docs/api-design.md §3.7, step 3-3. Everyone reads the results; an admin starts a run, a few times an hour.
+            Route::post('/security/test-runs', [SecurityTestRunController::class, 'store'])
+                ->middleware(['throttle:self-test-runs', 'can:create,'.SecurityTestRun::class])
+                ->name('security.test-runs.store');
+            Route::get('/security/test-runs', [SecurityTestRunController::class, 'index'])
+                ->middleware('can:viewAny,'.SecurityTestRun::class)
+                ->name('security.test-runs.index');
+            Route::get('/security/test-runs/{run}', [SecurityTestRunController::class, 'show'])
+                ->middleware('can:view,run')
+                ->name('security.test-runs.show');
 
             // docs/api-design.md §3.9. Admin only. No answer holds the key, and the provider cannot be set from here.
             Route::get('/settings/ai', [SettingsController::class, 'ai'])
