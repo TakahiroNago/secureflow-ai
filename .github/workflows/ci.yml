@@ -121,8 +121,9 @@ jobs:
       - name: Type check
         run: docker run --rm -u "$(id -u):$(id -g)" -v "$PWD/frontend":/app -w /app "$NODE_IMAGE" npm run typecheck
 
-      - name: Vitest
-        run: docker run --rm -u "$(id -u):$(id -g)" -v "$PWD/frontend":/app -w /app "$NODE_IMAGE" npm test
+      # docs/test-strategy.md §3: 70% of lines, enforced by the coverage thresholds in vite.config.ts (COV-02).
+      - name: Vitest with coverage
+        run: docker run --rm -u "$(id -u):$(id -g)" -v "$PWD/frontend":/app -w /app "$NODE_IMAGE" npm run test:coverage
 
       - name: Build
         run: docker run --rm -u "$(id -u):$(id -g)" -v "$PWD/frontend":/app -w /app "$NODE_IMAGE" npm run build
