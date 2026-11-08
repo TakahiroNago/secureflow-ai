@@ -17,6 +17,7 @@ use App\Http\Middleware\RequireJsonBody;
 use App\Http\Middleware\RequireStatefulFrontend;
 use App\Http\Middleware\SetOrganizationContext;
 use App\Http\Middleware\ThrottleUnauthenticated;
+use App\SelfTest\SelfTestConflictException;
 use App\Support\Http\PreconditionRequiredException;
 use App\Support\Http\ProblemDetails;
 use App\Support\Http\ServiceUnavailableException;
@@ -124,6 +125,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->dontReport(ServiceUnavailableException::class);
         $exceptions->dontReport(WorkflowConflictException::class);
         $exceptions->dontReport(FindingConflictException::class);
+        $exceptions->dontReport(SelfTestConflictException::class);
         $exceptions->dontReport(RiskAcknowledgementRequiredException::class);
         $exceptions->dontReport(IdempotencyKeyReusedException::class);
         $exceptions->dontReport(AiLimitExceededException::class);

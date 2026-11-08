@@ -17,7 +17,7 @@ const summary = (overrides = {}) => ({
   analyses_this_month: 5,
   security: { warnings: null, findings: null, available_from_step: '2-3' },
   ai_usage: { tokens: null, estimated_cost: null, available_from_step: '2-8' },
-  self_test: { latest: null, available_from_step: '3-3' },
+  self_test: { latest: null },
   recent_operations: [
     { id: 'a', event_type: 'workflow.updated', actor: { id: 'u', name: '操作した人' }, resource_type: 'workflow', resource_id: 'wf-1', result: 'success', occurred_at: '2026-11-06T07:00:00Z' },
     { id: 'b', event_type: 'auth.login', actor: { id: 'u', name: '操作した人' }, resource_type: null, resource_id: null, result: 'success', occurred_at: '2026-11-06T06:00:00Z' },
@@ -149,5 +149,27 @@ describe('dashboard', () => {
 
     expect(await screen.findByText('Example User（メンバー）・Example Org')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'ワークフロー' })).toHaveAttribute('href', '/workflows')
+  })
+})
+
+describe('the self-test tile', () => {
+  it('says never run, and then the latest result as a link to the security screen', async () => {
+    server(() => json({ data: summary() }))
+    render(<App />)
+    expect(await screen.findByText('未実施')).toBeInTheDocument()
+  })
+
+  it('shows the passed count, and failures in red', async () => {
+    server(() => json({ data: summary({ self_test: { latest: { id: 'r', status: 'completed', total: 25, passed: 24, failed: 1, finished_at: '2026-11-08T00:00:00Z' } } }) }))
+    render(<App />)
+    const link = await screen.findByRole('link', { name: '24 / 25 合格（1 件失敗）' })
+    expect(link).toHaveAttribute('href', '/security')
+    expect(link.parentElement).toHaveClass('text-red-700')
+  })
+
+  it('refuses a result of the wrong shape', async () => {
+    server(() => json({ data: summary({ self_test: { latest: { id: 'r', status: 'done', total: 1, passed: 1, failed: 0, finished_at: null } } }) }))
+    render(<App />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('処理に失敗しました')
   })
 })

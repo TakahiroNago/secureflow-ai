@@ -17,6 +17,7 @@ use App\Models\AiAnalysisRequest;
 use App\Models\OrganizationSetting;
 use App\Models\SecurityFinding;
 use App\Models\SecurityScan;
+use App\Models\SecurityTestRun;
 use App\Models\User;
 use App\Models\Workflow;
 use App\Policies\AnalysisPolicy;
@@ -24,6 +25,7 @@ use App\Policies\AuditLogPolicy;
 use App\Policies\OrganizationSettingPolicy;
 use App\Policies\SecurityFindingPolicy;
 use App\Policies\SecurityScanPolicy;
+use App\Policies\SecurityTestRunPolicy;
 use App\Policies\WorkflowPolicy;
 use App\Support\Database\DatabaseCommandPolicy;
 use App\Support\Database\SingleConnectPostgresConnection;
@@ -117,6 +119,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(SecurityFinding::class, SecurityFindingPolicy::class);
         Gate::policy(SecurityScan::class, SecurityScanPolicy::class);
         Gate::policy(OrganizationSetting::class, OrganizationSettingPolicy::class);
+        Gate::policy(SecurityTestRun::class, SecurityTestRunPolicy::class);
 
         // Cookie sessions only. There is no personal_access_tokens table, and a bearer token must
         // simply be unauthenticated rather than reach a query on a table that does not exist.
@@ -179,6 +182,15 @@ class AppServiceProvider extends ServiceProvider
 
             return $user instanceof User && in_array($user->role, AuditLogPolicy::ROLES, true)
                 ? Limit::perMinute(3)->by($user->organization_id)
+                : Limit::none();
+        });
+
+        // docs/api-design.md §1.4: a run is work for the worker. Per organization; a non-admin is refused anyway and uses none of it.
+        RateLimiter::for('self-test-runs', function (Request $request): Limit {
+            $user = $request->user();
+
+            return $user instanceof User && $user->role === 'admin'
+                ? Limit::perHour(3)->by($user->organization_id)
                 : Limit::none();
         });
 

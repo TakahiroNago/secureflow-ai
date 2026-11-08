@@ -1,7 +1,7 @@
 # SecureFlow AI — アーキテクチャ設計書
 
-- 版：v1.11（2026-11-07）
-- 状態：確定（v1.11：工程2-8 の実接続の条件を反映。v1.10：工程2-6 の実行ジョブと worker のキューを反映。v1.9：工程2-4 の出力検証とプロンプト構築を反映。v1.8：工程2-3 の入力検査の組み込みを反映。v1.7：工程1-6 のキューの方式、時間制限、停滞回収を反映。v1.6：環境変数を Compose からコンテナへ渡す条件を明記。v1.5：工程1-4 の AI の起動条件と再試行を反映。v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.12（2026-11-08）
+- 状態：確定（v1.12：工程3-3 の自己診断のキューを反映。v1.11：工程2-8 の実接続の条件を反映。v1.10：工程2-6 の実行ジョブと worker のキューを反映。v1.9：工程2-4 の出力検証とプロンプト構築を反映。v1.8：工程2-3 の入力検査の組み込みを反映。v1.7：工程1-6 のキューの方式、時間制限、停滞回収を反映。v1.6：環境変数を Compose からコンテナへ渡す条件を明記。v1.5：工程1-4 の AI の起動条件と再試行を反映。v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - 関連：[database-design.md](database-design.md) / [api-design.md](api-design.md) / [security-design.md](security-design.md) / [threat-model.md](threat-model.md) / [test-strategy.md](test-strategy.md) / [development-roadmap.md](development-roadmap.md)
 
 ---
@@ -237,7 +237,7 @@ Draft ──submit──▶ Pending ──approve──▶ Approved ──execut
 | RunSecuritySelfTestJob | `selftest` | なし | 同時に1件のみ | run を failed |
 | 停滞回収（scheduler、毎分） | — | — | — | heartbeatがタイムアウトした Running 実行・processing 分析を Failed 化し監査ログ（`executions:reap-stale`、`analysis:recover`） |
 
-**worker のキュー（工程2-6）：** 1つの worker が `--queue=ai,execution` を処理する。そのため、分析の処理中は実行が最大120秒ほど待つことがある。時間制限は `ExecuteWorkflowJob` 60秒 < `retry_after` 180秒 < 停滞回収 300秒である。
+**worker のキュー（工程2-6、工程3-3）：** 1つの worker が `--queue=ai,execution,selftest` を処理する。そのため、分析の処理中は実行が最大120秒ほど待つことがある。時間制限は `ExecuteWorkflowJob` 60秒 < `retry_after` 180秒 < 停滞回収 300秒である。`RunSecuritySelfTestJob` は 120 秒で、`selftest:recover` が running 300 秒超・queued 900 秒超を failed にする（組織ごとに同時 1 件）。
 
 ジョブには ID のみを渡す（本文をキューに載せない）。
 

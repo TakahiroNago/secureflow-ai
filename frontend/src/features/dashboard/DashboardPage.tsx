@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import { apiErrorMessage } from '../workflows/labels'
+import { runSummary } from '../security/SelfTestSection'
 import { fetchDashboard, type DashboardSummary } from './dashboardApi'
 import { StatusCounts } from './StatusCounts'
 
@@ -23,6 +24,20 @@ function Tile({ label, value }: { label: string; value: number | null }) {
       ) : (
         <dd className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{value}</dd>
       )}
+    </div>
+  )
+}
+
+/** The latest self-test as a sentence; "never run" is not a count (docs/api-design.md §3.2). */
+function SelfTestTile({ latest }: { latest: DashboardSummary['self_test']['latest'] }) {
+  const failed = latest !== null && (latest.status === 'failed' || latest.failed > 0)
+
+  return (
+    <div className={cardClass}>
+      <dt className="text-sm text-slate-500">自己診断</dt>
+      <dd className={`mt-1 text-sm font-medium ${latest === null ? 'text-slate-500' : failed ? 'text-red-700' : 'text-slate-900'}`}>
+        {latest === null ? '未実施' : <Link className="underline" to="/security">{runSummary(latest)}</Link>}
+      </dd>
     </div>
   )
 }
@@ -81,6 +96,7 @@ export function DashboardPage() {
             <Tile label="検出されたリスク" value={summary.data.security.findings} />
             <Tile label="AI トークン" value={summary.data.ai_usage.tokens} />
             <Tile label="AI 推定費用" value={summary.data.ai_usage.estimated_cost} />
+            <SelfTestTile latest={summary.data.self_test.latest} />
           </dl>
 
           <div className="grid gap-3 md:grid-cols-2">

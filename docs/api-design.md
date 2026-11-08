@@ -1,7 +1,7 @@
 # SecureFlow AI — API設計書
 
-- 版：v1.14（2026-11-07）
-- 状態：確定（v1.14：工程2-10 のセキュリティ管理と設定の API を反映。v1.13：工程2-9 の全体のレート制限とエラー形式の統一を反映。v1.12：工程2-8 の利用上限と利用状況を反映。v1.11：工程2-7 の監査ログの API を反映。v1.10：工程2-6 の実行の API を反映。v1.9：工程2-5 の提出、reopen、承認の API を反映。v1.8：工程2-4 の出力検証とプロンプト構築を反映。v1.7：工程2-3 の入力検査の組み込みを反映。v1.6：工程1-7 のダッシュボードを反映。v1.5：工程1-6 の分析とワークフローの API を反映。v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.15（2026-11-08）
+- 状態：確定（v1.15：工程3-3 の自己診断の API を反映。v1.14：工程2-10 のセキュリティ管理と設定の API を反映。v1.13：工程2-9 の全体のレート制限とエラー形式の統一を反映。v1.12：工程2-8 の利用上限と利用状況を反映。v1.11：工程2-7 の監査ログの API を反映。v1.10：工程2-6 の実行の API を反映。v1.9：工程2-5 の提出、reopen、承認の API を反映。v1.8：工程2-4 の出力検証とプロンプト構築を反映。v1.7：工程2-3 の入力検査の組み込みを反映。v1.6：工程1-7 のダッシュボードを反映。v1.5：工程1-6 の分析とワークフローの API を反映。v1.4：工程1-5 の認可の失敗の応答を反映。v1.3：工程1-3 の監査記録の失敗時の応答、検証APIの応答を反映。v1.2：工程1-2 の認証設計を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -199,7 +199,7 @@ IP 単位の制限は、NAT 配下など同じ送信元 IP を共有する利用
 | `analyses_this_month` | 今月（UTC）の分析の依頼数 |
 | `security` | 工程2-3 から実数を返す。`warnings` は全体判定が `warn` の検査の数、`findings` は検出の合計（`security_scans.findings_count`）。集計の範囲は他の項目と同じ（member は自分のみ）。**0 は「検出しなかった」ことのみを意味し、安全であることを意味しない** |
 | `ai_usage` | 工程2-8 から今月の `tokens` と `estimated_cost`（USD の推定値）を返す。範囲は他と同じ。モックはトークンを数えないため 0 となる |
-| `self_test` | 工程3-3 までは値を `null` で返し、`available_from_step` を付ける。**0 を返さない。**「0件」は実績がないことと区別できないため |
+| `self_test` | `latest` に組織の最新の自己診断（`id`、`status`、`total`、`passed`、`failed`、`finished_at`。状態を問わない）を返す（工程3-3）。実行がなければ `null`。**0 を返さない。**「0件」は実績がないことと区別できないため |
 | `recent_operations` | 最新10件。`auth.login`、`auth.logout`、`workflow.created`、`workflow.updated` のみ。member は自分の操作のみ。**IP アドレス、metadata、ハッシュを返さない。** システムチェーンを含まない |
 
 `ai-usage/summary`（工程2-8）：`period` は `day` または `month`（既定）。member は自分の分、admin / auditor は組織全体を返す。`requests`、`tokens`（`input`、`output`、`total`）、`estimated_cost_usd`（推定値）、`limits.user_daily_requests`（`used`、`limit`、`ratio`）、`limits.organization_monthly_tokens`（member には `null`）。上限で拒否した分は `requests` に数えない。
@@ -391,15 +391,15 @@ IP 単位の制限は、NAT 配下など同じ送信元 IP を共有する利用
 | GET | `/api/v1/security/findings?severity=&status=&category=&cursor=&limit=` | admin / auditor / member（自分の検査の検出のみ） | 検出一覧（工程2-10） |
 | PATCH | `/api/v1/security/findings/{id}` | admin | `{status, status_note}`。`finding.status_changed` を記録（工程2-10） |
 | GET | `/api/v1/security/scans/{id}` | admin / auditor / member（自分の検査のみ） | 検査と検出の詳細（工程2-10） |
-| POST | `/api/v1/security/test-runs` | admin | 自己診断開始。202 |
-| GET | `/api/v1/security/test-runs` / `/{id}` | 認証 | 結果一覧・詳細 |
+| POST | `/api/v1/security/test-runs` | admin | 自己診断を開始。202。実行中（queued / running）は 409 `SELF_TEST_RUNNING`。3回/時/組織（工程3-3） |
+| GET | `/api/v1/security/test-runs` / `/{id}` | 認証（全ロール） | 一覧（カーソル、結果なし）・詳細（結果と CI のみのケース）（工程3-3） |
 
 **工程2-10 の補足：**
 
 - `findings` の応答は `id`、`category`、`rule_id`、`severity`、`action`、`message`、`masked_excerpt`、`field`、`status`、`status_note`、`status_changed_by`（`id`、`name`）、`status_changed_at`、`created_at`、`scan`（`id`、`target_type`、`target_id`、`decision`、`block_reason`、`max_severity`、`created_at`）である。新しい順でカーソル方式（既定50件、最大100件）。member は自分の検査（`security_scans.user_id`）の検出のみを受け取る。未知の値と項目は 422。
 - `PATCH` の `status` は `open` / `acknowledged` / `resolved` / `false_positive`。遷移は [security-design.md §20](security-design.md) のとおりで、それ以外は 409 `INVALID_STATUS_TRANSITION`。`status_note`（任意、最大500文字）は承認のコメントと同じ検査を受け、マスク済みの文のみ保存する。秘密情報とインジェクションは 422 `INPUT_BLOCKED` で停止の記録を残す。メモのない変更は前のメモを消す。変更と `finding.status_changed` は同じトランザクションで記録し、記録できなければ 503。member と auditor は 403。
 - `scans/{id}` は検査の `id`、`target_type`、`target_id`、`user`、`ruleset_version`、`duration_ms`、`created_at` と、§3.3 の `scan` の形（`status`、`decision`、…、`limitations_notice`）を返す。`findings` の各項目には `id` と `status` が付く。admin と auditor は組織の検査を、member は自分の検査のみ参照でき、他人のものは 404。
-- `test-runs` は工程3-3 で実装する。
+- `test-runs`（工程3-3）：run は `id`、`status`（`queued` / `running` / `completed` / `failed`）、`total`、`passed`、`failed`、`ruleset_version`、`policy_version`、`error_code`（`SELF_TEST_FAILED` / `SELF_TEST_STALE`）、`triggered_by`、`created_at`、`started_at`、`finished_at`。詳細には `results`（`case_id`、`category`、`name`、`expected`、`actual`、`passed`、`duration_ms`、`details`。固定の文と符号のみ）と `ci_only_cases`（CI でのみ検証するケース）が付く。ケースの失敗は run の `completed`（`failed > 0`）で、run の `failed` は Runner 自体の異常のみ。開始と完了は `selftest.started`・`selftest.completed` に記録する（[security-design.md §21](security-design.md)）。
 
 ### 3.8 監査ログ
 

@@ -11,6 +11,7 @@ import {
   type FindingFilters,
   type FindingStatus,
 } from './securityApi'
+import { SelfTestSection } from './SelfTestSection'
 
 export const STATUS_LABELS: Record<FindingStatus, string> = {
   open: '未対応',
@@ -269,11 +270,7 @@ export function SecurityPage() {
         )}
       </div>
 
-      <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-slate-200">
-        <h3 className="text-sm font-medium text-slate-700">セキュリティテスト結果</h3>
-        {/* Not a zero and not "all passed": nothing has run yet (docs/development-roadmap.md 3-3). */}
-        <p className="mt-2 text-sm text-slate-500">未実装（アプリ内の自己診断は工程3-3 で追加されます）。HTTP レベルのテストは CI で実行しています。</p>
-      </div>
+      <SelfTestSection />
     </section>
   )
 }
