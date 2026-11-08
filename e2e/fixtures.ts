@@ -128,12 +128,19 @@ export async function analyseFromScreen(page: Page, request: string): Promise<st
  */
 export async function verifyChain(page: Page): Promise<void> {
   for (let attempt = 1; ; attempt++) {
-    await page.getByRole('button', { name: 'チェーンを検証' }).click()
-    const outcome = page.getByText('矛盾は見つかりませんでした', { exact: false }).or(page.getByRole('alert').filter({ hasText: '回数の上限に達しました' }))
-    await expect(outcome.first()).toBeVisible({ timeout: 15_000 })
-    if (await page.getByText('矛盾は見つかりませんでした', { exact: false }).isVisible()) return
+    // The answer itself, not the screen: the alert of a refused attempt stays until the next answer arrives.
+    const [response] = await Promise.all([
+      page.waitForResponse((r) => r.url().endsWith('/api/v1/audit-logs/verify'), { timeout: 30_000 }),
+      page.getByRole('button', { name: 'チェーンを検証' }).click(),
+    ])
+    if (response.status() !== 429) {
+      expect(response.status(), 'the verification answers').toBe(200)
+      await expect(page.getByText('矛盾は見つかりませんでした', { exact: false }), 'verifying finds nothing wrong').toBeVisible({ timeout: 15_000 })
+      return
+    }
     expect(attempt, 'the verification limit does not lift').toBeLessThan(5)
-    await page.waitForTimeout(21_000)
+    const retryAfter = Number(response.headers()['retry-after'] ?? '20')
+    await page.waitForTimeout((Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 20) * 1000 + 1000)
   }
 }
 
