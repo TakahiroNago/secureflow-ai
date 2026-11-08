@@ -45,7 +45,7 @@ migrate（owner ロール：マイグレーション専用・都度実行）
 backend/    Laravel API（app/, config/, routes/, tests/）
 frontend/   React + TypeScript + Vite + Tailwind CSS
 docker/     nginx / php / postgres の設定と初期化スクリプト
-scripts/    init-env.sh（.env 生成）、add-test-roles.sh（既存環境の更新）、verify-infra.sh（基盤検証）、check-published-ports.sh（公開ポート検査）、test-*.sh（検査の負のテストと認証の通し確認）、test-e2e.sh（`e2e/` の Playwright を実ブラウザで。使い捨ての環境でのみ）、test-audit-load.py（負荷と障害の測定。使い捨ての環境でのみ）、build-password-list.sh（漏洩パスワード辞書の再作成）
+scripts/    init-env.sh（.env 生成）、add-test-roles.sh（既存環境の更新）、verify-infra.sh（基盤検証）、check-published-ports.sh（公開ポート検査）、test-*.sh（検査の負のテストと認証の通し確認）、test-e2e.sh（`e2e/` の Playwright を実ブラウザで。使い捨ての環境でのみ）、evaluate-ai.sh（評価集合を実プロバイダで。使い捨ての環境でのみ）、test-audit-load.py（負荷と障害の測定。使い捨ての環境でのみ）、build-password-list.sh（漏洩パスワード辞書の再作成）
 docs/       要件定義・設計書
 .github/    GitHub Actions（CI）
 ```
@@ -228,7 +228,8 @@ docker compose run --rm test                                   # Pest
 docker compose run --rm test php vendor/bin/pest --group security   # セキュリティテストのみ（ST-01〜39）
 docker compose run --rm test php -d memory_limit=1G vendor/bin/pest --coverage --coverage-clover=coverage.xml
 python3 scripts/check-coverage.py backend/coverage.xml         # カバレッジの目標（docs/test-strategy.md §3）
-docker compose run --rm --no-deps test php artisan security:corpus-report   # 検出エンジンのコーパス評価
+docker compose run --rm --no-deps test php artisan security:corpus-report   # 検出エンジンのコーパス評価（英語の業務文は報告のみ）
+docker compose run --rm test php artisan ai:evaluate --mock                 # 評価集合をモックで（仕組みの確認。docs/test-strategy.md §34）
 docker compose run --rm --no-deps test php vendor/bin/pint --test
 docker compose run --rm --no-deps test php vendor/bin/phpstan analyse --memory-limit=1G
 
@@ -260,6 +261,7 @@ bash scripts/test-workflow-flow.sh      # 分析と編集の通し確認（実�
 SECUREFLOW_ALLOW_FAILURE_INJECTION=<プロジェクト名> bash scripts/test-worker-failure.sh
 SECUREFLOW_ALLOW_FAILURE_INJECTION=<プロジェクト名> bash scripts/test-ai-egress.sh           # worker の外部への経路（OpenAI のみ）
 SECUREFLOW_ALLOW_FAILURE_INJECTION=<プロジェクト名> bash scripts/test-execution-failure.sh   # 実行中の worker の強制終了（約10分）
+SECUREFLOW_ALLOW_FAILURE_INJECTION=<プロジェクト名> bash scripts/evaluate-ai.sh              # 評価集合を実プロバイダで（費用がかかる。.env に実プロバイダの設定が要る）
 ```
 
 静的解析と脆弱性スキャン（CI の `sast-sca` ジョブと同じ。Docker Hub からスキャナのイメージを取得します）：

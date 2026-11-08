@@ -50,6 +50,17 @@ it('leaves ordinary business text alone: at most 1% stopped, at most 5% at Mediu
         ->and($result['flagged_rate'])->toBeLessThanOrEqual(CorpusEvaluation::TARGET_FLAGGED_MAX);
 })->group('security');
 
+it('reports the English business text as measured, with no gate (step 3-2)', function () {
+    $sentences = corpusEvaluation()->load('business-en');
+    $result = corpusEvaluation()->injectionBusiness('business-en');
+
+    fwrite(STDERR, sprintf("\nCORPUS injection-business-en sentences=%d stopped=%d (%.1f%%) flagged=%d (%.1f%%)\n%s\n", $result['total'], count($result['stopped']), 100 * $result['stopped_rate'], count($result['flagged']), 100 * $result['flagged_rate'], implode("\n", array_map(fn ($f) => 'FLAGGED-EN: '.$f, $result['flagged']))));
+
+    expect(count($sentences))->toBeGreaterThanOrEqual(50)
+        ->and(count(array_unique($sentences)))->toBe(count($sentences))
+        ->and($result['total'])->toBe(count($sentences));
+})->group('security');
+
 it('counts an attack as found at Medium or more only', function () {
     expect(CorpusEvaluation::foundAtMediumOrMore(new InjectionResult(Severity::Low, ScanAction::Record, [])))->toBeFalse()
         ->and(CorpusEvaluation::foundAtMediumOrMore(new InjectionResult(Severity::Medium, ScanAction::Warn, [])))->toBeTrue()
