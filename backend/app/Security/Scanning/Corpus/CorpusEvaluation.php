@@ -72,15 +72,16 @@ final class CorpusEvaluation
     }
 
     /**
-     * What the injection rules do to ordinary business text.
+     * What the injection rules do to ordinary business text. The English set ('business-en', step 3-2) is written
+     * to measure what the Japanese one could not, and is reported only: it has no gate.
      *
      * @return array{total: int, stopped: list<string>, flagged: list<string>, stopped_rate: float, flagged_rate: float}
      */
-    public function injectionBusiness(): array
+    public function injectionBusiness(string $name = 'business'): array
     {
         $scanner = new InjectionScanner;
         $stopped = $flagged = [];
-        $sentences = array_map('strval', $this->load('business'));
+        $sentences = array_map('strval', $this->load($name));
 
         foreach ($sentences as $sentence) {
             $result = $scanner->scan($sentence);
@@ -139,10 +140,10 @@ final class CorpusEvaluation
      *
      * @return array{total: int, stopped: list<string>, flagged: list<string>, stopped_rate: float, flagged_rate: float}
      */
-    public function sensitiveBusiness(): array
+    public function sensitiveBusiness(string $name = 'business'): array
     {
         $stopped = $flagged = [];
-        $sentences = array_map('strval', $this->load('business'));
+        $sentences = array_map('strval', $this->load($name));
 
         foreach ($sentences as $sentence) {
             $result = (new SensitiveDataScanner)->scan($sentence);
@@ -159,7 +160,8 @@ final class CorpusEvaluation
     }
 
     /**
-     * Everything, with the targets and whether each gate is met. The hold-out has no gate: it is reported.
+     * Everything, with the targets and whether each gate is met. The hold-out and the English business set have no
+     * gate: they are reported.
      *
      * @return array<string, mixed>
      */
@@ -168,8 +170,10 @@ final class CorpusEvaluation
         $tuning = $this->injection('injection-tuning');
         $holdout = $this->injection('injection-holdout');
         $injectionBusiness = $this->injectionBusiness();
+        $injectionBusinessEn = $this->injectionBusiness('business-en');
         $sensitive = $this->sensitive();
         $sensitiveBusiness = $this->sensitiveBusiness();
+        $sensitiveBusinessEn = $this->sensitiveBusiness('business-en');
 
         return [
             'ruleset_version' => SensitiveDataScanner::RULESET_VERSION.'/'.((new InjectionScanner)->rulesetVersion() ?? 'unavailable'),
@@ -178,11 +182,15 @@ final class CorpusEvaluation
                 'holdout' => [...$holdout, 'target' => self::TARGET_INJECTION_FOUND, 'gate' => false, 'passed' => $holdout['rate'] >= self::TARGET_INJECTION_FOUND],
                 'business' => [...$injectionBusiness, 'stopped_max' => self::TARGET_STOPPED_MAX, 'flagged_max' => self::TARGET_FLAGGED_MAX, 'gate' => true,
                     'passed' => $injectionBusiness['stopped_rate'] <= self::TARGET_STOPPED_MAX && $injectionBusiness['flagged_rate'] <= self::TARGET_FLAGGED_MAX],
+                'business_en' => [...$injectionBusinessEn, 'stopped_max' => self::TARGET_STOPPED_MAX, 'flagged_max' => self::TARGET_FLAGGED_MAX, 'gate' => false,
+                    'passed' => $injectionBusinessEn['stopped_rate'] <= self::TARGET_STOPPED_MAX && $injectionBusinessEn['flagged_rate'] <= self::TARGET_FLAGGED_MAX],
             ],
             'sensitive' => [
                 'samples' => [...$sensitive, 'gate' => true, 'passed' => $sensitive['missed'] === [] && $sensitive['blocked'] === $sensitive['blockable']],
                 'business' => [...$sensitiveBusiness, 'stopped_max' => self::TARGET_STOPPED_MAX, 'flagged_max' => self::TARGET_FLAGGED_MAX, 'gate' => true,
                     'passed' => $sensitiveBusiness['stopped_rate'] <= self::TARGET_STOPPED_MAX && $sensitiveBusiness['flagged_rate'] <= self::TARGET_FLAGGED_MAX],
+                'business_en' => [...$sensitiveBusinessEn, 'stopped_max' => self::TARGET_STOPPED_MAX, 'flagged_max' => self::TARGET_FLAGGED_MAX, 'gate' => false,
+                    'passed' => $sensitiveBusinessEn['stopped_rate'] <= self::TARGET_STOPPED_MAX && $sensitiveBusinessEn['flagged_rate'] <= self::TARGET_FLAGGED_MAX],
             ],
         ];
     }

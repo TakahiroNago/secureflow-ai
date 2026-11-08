@@ -43,13 +43,15 @@ final class SecurityCorpusReportCommand extends Command
         $tuning = $report['injection']['tuning'];
         $holdout = $report['injection']['holdout'];
         $injectionBusiness = $report['injection']['business'];
+        $injectionBusinessEn = $report['injection']['business_en'];
         $sensitive = $report['sensitive']['samples'];
         $sensitiveBusiness = $report['sensitive']['business'];
+        $sensitiveBusinessEn = $report['sensitive']['business_en'];
 
         $lines = [
             '## Corpus evaluation ('.$report['ruleset_version'].')',
             '',
-            'The targets are on this corpus and say nothing about text that is not in it. The hold-out set was not used to tune the rules; its rate is what the rules do to new wording, and it is never counted as achieved by the tuning rate.',
+            'The targets are on this corpus and say nothing about text that is not in it. The hold-out set was not used to tune the rules; its rate is what the rules do to new wording, and it is never counted as achieved by the tuning rate. The English business set (step 3-2) is reported only: the rules were tuned on Japanese text.',
             '',
             '| Metric | Value | Target | Status |',
             '|---|---|---|---|',
@@ -57,10 +59,14 @@ final class SecurityCorpusReportCommand extends Command
             sprintf('| Injection found at Medium or more, **hold-out** | %d / %d (%s) | >= %s | %s |', $holdout['found'], $holdout['total'], $pct($holdout['rate']), $pct($holdout['target']), $mark($holdout['passed'], false)),
             sprintf('| Business text stopped by injection rules | %d / %d (%s) | <= %s | %s |', count($injectionBusiness['stopped']), $injectionBusiness['total'], $pct($injectionBusiness['stopped_rate']), $pct($injectionBusiness['stopped_max']), $mark($injectionBusiness['passed'], true)),
             sprintf('| Business text flagged Medium or more by injection rules | %d / %d (%s) | <= %s | %s |', count($injectionBusiness['flagged']), $injectionBusiness['total'], $pct($injectionBusiness['flagged_rate']), $pct($injectionBusiness['flagged_max']), $mark($injectionBusiness['passed'], true)),
+            sprintf('| **English** business text stopped by injection rules | %d / %d (%s) | <= %s | %s |', count($injectionBusinessEn['stopped']), $injectionBusinessEn['total'], $pct($injectionBusinessEn['stopped_rate']), $pct($injectionBusinessEn['stopped_max']), $mark($injectionBusinessEn['passed'], false)),
+            sprintf('| **English** business text flagged Medium or more by injection rules | %d / %d (%s) | <= %s | %s |', count($injectionBusinessEn['flagged']), $injectionBusinessEn['total'], $pct($injectionBusinessEn['flagged_rate']), $pct($injectionBusinessEn['flagged_max']), $mark($injectionBusinessEn['passed'], false)),
             sprintf('| Sensitive samples found by every rule named | %d missed of %d | 0 missed | %s |', count($sensitive['missed']), $sensitive['samples'], $mark($sensitive['passed'], true)),
             sprintf('| Secrets stopped | %d / %d | all | %s |', $sensitive['blocked'], $sensitive['blockable'], $mark($sensitive['passed'], true)),
             sprintf('| Business text stopped by sensitive-data rules | %d / %d (%s) | <= %s | %s |', count($sensitiveBusiness['stopped']), $sensitiveBusiness['total'], $pct($sensitiveBusiness['stopped_rate']), $pct($sensitiveBusiness['stopped_max']), $mark($sensitiveBusiness['passed'], true)),
             sprintf('| Business text with any sensitive-data detection | %d / %d (%s) | <= %s | %s |', count($sensitiveBusiness['flagged']), $sensitiveBusiness['total'], $pct($sensitiveBusiness['flagged_rate']), $pct($sensitiveBusiness['flagged_max']), $mark($sensitiveBusiness['passed'], true)),
+            sprintf('| **English** business text stopped by sensitive-data rules | %d / %d (%s) | <= %s | %s |', count($sensitiveBusinessEn['stopped']), $sensitiveBusinessEn['total'], $pct($sensitiveBusinessEn['stopped_rate']), $pct($sensitiveBusinessEn['stopped_max']), $mark($sensitiveBusinessEn['passed'], false)),
+            sprintf('| **English** business text with any sensitive-data detection | %d / %d (%s) | <= %s | %s |', count($sensitiveBusinessEn['flagged']), $sensitiveBusinessEn['total'], $pct($sensitiveBusinessEn['flagged_rate']), $pct($sensitiveBusinessEn['flagged_max']), $mark($sensitiveBusinessEn['passed'], false)),
             '',
         ];
 
@@ -77,7 +83,7 @@ final class SecurityCorpusReportCommand extends Command
             }
         }
 
-        foreach (['injection rules' => $injectionBusiness['flagged'], 'sensitive-data rules' => $sensitiveBusiness['flagged']] as $rules => $flagged) {
+        foreach (['injection rules' => $injectionBusiness['flagged'], 'sensitive-data rules' => $sensitiveBusiness['flagged'], 'injection rules (English)' => $injectionBusinessEn['flagged'], 'sensitive-data rules (English)' => $sensitiveBusinessEn['flagged']] as $rules => $flagged) {
             if ($flagged !== []) {
                 $lines[] = sprintf('<details><summary>Business text flagged by %s (%d)</summary>', $rules, count($flagged));
                 $lines[] = '';
