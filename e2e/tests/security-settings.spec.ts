@@ -1,4 +1,4 @@
-import { expect, login, logout, test } from '../fixtures'
+import { expect, login, logout, submitLogin, test } from '../fixtures'
 
 /*
 | E2E-05 (step 2-10 on the real stack): what the scans found is on the security screen, an admin changes its status
@@ -66,9 +66,7 @@ test('E2E-05: the security and settings screens, as an admin and a member', asyn
   await change.getByRole('button', { name: '変更' }).click()
   await expect(page.getByText('パスワードを変更しました。', { exact: false })).toBeVisible()
   await logout(page)
-  await page.getByLabel('メールアドレス').fill(users.extra.email)
-  await page.getByLabel('パスワード').fill(users.extra.password)
-  await page.getByRole('button', { name: 'ログイン' }).click()
-  await expect(page.getByRole('alert'), 'the old password is refused').toBeVisible()
+  expect(await submitLogin(page, users.extra), 'the old password is refused').toBe(401)
+  await expect(page.getByRole('alert')).toHaveText('メールアドレスまたはパスワードが正しくありません。')
   await login(page, { email: users.extra.email, password: next })
 })

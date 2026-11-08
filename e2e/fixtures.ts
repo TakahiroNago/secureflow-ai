@@ -78,12 +78,30 @@ export const test = base.extend<{ users: UserSet; watch: PageWatch }>({
 
 export { expect }
 
+/**
+ * Fills in and submits the login form that is on the screen, and returns the answer's status. The browsers of one
+ * run share an address, and the limit per address (30 logins a minute) is real: on its answer this waits what it
+ * says and submits again. A wrong password is not retried: the caller reads the screen.
+ */
+export async function submitLogin(page: Page, user: Credentials): Promise<number> {
+  for (let attempt = 1; ; attempt++) {
+    await page.getByLabel('メールアドレス').fill(user.email)
+    await page.getByLabel('パスワード').fill(user.password)
+    const [response] = await Promise.all([
+      page.waitForResponse((r) => r.url().endsWith('/api/v1/auth/login'), { timeout: 30_000 }),
+      page.getByRole('button', { name: 'ログイン' }).click(),
+    ])
+    if (response.status() !== 429) return response.status()
+    expect(attempt, 'the login limit does not lift').toBeLessThan(4)
+    const retryAfter = Number(response.headers()['retry-after'] ?? '30')
+    await page.waitForTimeout((Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 30) * 1000 + 1000)
+  }
+}
+
 export async function login(page: Page, user: Credentials): Promise<void> {
   await page.goto('/login')
   await page.getByRole('heading', { name: 'ログイン' }).waitFor()
-  await page.getByLabel('メールアドレス').fill(user.email)
-  await page.getByLabel('パスワード').fill(user.password)
-  await page.getByRole('button', { name: 'ログイン' }).click()
+  expect(await submitLogin(page, user), 'the login is accepted').toBe(200)
   await expect(page.getByRole('heading', { name: 'ダッシュボード' })).toBeVisible({ timeout: 15_000 })
 }
 

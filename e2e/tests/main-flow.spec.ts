@@ -1,4 +1,4 @@
-import { expect, test, verifyChain } from '../fixtures'
+import { expect, submitLogin, test, verifyChain } from '../fixtures'
 
 /*
 | E2E-01 (docs/test-strategy.md §10, §33): the scenario of requirement 9 in Chromium, Firefox and WebKit, on the
@@ -30,9 +30,7 @@ test('E2E-01: from the login to the audit log, as a member and then an admin', a
   await watch.screenshot(`login-${browser}.png`)
 
   watch.at('the login')
-  await page.getByLabel('メールアドレス').fill(users.member.email)
-  await page.getByLabel('パスワード').fill(users.member.password)
-  await page.getByRole('button', { name: 'ログイン' }).click()
+  expect(await submitLogin(page, users.member), 'the login is accepted').toBe(200)
   const dashboard = page.getByRole('heading', { name: 'ダッシュボード' })
   await expect(dashboard).toBeVisible({ timeout: 15_000 })
   // The reported failure of step 1-2: the welcome screen shows for a moment, then the login screen comes back.
@@ -116,9 +114,7 @@ test('E2E-01: from the login to the audit log, as a member and then an admin', a
 
   // The other person, deciding on what the first one sent.
   watch.at('the admin login')
-  await page.getByLabel('メールアドレス').fill(users.admin.email)
-  await page.getByLabel('パスワード').fill(users.admin.password)
-  await page.getByRole('button', { name: 'ログイン' }).click()
+  expect(await submitLogin(page, users.admin), 'the admin login is accepted').toBe(200)
   await page.getByRole('link', { name: '承認待ち' }).click()
   const item = page.locator(`a[href="${workflowPath}/approval"]`)
   await expect(item, 'the admin finds it in the list').toBeVisible()
