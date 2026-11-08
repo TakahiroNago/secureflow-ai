@@ -6,7 +6,7 @@ AI業務自動化・セキュリティ管理プラットフォーム（AI Automa
 
 AI が業務内容を分析・提案し、セキュリティレイヤーが処理内容と権限を検証し、重要な操作は人間の承認を経て実行する Web アプリケーションです。
 
-**現在の状態：Phase 3 の工程3-4 まで完了（残りは工程3-2 と 3-6）。** 認証、監査ログ（ハッシュチェーン）、業務内容の入力からワークフローの生成、編集、保存まで、入力と AI 出力の検査とマスキング、提出と承認・却下、承認された計画の模擬実行、監査ログの閲覧と検証、検出の一覧と対策状況、設定（AI の設定の参照、利用上限、パスワードの変更）、アプリ内のセキュリティ自己診断（セキュリティ管理画面から実行。26 ケース）、およびダッシュボードが動作します。AI は既定でモックです。`AI_PROVIDER=openai` は開発環境でのみ、条件を満たしたときに使えます（[security-design.md §6.1](docs/security-design.md)）。実行は模擬のみで、外部への操作は行いません。工程2-8 までは本番相当の環境では起動しません。
+**現在の状態：MVP 完成（Phase 0〜3 の全工程を完了。要件10 の 15 項目の根拠は [docs/mvp-completion.md](docs/mvp-completion.md)）。** 認証、監査ログ（ハッシュチェーン）、業務内容の入力からワークフローの生成、編集、保存まで、入力と AI 出力の検査とマスキング、提出と承認・却下、承認された計画の模擬実行、監査ログの閲覧と検証、検出の一覧と対策状況、設定（AI の設定の参照、利用上限、パスワードの変更）、アプリ内のセキュリティ自己診断（セキュリティ管理画面から実行。26 ケース）、およびダッシュボードが動作します。AI は既定でモックです。`AI_PROVIDER=openai` は開発環境でのみ、条件を満たしたときに使えます（[security-design.md §6.1](docs/security-design.md)）。実行は模擬のみで、外部への操作は行いません。公開環境への移行の前提条件（[security-design.md §22](docs/security-design.md)）を満たすまで、公開環境では起動しません。
 
 > **入力検査の検出は完全ではありません。機密情報や個人情報を入力しないでください。** 検出できない個人情報や秘密情報はそのまま保存されます。また、言い回しを変えた攻撃の多くは検出できません（[test-strategy.md §22](docs/test-strategy.md)）。
 
@@ -37,7 +37,7 @@ migrate（owner ロール：マイグレーション専用・都度実行）
 | L4 人間の承認 | 実行計画の SHA-256 ハッシュに紐付け。自己承認禁止 |
 | L5 実行時再検証 | 禁止操作の実行ハンドラはコード上に存在しない |
 
-詳細：[architecture](docs/architecture.md) / [database](docs/database-design.md) / [api](docs/api-design.md) / [security](docs/security-design.md) / [threat model](docs/threat-model.md) / [test strategy](docs/test-strategy.md) / [requirements](docs/requirements.md)
+詳細：[architecture](docs/architecture.md) / [database](docs/database-design.md) / [api](docs/api-design.md) / [security](docs/security-design.md) / [threat model](docs/threat-model.md) / [test strategy](docs/test-strategy.md) / [requirements](docs/requirements.md) / [mvp completion](docs/mvp-completion.md)
 
 ## ディレクトリ構成
 
@@ -52,7 +52,7 @@ docs/       要件定義・設計書
 
 ## 採用バージョン
 
-Phase 0 時点で実際に採用し、固定しているバージョンです。
+実際に採用し、固定しているバージョンです（MVP 完了時点の 2026-11-08 に lock ファイル・`compose.yaml`・CI の値と照合）。
 
 | 分類 | コンポーネント | バージョン | 固定箇所 |
 |---|---|---|---|
@@ -79,6 +79,8 @@ Phase 0 時点で実際に採用し、固定しているバージョンです。
 | CI | actions/checkout | v7.0.1（SHA 固定） | `.github/workflows/ci.yml` |
 | | gitleaks | 8.30.1（digest 固定） | 同上 |
 | | Trivy | 0.76.1（digest 固定） | 同上 |
+| | Semgrep | 1.183.0（digest 固定） | 同上 |
+| E2E | Playwright（`@playwright/test` と実行イメージ） | 1.56.1（イメージは digest 固定） | `e2e/package.json` / `scripts/test-e2e.sh` / CI |
 
 選定上の注意：
 
@@ -299,7 +301,7 @@ docker compose run --rm --no-deps frontend npm audit
 ## セキュリティ上の注意
 
 - **`.env` をコミットしない**（`.gitignore` 済み）。`.env.example` にはダミー値のみを置く。
-- OpenAI API キーは環境変数でのみ管理し、画面・API・ログで表示しません。実接続の条件は [security-design.md §6.1](docs/security-design.md) のとおりで、本番相当の環境では起動しません。
+- OpenAI API キーは環境変数でのみ管理し、画面・API・ログで表示しません。実接続の条件は [security-design.md §6.1](docs/security-design.md) のとおりで、公開環境への移行の前提条件（[security-design.md §22](docs/security-design.md)）を満たすまで公開環境では起動しません。
 - コミット前・push 前に秘密情報スキャン（gitleaks）を実施しています。
 - 脆弱性を見つけた場合は Issue に詳細を書かず、リポジトリ所有者に非公開で連絡してください。
 
