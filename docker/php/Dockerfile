@@ -48,3 +48,21 @@ RUN set -eux; \
     rm -rf /tmp/pear ~/.pearrc
 COPY docker/php/conf.d-dev/ /usr/local/etc/php/conf.d/
 USER app
+
+# Production target (compose.prod.yaml): the code is in the image, with no development dependency, no coverage driver
+# and no bind mount. Nothing in it reads a .env file: the caches are built from the environment at every start.
+FROM base AS prod
+USER root
+# fcgi: cgi-fcgi, with which the healthcheck reads php-fpm's status page (docker/php/healthcheck-prod.sh).
+RUN apk add --no-cache fcgi
+COPY docker/php/conf.d-prod/ /usr/local/etc/php/conf.d/
+COPY docker/php/php-fpm.d-prod/ /usr/local/etc/php-fpm.d/
+COPY --chmod=755 docker/php/entrypoint-prod.sh /usr/local/bin/secureflow-entrypoint
+COPY --chmod=755 docker/php/healthcheck-prod.sh /usr/local/bin/secureflow-healthcheck
+COPY --chown=app:app backend/ /var/www/html/
+USER app
+RUN set -eux; \
+    composer install --no-dev --prefer-dist --no-progress --no-interaction --optimize-autoloader; \
+    rm -rf /home/app/.composer/cache
+ENTRYPOINT ["secureflow-entrypoint"]
+CMD ["php-fpm", "--nodaemonize"]

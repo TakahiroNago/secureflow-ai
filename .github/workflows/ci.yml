@@ -197,6 +197,49 @@ jobs:
         if: always()
         run: docker compose down -v --remove-orphans
 
+  # The public environment stack, as compose.prod.yaml runs the images of the release workflow (docs/test-strategy.md §36).
+  prod-stack:
+    name: Production stack (compose.prod + test-prod-stack)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the production images
+        run: |
+          docker build --target prod -t secureflow-php:prod -f docker/php/Dockerfile .
+          docker build -t secureflow-web:prod -f docker/nginx/Dockerfile .
+
+      - name: Create CI-only .env (random throwaway secrets) with the production variables
+        run: |
+          bash scripts/init-env.sh
+          cat >> .env <<EOF
+          SECUREFLOW_PHP_IMAGE=secureflow-php:prod
+          SECUREFLOW_WEB_IMAGE=secureflow-web:prod
+          PUBLIC_HOST=localhost:8080
+          TRUSTED_PROXY_CIDR=127.0.0.1/32
+          EOF
+          sed -i -e 's/^COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=secureflow-prod-ci/' -e 's|^APP_URL=.*|APP_URL=http://localhost:8080|' -e 's/^APP_ENV=.*/APP_ENV=production/' .env
+
+      - name: Start the production stack
+        run: docker compose -f compose.prod.yaml up -d --wait
+
+      - name: Run migrations (owner role, migrate service)
+        run: docker compose -f compose.prod.yaml run --rm -T migrate
+
+      - name: The production stack as it will run (PROD-01 to PROD-06)
+        run: bash scripts/test-prod-stack.sh
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f compose.prod.yaml logs --no-color
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f compose.prod.yaml down -v --remove-orphans
+
   # The real screens in real browsers against the whole stack (docs/test-strategy.md §10, §33).
   e2e:
     name: E2E (Playwright)
@@ -335,12 +378,17 @@ jobs:
       - name: Build PHP image
         run: docker compose build app
 
-      # The PHP image and every pinned image compose uses, profiles included (SCA-01). Every image is scanned
-      # before the step fails, so one finding does not hide the others.
+      - name: Build the production images
+        run: |
+          docker build --target prod -t secureflow-php:prod -f docker/php/Dockerfile .
+          docker build -t secureflow-web:prod -f docker/nginx/Dockerfile .
+
+      # The PHP image, the two production images and every pinned image compose uses, profiles included (SCA-01).
+      # Every image is scanned before the step fails, so one finding does not hide the others.
       - name: Trivy images
         run: |
           failed=""
-          for image in $(docker compose --profile openai --profile tools config --images | sort -u); do
+          for image in $(docker compose --profile openai --profile tools config --images | sort -u) secureflow-php:prod secureflow-web:prod; do
             echo "::group::$image"
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy":/root/.cache/trivy \
               -v "$PWD/.trivyignore.yaml":/.trivyignore.yaml:ro "$TRIVY_IMAGE" \

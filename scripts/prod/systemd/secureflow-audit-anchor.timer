@@ -1,0 +1,10 @@
+[Unit]
+Description=SecureFlow AI audit chain verification and anchor, daily
+
+[Timer]
+OnCalendar=*-*-* 18:00:00 UTC
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

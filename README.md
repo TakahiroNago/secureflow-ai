@@ -6,7 +6,7 @@ AI業務自動化・セキュリティ管理プラットフォーム（AI Automa
 
 AI が業務内容を分析・提案し、セキュリティレイヤーが処理内容と権限を検証し、重要な操作は人間の承認を経て実行する Web アプリケーションです。
 
-**現在の状態：MVP 完成（Phase 0〜3 の全工程を完了。要件10 の 15 項目の根拠は [docs/mvp-completion.md](docs/mvp-completion.md)）。** 認証、監査ログ（ハッシュチェーン）、業務内容の入力からワークフローの生成、編集、保存まで、入力と AI 出力の検査とマスキング、提出と承認・却下、承認された計画の模擬実行、監査ログの閲覧と検証、検出の一覧と対策状況、設定（AI の設定の参照、利用上限、パスワードの変更）、アプリ内のセキュリティ自己診断（セキュリティ管理画面から実行。26 ケース）、およびダッシュボードが動作します。AI は既定でモックです。`AI_PROVIDER=openai` は開発環境でのみ、条件を満たしたときに使えます（[security-design.md §6.1](docs/security-design.md)）。実行は模擬のみで、外部への操作は行いません。公開環境への移行の前提条件（[security-design.md §22](docs/security-design.md)）を満たすまで、公開環境では起動しません。
+**現在の状態：MVP 完成（Phase 0〜3 の全工程を完了。要件10 の 15 項目の根拠は [docs/mvp-completion.md](docs/mvp-completion.md)）。** 認証、監査ログ（ハッシュチェーン）、業務内容の入力からワークフローの生成、編集、保存まで、入力と AI 出力の検査とマスキング、提出と承認・却下、承認された計画の模擬実行、監査ログの閲覧と検証、検出の一覧と対策状況、設定（AI の設定の参照、利用上限、パスワードの変更）、アプリ内のセキュリティ自己診断（セキュリティ管理画面から実行。26 ケース）、およびダッシュボードが動作します。AI は既定でモックです。`AI_PROVIDER=openai` は開発環境でのみ、条件を満たしたときに使えます（[security-design.md §6.1](docs/security-design.md)）。実行は模擬のみで、外部への操作は行いません。公開環境への移行の前提条件（[security-design.md §22](docs/security-design.md)）を満たすまで、公開環境では起動しません。**Phase 5（AWS デプロイと監視）を 2026-11-12 に着手し、工程5-1（本番用イメージ、`compose.prod.yaml`、配備スクリプト、CI）まで実装しています（[docs/operations.md](docs/operations.md)、[development-roadmap.md §8](docs/development-roadmap.md)）。**
 
 > **入力検査の検出は完全ではありません。機密情報や個人情報を入力しないでください。** 検出できない個人情報や秘密情報はそのまま保存されます。また、言い回しを変えた攻撃の多くは検出できません（[test-strategy.md §22](docs/test-strategy.md)）。
 
@@ -44,10 +44,11 @@ migrate（owner ロール：マイグレーション専用・都度実行）
 ```
 backend/    Laravel API（app/, config/, routes/, tests/）
 frontend/   React + TypeScript + Vite + Tailwind CSS
-docker/     nginx / php / postgres の設定と初期化スクリプト
-scripts/    init-env.sh（.env 生成）、add-test-roles.sh（既存環境の更新）、verify-infra.sh（基盤検証）、check-published-ports.sh（公開ポート検査）、test-*.sh（検査の負のテストと認証の通し確認）、test-e2e.sh（`e2e/` の Playwright を実ブラウザで。使い捨ての環境でのみ）、evaluate-ai.sh（評価集合を実プロバイダで。使い捨ての環境でのみ）、test-audit-load.py（負荷と障害の測定。使い捨ての環境でのみ）、build-password-list.sh（漏洩パスワード辞書の再作成）
-docs/       要件定義・設計書
-.github/    GitHub Actions（CI）
+docker/     nginx / php / postgres の設定と初期化スクリプト。本番用イメージ（php の prod ターゲット、nginx/Dockerfile、nginx/prod の HSTS と real_ip）
+scripts/    init-env.sh（.env 生成）、add-test-roles.sh（既存環境の更新）、verify-infra.sh（基盤検証）、check-published-ports.sh（公開ポート検査）、test-*.sh（検査の負のテストと認証の通し確認）、test-e2e.sh（`e2e/` の Playwright を実ブラウザで。使い捨ての環境でのみ）、evaluate-ai.sh（評価集合を実プロバイダで。使い捨ての環境でのみ）、test-audit-load.py（負荷と障害の測定。使い捨ての環境でのみ）、build-password-list.sh（漏洩パスワード辞書の再作成）、test-prod-stack.sh（本番の形のスタックの検査。使い捨ての環境でのみ）、prod/（公開環境のホストで使う配備・バックアップ・復元・監査アンカー・確認のスクリプトと systemd のタイマー）
+docs/       要件定義・設計書・運用手順（operations.md）
+.github/    GitHub Actions（CI と Release）
+compose.yaml       開発環境／ compose.prod.yaml  公開環境（CI がビルドしたイメージ、バインドマウントなし）
 ```
 
 ## 採用バージョン
@@ -180,6 +181,8 @@ docker compose exec app php artisan user:create \
 
 パスワードは対話入力のみです（12 文字以上、広く使われているパスワードは不可）。コマンドの引数では受け取りません。
 
+公開環境（`APP_ENV=production`）では `db:seed` を実行できないため（[database-design.md §4.5](docs/database-design.md)）、最初の組織は `php artisan organization:create --name='...'` で作ります（組織と既定の設定のみ。ユーザーは作りません）。
+
 SPA の Cookie 認証を許可するオリジンは `SANCTUM_STATEFUL_DOMAINS` で指定します（Compose が `NGINX_PORT` と `FRONTEND_PORT` から設定します）。
 
 ## ヘルスチェック
@@ -295,8 +298,24 @@ docker compose run --rm --no-deps frontend npm audit
 | frontend | ESLint、型チェック、Vitest（カバレッジ付き。行 70% 未満で失敗）、ビルド、npm audit |
 | stack | 全サービス起動、マイグレーション、`verify-infra.sh`、認証の通し確認、公開ポート検査と healthcheck の負のテスト |
 | e2e | 全サービス起動のうえ `scripts/test-e2e.sh`（`e2e/` の Playwright を Chromium / Firefox / WebKit で。画面の保存と失敗時のトレースは artifact `e2e-output`） |
+| prod-stack | 本番用の 2 つのイメージをビルドし、`compose.prod.yaml` で起動して `scripts/test-prod-stack.sh`（イメージの中身、HSTS、接続元 IP の信頼範囲、外への経路がないこと、php-fpm の設定、スタックの形） |
 
 ワークフローの権限は `contents: read` のみ。CI の `.env` は実行ごとに使い捨ての値を生成し、実際の AI API キーは使用しません。
+
+`.github/workflows/release.yml`（タグ `v*`）：本番用イメージをビルドし、Trivy で走査し、`compose.prod.yaml` で起動して同じ検査に合格した後に GHCR（`ghcr.io/takahironago/secureflow-ai/php` と `web`）へ push します（権限は `packages: write` を追加）。ダイジェストはジョブサマリに出ます。AWS の資格情報はどのワークフローにもありません。
+
+## 公開環境（Phase 5）
+
+公開環境は AWS（EC2 1 台 + `compose.prod.yaml`、ALB + ACM）で動かします。構成、ホストの配置、配備・戻し・バックアップ・復元・監査アンカーの手順は [docs/operations.md](docs/operations.md) にあります。開発環境との違いは [architecture.md §4.3](docs/architecture.md)、移行の前提条件の状態は [security-design.md §22](docs/security-design.md) を参照してください。本番の形のスタックを手元で起動して検査するには、使い捨ての環境（「複数環境の同時起動」）で次を実行します。
+
+```bash
+docker build --target prod -t secureflow-check-php:prod -f docker/php/Dockerfile .
+docker build -t secureflow-check-web:prod -f docker/nginx/Dockerfile .
+sed -i 's/^APP_ENV=.*/APP_ENV=production/' .env   # 本番相当の環境として起動する（AI はモックのまま）
+printf 'SECUREFLOW_PHP_IMAGE=secureflow-check-php:prod\nSECUREFLOW_WEB_IMAGE=secureflow-check-web:prod\nPUBLIC_HOST=localhost:18080\nTRUSTED_PROXY_CIDR=127.0.0.1/32\n' >> .env
+docker compose -f compose.prod.yaml up -d --wait && docker compose -f compose.prod.yaml run --rm migrate
+bash scripts/test-prod-stack.sh
+```
 
 ## セキュリティ上の注意
 
@@ -313,6 +332,7 @@ docker compose run --rm --no-deps frontend npm audit
 | `scripts/*.sh: Permission denied` | Windows 側のエディタで編集すると実行権限が外れることがある。`bash scripts/xxx.sh` で実行するか `chmod +x scripts/*.sh` |
 | `.env` の値を作り直したい | `docker compose down -v` で DB ボリュームを削除してから `.env` を削除し、`scripts/init-env.sh` を再実行（DB ロールのパスワードは初回起動時にのみ設定されるため） |
 | `docker` コマンドが WSL で見つからない | Docker Desktop の WSL integration で Ubuntu を有効にする |
+| イメージのビルドで `apk add` が `TLS: server certificate not trusted` で失敗する（`pecl`、`composer`、`npm` も同様） | ホストのウイルス対策ソフトが TLS を中継している。`dl-cdn.alpinelinux.org`、`pecl.php.net`、`repo.packagist.org`、`api.github.com`、`codeload.github.com`、`registry.npmjs.org` を Web シールドの例外に加える。証明書の検証を無効にしたり CA を追加したりしない |
 | Docker Desktop 再起動後に nginx が終了コード 127 で停止（`error mounting ".../docker-desktop-bind-mounts/..."`、`not a directory` または `no such file or directory`）／ API が 404 `File not found.` を返す／ `Could not open input file: artisan` | Docker Desktop（WSL2）の bind mount が起動直後に解決できず、マウント先が空になった状態。`app` は `unhealthy` に、`worker` / `scheduler` は `artisan` を開けず再起動を繰り返す（`docker compose ps` で確認する）。該当サービスだけを `docker compose up -d --no-deps --force-recreate <サービス名>` で作り直す（データは名前付きボリュームに残る） |
 
 ## ライセンス

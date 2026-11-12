@@ -1,0 +1,290 @@
+# SecureFlow AI — public environment stack (docs/architecture.md §4.3, docs/security-design.md §22).
+# compose.yaml is the development stack. This one runs the images that CI built, with no build and no bind mount:
+#
+#   docker compose --env-file /etc/secureflow/.env --env-file /etc/secureflow/images.env -f compose.prod.yaml up -d --wait
+#
+# What differs from compose.yaml:
+#   - app, worker, scheduler and migrate run SECUREFLOW_PHP_IMAGE (docker/php/Dockerfile, target prod): the code is in
+#     the image, there is no development dependency, and the caches are built at start from the environment.
+#   - nginx runs SECUREFLOW_WEB_IMAGE (docker/nginx/Dockerfile): the built SPA, HSTS, and the client address taken from
+#     X-Forwarded-For only on a connection from TRUSTED_PROXY_CIDR (the load balancer).
+#   - the "web" network is internal too, so app has no route out of the host (threat-model R-32). Only nginx is on
+#     "edge", which publishes port 80 on NGINX_BIND for the load balancer; the security group decides who may connect.
+#   - APP_DEBUG is false whatever .env says, and SANCTUM_STATEFUL_DOMAINS is PUBLIC_HOST alone.
+#   - no frontend (Vite) and no test service. migrate (profile "tools") and ai-egress (profile "openai") stay.
+#   - the app healthcheck also wants a free php-fpm worker (docker/php/healthcheck-prod.sh, §22 A-3).
+# scripts/test-compose-env.sh keeps the tuning variables and their defaults equal to compose.yaml's.
+#
+# Networks:
+#   data : postgres / redis + PHP services. internal.
+#   web  : nginx <-> php-fpm. internal.
+#   edge : nginx only. Publishes ${NGINX_BIND}:${NGINX_PORT}.
+#   ai-egress (profile "openai") : the relay's way out. Nothing else is on it.
+#
+# DB credentials: as in compose.yaml. app / worker / scheduler get the application role only; the owner role goes to
+# postgres (role creation on the first start) and to migrate alone. /etc/secureflow/.env is written from the parameter
+# store by scripts/prod/fetch-env.sh and is readable by root only.
+name: ${COMPOSE_PROJECT_NAME:-secureflow-prod}
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+# Runtime environment for Laravel. Owner-role credentials are deliberately absent.
+x-laravel-env: &laravel-env
+  APP_NAME: SecureFlowAI
+  APP_ENV: ${APP_ENV:-production}
+  APP_DEBUG: "false"
+  APP_KEY: ${APP_KEY:?}
+  APP_URL: ${APP_URL:?set APP_URL in .env (https followed by PUBLIC_HOST)}
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DB_CONNECTION: pgsql
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_DATABASE: ${DB_DATABASE:?set DB_DATABASE in .env}
+  DB_USERNAME: ${DB_USERNAME:?set DB_USERNAME in .env}
+  DB_PASSWORD: ${DB_PASSWORD:?}
+  REDIS_CLIENT: phpredis
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+  SESSION_DRIVER: redis
+  CACHE_STORE: redis
+  QUEUE_CONNECTION: database
+  # The mock until the real provider is re-evaluated for this environment (docs/security-design.md §22 A-5): the
+  # application refuses to start with "openai" here. The key is never written here.
+  AI_PROVIDER: ${AI_PROVIDER:-mock}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_MODEL: ${OPENAI_MODEL:-}
+  OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+  AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-30}
+  AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-2000}
+  # Tuning values. A variable that is not listed here never reaches Laravel, whatever .env says.
+  # The defaults repeat those in backend/config; scripts/test-compose-env.sh keeps them equal.
+  SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-30}
+  SESSION_ABSOLUTE_HOURS: ${SESSION_ABSOLUTE_HOURS:-12}
+  AUDIT_LOGIN_IP_LIMIT_PER_MINUTE: ${AUDIT_LOGIN_IP_LIMIT_PER_MINUTE:-30}
+  AUDIT_SYSTEM_CHAIN_LIMIT_PER_MINUTE: ${AUDIT_SYSTEM_CHAIN_LIMIT_PER_MINUTE:-600}
+  AUDIT_RECHECK_INTERVAL_SECONDS: ${AUDIT_RECHECK_INTERVAL_SECONDS:-30}
+  AUDIT_PROBE_MIN_INTERVAL_SECONDS: ${AUDIT_PROBE_MIN_INTERVAL_SECONDS:-5}
+  AUDIT_PREFLIGHT_TIMEOUT_MS: ${AUDIT_PREFLIGHT_TIMEOUT_MS:-1000}
+  LOG_AGGREGATION_INTERVAL_SECONDS: ${LOG_AGGREGATION_INTERVAL_SECONDS:-60}
+  PASSWORD_CHANGE_REPLAY_MINUTES: ${PASSWORD_CHANGE_REPLAY_MINUTES:-15}
+  PASSWORD_PENDING_REDIS_TIMEOUT_MS: ${PASSWORD_PENDING_REDIS_TIMEOUT_MS:-1000}
+  PASSWORD_PENDING_REDIS_READ_TIMEOUT_MS: ${PASSWORD_PENDING_REDIS_READ_TIMEOUT_MS:-900}
+  PASSWORD_PENDING_TTL_MARGIN_SECONDS: ${PASSWORD_PENDING_TTL_MARGIN_SECONDS:-300}
+  DB_UNAVAILABLE_TTL_SECONDS: ${DB_UNAVAILABLE_TTL_SECONDS:-30}
+  DB_CONNECT_TIMEOUT_SECONDS: ${DB_CONNECT_TIMEOUT_SECONDS:-2}
+  DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-5000}
+  DB_LOCK_TIMEOUT_MS: ${DB_LOCK_TIMEOUT_MS:-3000}
+  DB_IDLE_IN_TX_TIMEOUT_MS: ${DB_IDLE_IN_TX_TIMEOUT_MS:-30000}
+  DB_KEEPALIVES_IDLE: ${DB_KEEPALIVES_IDLE:-5}
+  DB_KEEPALIVES_INTERVAL: ${DB_KEEPALIVES_INTERVAL:-2}
+  DB_KEEPALIVES_COUNT: ${DB_KEEPALIVES_COUNT:-3}
+  DB_TCP_USER_TIMEOUT_MS: ${DB_TCP_USER_TIMEOUT_MS:-5000}
+  REDIS_TIMEOUT: ${REDIS_TIMEOUT:-2}
+  REDIS_READ_TIMEOUT: ${REDIS_READ_TIMEOUT:-2}
+  REDIS_MAX_RETRIES: ${REDIS_MAX_RETRIES:-3}
+  # The one public host:port pair for SPA cookie authentication; never a wildcard, never localhost.
+  SANCTUM_STATEFUL_DOMAINS: ${PUBLIC_HOST:?set PUBLIC_HOST in .env (the host of APP_URL, with its port if any)}
+
+x-php-service: &php-service
+  <<: *hardening
+  image: ${SECUREFLOW_PHP_IMAGE:?set SECUREFLOW_PHP_IMAGE in images.env (the image by digest)}
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  postgres:
+    <<: *hardening
+    image: postgres:18.6-alpine3.24
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: postgres
+      # consumed only by docker/postgres/initdb/01-roles.sh on first start
+      DB_DATABASE: ${DB_DATABASE:?set DB_DATABASE in .env}
+      DB_TEST_DATABASE: ${DB_TEST_DATABASE:?set DB_TEST_DATABASE in .env}
+      DB_USERNAME: ${DB_USERNAME:?set DB_USERNAME in .env}
+      DB_PASSWORD: ${DB_PASSWORD:?}
+      DB_MIGRATOR_USERNAME: ${DB_MIGRATOR_USERNAME:?set DB_MIGRATOR_USERNAME in .env}
+      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?}
+      DB_TEST_MIGRATOR_USERNAME: ${DB_TEST_MIGRATOR_USERNAME:-secureflow_test_owner}
+      DB_TEST_MIGRATOR_PASSWORD: ${DB_TEST_MIGRATOR_PASSWORD:-}
+      DB_TEST_USERNAME: ${DB_TEST_USERNAME:-secureflow_test_app}
+      DB_TEST_PASSWORD: ${DB_TEST_PASSWORD:-}
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./docker/postgres/initdb:/docker-entrypoint-initdb.d:ro
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres -h 127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    <<: *hardening
+    image: redis:8.10.3-alpine3.23
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+    # The password is written to a tmpfs config file instead of the command line,
+    # so it does not appear in `docker inspect` args or the process list.
+    command:
+      - sh
+      - -c
+      - |
+        umask 077
+        printf 'requirepass %s\nprotected-mode yes\nappendonly no\n' "$$REDIS_PASSWORD" > /run/redis/redis.conf
+        exec redis-server /run/redis/redis.conf
+    tmpfs:
+      - /run/redis:uid=999,gid=1000,mode=0700
+    user: "999:1000"
+    volumes:
+      - redisdata:/data
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    <<: *php-service
+    environment:
+      <<: *laravel-env
+    networks: [data, web]
+    healthcheck:
+      # Liveness, as in compose.yaml, plus a free php-fpm worker (docker/php/healthcheck-prod.sh). No DB or Redis
+      # access, and unhealthy restarts nothing: readiness is a separate endpoint (docs/architecture.md §4.2).
+      test: ["CMD", "secureflow-healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+      start_interval: 2s
+
+  worker:
+    <<: *php-service
+    environment:
+      <<: *laravel-env
+    # The time limit stays above AiGateway::worstCaseSeconds() and below retry_after (scripts/test-compose-env.sh).
+    command: ["php", "artisan", "queue:work", "database", "--queue=ai,execution,selftest", "--sleep=1", "--tries=1", "--timeout=120", "--max-time=3600"]
+    networks: [data]
+    healthcheck:
+      # Liveness: Laravel boots and PID 1 is the real worker. It does not look at the queue, so having no jobs
+      # to process never makes the container unhealthy.
+      test:
+        - CMD-SHELL
+        - >-
+          test -f /var/www/html/artisan
+          && test -f /var/www/html/bootstrap/app.php
+          && php /var/www/html/artisan --version > /dev/null
+          && tr '\0' ' ' < /proc/1/cmdline | grep -q 'artisan queue:work'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 2s
+
+  scheduler:
+    <<: *php-service
+    environment:
+      <<: *laravel-env
+    command: ["php", "artisan", "schedule:work"]
+    networks: [data]
+    healthcheck:
+      # Liveness: Laravel boots and PID 1 is the real scheduler. Having no scheduled command due never makes
+      # the container unhealthy.
+      test:
+        - CMD-SHELL
+        - >-
+          test -f /var/www/html/artisan
+          && test -f /var/www/html/bootstrap/app.php
+          && php /var/www/html/artisan --version > /dev/null
+          && tr '\0' ' ' < /proc/1/cmdline | grep -q 'artisan schedule:work'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 2s
+
+  nginx:
+    <<: *hardening
+    image: ${SECUREFLOW_WEB_IMAGE:?set SECUREFLOW_WEB_IMAGE in images.env (the image by digest)}
+    environment:
+      # Who may say who the client is (docker/nginx/prod/templates). The load balancer's subnets, nothing wider.
+      TRUSTED_PROXY_CIDR: ${TRUSTED_PROXY_CIDR:?set TRUSTED_PROXY_CIDR in .env (the load balancer's subnet)}
+    # The image runs as the nginx user (docker/nginx/Dockerfile); this lets it bind port 80, as for ai-egress.
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "0"
+    ports:
+      - "${NGINX_BIND:-127.0.0.1}:${NGINX_PORT:-8080}:80"
+    networks: [web, edge]
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/nginx-health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # The worker's only way out, to OpenAI only, and only with COMPOSE_PROFILES=openai. See docker/ai-egress/nginx.conf.
+  ai-egress:
+    <<: *hardening
+    image: nginx:1.30.6-alpine3.24
+    profiles: [openai]
+    user: "101:101"
+    read_only: true
+    cap_drop: [ALL]
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "0"
+    tmpfs:
+      - /tmp
+    volumes:
+      - ./docker/ai-egress/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      data:
+        aliases: [api.openai.com]
+      ai-egress: {}
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "443"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # ---- tools (run on demand; not started by `docker compose up`) -------------
+  # Migrations: the ONLY running service that receives the owner-role credentials (scripts/prod/deploy.sh runs it
+  # after the backup and before the services are replaced).
+  migrate:
+    <<: *php-service
+    profiles: [tools]
+    restart: "no"
+    environment:
+      <<: *laravel-env
+      # Never the real provider or its key here, whatever .env says.
+      AI_PROVIDER: mock
+      OPENAI_API_KEY: ""
+      DB_MIGRATOR_USERNAME: ${DB_MIGRATOR_USERNAME:?set DB_MIGRATOR_USERNAME in .env}
+      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?}
+    command: ["php", "artisan", "migrate", "--database=pgsql_migrator", "--force"]
+    networks: [data]
+
+networks:
+  data:
+    internal: true
+  web:
+    internal: true
+  edge:
+  ai-egress:
+
+volumes:
+  pgdata:
+  redisdata:

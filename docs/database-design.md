@@ -1,7 +1,7 @@
 # SecureFlow AI — データベース設計書
 
-- 版：v1.13（2026-11-08）
-- 状態：確定（v1.13：MVP 完了時点（工程3-6）。内容の変更なし。完成条件は [mvp-completion.md](mvp-completion.md)。v1.12：工程3-3 の自己診断のテーブルを反映。v1.11：工程2-8 の ai_usage_logs を反映。v1.10：工程2-4 の出力検証とプロンプト構築を反映。v1.9：工程2-3 の入力検査の組み込みを反映。v1.8：工程1-6 の分析の依頼とキューのテーブルを反映。v1.7：工程1-5 のワークフローのテーブルの判断を反映。v1.6：工程1-3 の監査ログハッシュチェーンを反映。v1.5：テスト専用 app ロールを追加。v1.4：テスト専用 owner ロールとコマンド制限を追加。v1.3：工程1-1 の設計レビューを反映。v1.2：列挙列の NOT NULL 方針を明記。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.14（2026-11-12）
+- 状態：確定（v1.14：工程5-1。§4.5 に本番相当の環境での最初の組織の作り方（organization:create）を追記。v1.13：MVP 完了時点（工程3-6）。内容の変更なし。完成条件は [mvp-completion.md](mvp-completion.md)。v1.12：工程3-3 の自己診断のテーブルを反映。v1.11：工程2-8 の ai_usage_logs を反映。v1.10：工程2-4 の出力検証とプロンプト構築を反映。v1.9：工程2-3 の入力検査の組み込みを反映。v1.8：工程1-6 の分析の依頼とキューのテーブルを反映。v1.7：工程1-5 のワークフローのテーブルの判断を反映。v1.6：工程1-3 の監査ログハッシュチェーンを反映。v1.5：テスト専用 app ロールを追加。v1.4：テスト専用 owner ロールとコマンド制限を追加。v1.3：工程1-1 の設計レビューを反映。v1.2：列挙列の NOT NULL 方針を明記。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - DBMS：PostgreSQL 18.6（インフラ要件。`compose.yaml` でタグを固定する）
 
 ---
@@ -556,7 +556,7 @@ Phase 0 では業務テーブルを作成しない（Laravel 雛形の既定マ�
 
 Laravel 13.39.0 の `DB::prohibitDestructiveCommands()` は `migrate:fresh`・`migrate:refresh`・`migrate:reset`・`db:wipe` に加えて `migrate:rollback` も禁止するため使用しない（実機で確認済み）。各コマンドクラスの `prohibit()` で個別に制御する。
 
-**`db:seed`・`schema:dump` の手順：** 実行前に `.env` の `COMPOSE_PROJECT_NAME` で対象を確認する。`db:seed` は `--class` で Seeder を指定する。`schema:dump` は `migrate` サービスで実行し、マイグレーションファイルを削除する `--prune` は使わない。
+**`db:seed`・`schema:dump` の手順：** 実行前に `.env` の `COMPOSE_PROJECT_NAME` で対象を確認する。本番相当の環境では `db:seed` を使えないため、最初の組織は `organization:create` で作る（工程5-1。Seeder と同じ行を書き、ユーザーは作らない。[operations.md §4.2](operations.md)）。`db:seed` は `--class` で Seeder を指定する。`schema:dump` は `migrate` サービスで実行し、マイグレーションファイルを削除する `--prune` は使わない。
 
 **開発用DBの rollback の手順：**
 

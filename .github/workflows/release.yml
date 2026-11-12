@@ -1,0 +1,111 @@
+name: Release
+
+# A tag v* on main becomes the two production images in GHCR (docs/operations.md, step 5-1):
+#   ghcr.io/<owner>/secureflow-ai/php:<tag>   docker/php/Dockerfile, target prod
+#   ghcr.io/<owner>/secureflow-ai/web:<tag>   docker/nginx/Dockerfile
+# They are built here, scanned with Trivy, started as compose.prod.yaml starts them and checked by
+# scripts/test-prod-stack.sh, and only then pushed. The digests are in the job summary: scripts/prod/deploy.sh pins them.
+# No AWS credential is used anywhere in this repository's workflows: the host pulls public images.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TRIVY_IMAGE: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+
+jobs:
+  release:
+    name: Build, scan, test and publish the production images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Image names
+        run: |
+          repo=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          tag=${GITHUB_REF_NAME}
+          echo "PHP_IMAGE=$repo/php:$tag" >> "$GITHUB_ENV"
+          echo "WEB_IMAGE=$repo/web:$tag" >> "$GITHUB_ENV"
+
+      - name: Build the production images
+        run: |
+          docker build --target prod -t "$PHP_IMAGE" -f docker/php/Dockerfile .
+          docker build -t "$WEB_IMAGE" -f docker/nginx/Dockerfile .
+
+      # Every image is scanned before the step fails, so one finding does not hide the others (SCA-01).
+      - name: Trivy images
+        run: |
+          failed=""
+          for image in "$PHP_IMAGE" "$WEB_IMAGE"; do
+            echo "::group::$image"
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy":/root/.cache/trivy \
+              -v "$PWD/.trivyignore.yaml":/.trivyignore.yaml:ro "$TRIVY_IMAGE" \
+              image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress --ignorefile /.trivyignore.yaml "$image" \
+              || failed="$failed $image"
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::HIGH or CRITICAL vulnerabilities with a fix in:$failed"
+            exit 1
+          fi
+
+      - name: Create CI-only .env (random throwaway secrets) with the production variables
+        run: |
+          bash scripts/init-env.sh
+          cat >> .env <<EOF
+          SECUREFLOW_PHP_IMAGE=$PHP_IMAGE
+          SECUREFLOW_WEB_IMAGE=$WEB_IMAGE
+          PUBLIC_HOST=localhost:8080
+          TRUSTED_PROXY_CIDR=127.0.0.1/32
+          EOF
+          sed -i -e 's/^COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=secureflow-release/' -e 's|^APP_URL=.*|APP_URL=http://localhost:8080|' -e 's/^APP_ENV=.*/APP_ENV=production/' .env
+
+      - name: Start the production stack
+        run: docker compose -f compose.prod.yaml up -d --wait
+
+      - name: Run migrations (owner role, migrate service)
+        run: docker compose -f compose.prod.yaml run --rm -T migrate
+
+      - name: The production stack as it will run (PROD-01 to PROD-06)
+        run: bash scripts/test-prod-stack.sh
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f compose.prod.yaml logs --no-color
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f compose.prod.yaml down -v --remove-orphans
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push
+        run: |
+          docker push "$PHP_IMAGE"
+          docker push "$WEB_IMAGE"
+          {
+            echo "## Images of $GITHUB_REF_NAME"
+            echo
+            echo '| image | digest |'
+            echo '|---|---|'
+            for image in "$PHP_IMAGE" "$WEB_IMAGE"; do
+              echo "| \`$image\` | \`$(docker image inspect --format '{{index .RepoDigests 0}}' "$image")\` |"
+            done
+            echo
+            echo "On the host: \`sudo bash /opt/secureflow/scripts/prod/deploy.sh $GITHUB_REF_NAME\` (docs/operations.md)."
+          } >> "$GITHUB_STEP_SUMMARY"
