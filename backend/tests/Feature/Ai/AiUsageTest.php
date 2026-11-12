@@ -288,8 +288,10 @@ it('sums the use by role: a member their own, an admin and an auditor the organi
 ]);
 
 it('takes the day or the month', function () {
-    // The middle of a month, whatever day this runs on.
-    $this->travelTo(now('UTC')->startOfMonth()->addDays(10)->addHours(3));
+    // The middle of a month, whatever day this runs on. Never in the past: a cookie that expired before the real
+    // clock (Symfony's Cookie::isCleared() uses time(), not the travelled time) would be dropped by the client.
+    $middle = now('UTC')->startOfMonth()->addDays(10)->addHours(3);
+    $this->travelTo($middle->isPast() ? $middle->addMonthNoOverflow() : $middle);
     usageRow(['organization_id' => $this->org->id, 'user_id' => $this->user->id, 'total_tokens' => 5]);
     usageRow(['organization_id' => $this->org->id, 'user_id' => $this->user->id, 'total_tokens' => 7, 'created_at' => now('UTC')->subDay()->toIso8601String()]);
     $client = loggedIn($this, $this->user);

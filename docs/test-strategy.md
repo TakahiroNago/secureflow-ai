@@ -1,7 +1,7 @@
 # SecureFlow AI — テスト戦略
 
-- 版：v1.24（2026-11-08）
-- 状態：確定（v1.24：工程3-6 の最終計測を §35 に追加。v1.23：工程3-2 の実 AI の評価と英語の業務文コーパスを追加。v1.22：工程3-4 の E2E を追加。v1.21：工程3-3 のテストを追加。v1.20：工程3-1・3-5 のテストと CI のジョブを反映。v1.19：工程2-10 のテストを追加。v1.18：工程2-9 のテストを追加。v1.17：工程2-8 のテストを追加。v1.16：工程2-7 のテストと検証 API の測定を追加。v1.15：工程2-6 のテストと worker の強制終了の結果を追加。v1.14：工程2-5 のテストを追加。v1.13：工程2-4 のテストと実測を追加。v1.12：工程2-3 の統合テストと実測を追加。v1.11：工程2-2 のインジェクション検出のテストと実測を追加。v1.10：工程2-1 の検出とマスキングのテストを追加。v1.9：工程1-7 のダッシュボードのテストを追加。v1.8：工程1-6 の分析とワークフロー API のテストを追加。v1.7：工程1-5 のワークフロー基盤のテストを追加。v1.6：AUDIT-LOAD-01 の測定結果を追加。v1.5：工程1-4 の AI 基盤のテストを追加。v1.4：工程1-3 の監査ログテストを追加。v1.3：工程1-2 の認証テストを追加。v1.2：工程1-1 の設計レビューと検査の修正を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.25（2026-11-12）
+- 状態：確定（v1.25：工程5-1 の公開環境スタックのテストを §36 に追加し、§11 に prod-stack と Release を追加。v1.24：工程3-6 の最終計測を §35 に追加。v1.23：工程3-2 の実 AI の評価と英語の業務文コーパスを追加。v1.22：工程3-4 の E2E を追加。v1.21：工程3-3 のテストを追加。v1.20：工程3-1・3-5 のテストと CI のジョブを反映。v1.19：工程2-10 のテストを追加。v1.18：工程2-9 のテストを追加。v1.17：工程2-8 のテストを追加。v1.16：工程2-7 のテストと検証 API の測定を追加。v1.15：工程2-6 のテストと worker の強制終了の結果を追加。v1.14：工程2-5 のテストを追加。v1.13：工程2-4 のテストと実測を追加。v1.12：工程2-3 の統合テストと実測を追加。v1.11：工程2-2 のインジェクション検出のテストと実測を追加。v1.10：工程2-1 の検出とマスキングのテストを追加。v1.9：工程1-7 のダッシュボードのテストを追加。v1.8：工程1-6 の分析とワークフロー API のテストを追加。v1.7：工程1-5 のワークフロー基盤のテストを追加。v1.6：AUDIT-LOAD-01 の測定結果を追加。v1.5：工程1-4 の AI 基盤のテストを追加。v1.4：工程1-3 の監査ログテストを追加。v1.3：工程1-2 の認証テストを追加。v1.2：工程1-1 の設計レビューと検査の修正を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -161,8 +161,10 @@ MockAiProvider はテスト設定（コンストラクタ引数）でのみ応�
 | stack | 全サービス起動、マイグレーション、`verify-infra.sh`、認証・分析の通し確認、nginx の応答、公開ポートと healthcheck の負のテスト |
 | sast-sca | Semgrep（独自ルールのみ。`.semgrep/secureflow.yml` と、ルール自体の負のテスト `scripts/test-semgrep-rules.sh`）、Trivy（fs：依存関係・Dockerfile・compose・秘密情報。image：PHP イメージと固定済みの全イメージ。HIGH 以上で修正版のあるものは失敗）。**工程3-5 から実施。** composer audit と npm audit は backend / frontend ジョブのまま |
 | e2e | Docker Compose 起動、マイグレーション、`scripts/test-e2e.sh`（`e2e/` の Playwright を Chromium、Firefox、WebKit で。画面の保存、報告、失敗のトレースを artifact に）。**工程3-4 から実施** |
+| prod-stack | 本番用の 2 つのイメージをビルドし、`compose.prod.yaml` で起動、マイグレーション、`scripts/test-prod-stack.sh`（PROD-01〜06。§36）。**工程5-1 から実施** |
+| Release（`release.yml`、タグ `v*`） | 本番用イメージのビルド、Trivy image、`compose.prod.yaml` での起動と `test-prod-stack.sh`、その後に GHCR へ push。ダイジェストをジョブサマリに出す。**工程5-1 から実施** |
 
-Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・ビルドを実施し、stack は工程1-2 で、security と sast-sca は工程3-1・3-5 で、e2e は工程3-4 で追加した（実ブラウザの段階は stack から e2e に移した）。
+Phase 0 では secret-scan と backend / frontend の Lint・型・テスト・ビルドを実施し、stack は工程1-2 で、security と sast-sca は工程3-1・3-5 で、e2e は工程3-4 で追加した（実ブラウザの段階は stack から e2e に移した）。prod-stack と Release は工程5-1 で追加し、sast-sca の Trivy image に本番用の 2 つのイメージを加えた。
 
 ## 12. Phase 0 基盤テスト
 
@@ -862,3 +864,24 @@ Redis の停止（`docker compose stop`）と凍結（`docker compose pause`）�
 ## 35. 工程3-6 の最終計測
 
 MVP 完成の判定（[mvp-completion.md](mvp-completion.md)）のため、2026-11-08 に隔離クローンで全テスト（Pest 全件と `security` グループ、コーパス評価、`ai:evaluate --mock`、Vitest とカバレッジ、ESLint・tsc・ビルド、Pint・Larastan、Semgrep とルールの負のテスト、Trivy fs、`verify-infra.sh`、E2E の 3 ブラウザと自己診断）を 1 回実行した。件数と結果は [mvp-completion.md §2](mvp-completion.md) に記録し、ここでは再掲しない。**テストの追加はない。** カバレッジの目標（§3）、コーパスの目標（§7）、自己診断（§32）、E2E（§33）はいずれも同日時点で満たしている。評価専用データの検出率と英語の業務文は報告のみのままである（§7、§34）。要件10 の 15 項目と各テストの対応は mvp-completion.md §3 の表にある。
+
+## 36. 工程5-1 の公開環境スタックのテスト
+
+公開環境は `compose.prod.yaml` と CI がビルドした 2 つのイメージで動く（[architecture.md §4.3](architecture.md)、[operations.md](operations.md)）。開発環境のテストはそのまま通し、これに加えて本番の形そのものを CI（`prod-stack` ジョブと `Release` ワークフロー）で起動して確かめる。`scripts/test-prod-stack.sh` は nginx を作り直し、ログインの制限を消費するため、使い捨ての環境でのみ動く。
+
+| ID | 対象 | 内容 |
+|---|---|---|
+| PROD-01 | イメージの中身 | 開発依存（Pest）、`tests/`、`.env` がない。設定・ルートのキャッシュが起動時に作られている。コードが root ではなく実行ユーザーの所有。PCOV がない。`opcache.validate_timestamps=0`。`APP_ENV` が production。web イメージに SPA があり、ソースがない |
+| PROD-02 | ヘッダ | ページ、liveness、API の応答、存在しないアセット、nginx 自身の 413 のすべてに HSTS と設計のヘッダ（CSP など）が付く。本番の `security-headers.conf` は開発版と HSTS の 1 行だけが違い、その値が `max-age=31536000; includeSubDomains` |
+| PROD-03 | 接続元 IP | `TRUSTED_PROXY_CIDR` からの接続では `X-Forwarded-For` が接続元になる（nginx の `/sanctum/` の制限が転送元ごとに数えられ、`auth.login_failed` の `audit_logs.ip_address` が転送元になる）。ヘッダがなければ接続そのものの IP。nginx を別の信頼範囲で作り直すと、同じヘッダが nginx でもアプリでも無視される |
+| PROD-04 | 外への経路 | `app` から 1.1.1.1:443 へ接続できず、`edge` にいる nginx からはできる（違いはネットワークであって、実行環境ではない）。`app` は DB に届く |
+| PROD-05 | §22 A-3 | php-fpm に `request_terminate_timeout=30s` と `pm.status_listen=127.0.0.1:9001` が効いている。healthcheck が通り、状態ページを読んでいる。状態ページは nginx 経由では見えない |
+| PROD-07 | 初回の組織と管理者 | 本番相当の環境で `db:seed` が拒否され、`organization:create` が組織と既定の設定を作り（同名は拒否）、`user:create` がパスワードを標準入力からのみ受けて admin を作り、その admin が nginx 経由でログインでき、`auth.login` が接続元の IP で記録される |
+| ORG-CMD-01 | `organization:create` | 組織と既定の設定（`OrganizationSetting::DEFAULTS`）を作り、ユーザーは作らない。同名、空、101 文字以上、制御文字を含む名前を拒否する |
+| PROD-06 | スタックの形 | コードのバインドマウントなし、`build` なし、`data` と `web` が internal、`edge` は internal でない、ポートを公開するのは nginx の 80 番のみ、`edge` にいるのは nginx のみ、`app` は `data` と `web`、`frontend`・`test` なし、`APP_DEBUG=false`、owner ロールは `postgres` と `migrate` のみ、readiness に依存する healthcheck なし、全コンテナ healthy |
+| AI-CONF-01（更新） | 起動時の設定検証 | `mock` は `local`・`testing`・`production` で起動する（Web と worker）。`openai` は `production` と未知の環境で拒否される。`AiProvider` の解決時も同じ |
+| CE（更新） | `scripts/test-compose-env.sh` | `compose.prod.yaml` も調整値と既定値、worker の制限、`migrate` のモック固定を満たす。`app` の変数の集合が開発環境と同じで、`APP_DEBUG` が常に false、`SANCTUM_STATEFUL_DOMAINS` が `PUBLIC_HOST` のみ、`frontend`・`test` がない |
+
+**運用側の検査（ホストで、読み取りのみ）：** `scripts/prod/check.sh`（PROD-C1〜C5：コンテナの health と配備したダイジェスト、nginx 経由の health と HSTS、公開ポートが nginx の 80 番だけ、`audit:status` と `audit:verify --all`、scheduler の一覧と worker のキュー）。`verify-infra.sh` は公開環境では使わない。
+
+**測定していないもの（工程5-3 で行う）：** 実際の ALB からの `X-Forwarded-For`、別の 2 つの接続元での IP 単位の制限、DB の実際の無応答での `request_terminate_timeout` と healthcheck、復元試験、アラートの実発報、本番用イメージでの負荷。`request_terminate_timeout` の枯渇時の動作（[security-design.md §16.5.6](security-design.md)）は、ここでは設定が効いていることのみを確認している。

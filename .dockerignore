@@ -1,0 +1,23 @@
+# SecureFlow AI — what never enters a build context, so it cannot end up in an image.
+# docker/php/Dockerfile (target prod) copies backend/, docker/nginx/Dockerfile copies frontend/.
+# The dev target copies nothing and is unaffected.
+.git
+.github
+.claude
+docs
+e2e
+infra
+scripts
+**/.env
+**/.env.*
+backend/vendor
+backend/node_modules
+backend/tests
+backend/storage/logs/*.log
+backend/bootstrap/cache/*.php
+backend/coverage.xml
+backend/.phpunit.cache
+backend/corpus-report.json
+frontend/node_modules
+frontend/dist
+frontend/coverage

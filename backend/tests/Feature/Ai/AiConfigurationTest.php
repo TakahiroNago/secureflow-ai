@@ -40,9 +40,8 @@ $bad = [
     'an unknown value' => [['APP_ENV' => 'local', 'AI_PROVIDER' => 'other']],
     'an empty value' => [['APP_ENV' => 'local', 'AI_PROVIDER' => '']],
     'a differently cased value' => [['APP_ENV' => 'local', 'AI_PROVIDER' => 'Mock']],
-    'the mock in production' => [['APP_ENV' => 'production', 'AI_PROVIDER' => 'mock']],
-    'the mock in staging' => [['APP_ENV' => 'staging', 'AI_PROVIDER' => 'mock']],
-    'the real provider in production' => [['APP_ENV' => 'production', 'AI_PROVIDER' => 'openai']],
+    'the real provider in production' => [[...REVIEWED_OPENAI, 'APP_ENV' => 'production']],
+    'the real provider in an unknown environment' => [[...REVIEWED_OPENAI, 'APP_ENV' => 'unknown']],
 ];
 
 it('AI-CONF-01: the web application refuses to start', function (array $environment) {
@@ -59,11 +58,19 @@ it('AI-CONF-01: the worker and the scheduler refuse to start', function (string 
         ->and($result->output().$result->errorOutput())->toContain('AI_PROVIDER');
 })->with(['queue:work sync --stop-when-empty', 'schedule:run'])->with($bad);
 
-it('AI-CONF-01: the web application starts with the mock in development and tests', function (string $environment) {
+// The public environment runs the mock until the real provider is re-evaluated (docs/security-design.md §22 A-5, step 5-1).
+it('AI-CONF-01: the web application starts with the mock in development, tests and production', function (string $environment) {
     $result = aiWebBoot(['APP_ENV' => $environment, 'AI_PROVIDER' => 'mock']);
 
     expect($result->output())->toContain('started');
-})->with(['local', 'testing']);
+})->with(['local', 'testing', 'production']);
+
+it('AI-CONF-01: the worker starts with the mock in production', function () {
+    $result = aiArtisan(['APP_ENV' => 'production', 'AI_PROVIDER' => 'mock'], 'queue:work', 'sync', '--stop-when-empty');
+
+    expect($result->output().$result->errorOutput())->not->toContain('AI_PROVIDER')
+        ->and($result->successful())->toBeTrue();
+});
 
 it('AI-CONF-01: the real provider starts when everything is as reviewed', function () {
     expect(aiWebBoot(REVIEWED_OPENAI)->output())->toContain('started');
@@ -100,7 +107,7 @@ it('AI-CONF-01: reaching a provider checks again, for whatever skipped the start
 
     expect(fn () => app(AiProvider::class))->toThrow(RuntimeException::class)
         ->and(fn () => app(AiGateway::class))->toThrow(RuntimeException::class);
-})->with([['openai', 'local'], ['other', 'local'], ['mock', 'production'], ['mock', 'unknown']]);
+})->with([['openai', 'local'], ['other', 'local'], ['openai', 'production'], ['openai', 'unknown']]);
 
 it('AI-CONF-01: a message does not repeat the configured value, which could be a misplaced secret', function () {
     expect(fn () => AiConfiguration::assertValid('sk-a-misplaced-secret', 'local'))

@@ -48,6 +48,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Sanctum\Sanctum;
 
@@ -129,9 +130,17 @@ class AppServiceProvider extends ServiceProvider
             app(AuditLogger::class)->transactionEnded();
         });
 
-        // $request->ip() does not trust X-Forwarded-For, because no proxy is configured as trusted.
-        // In the current setup every client through the published port has the same address, so the
-        // address limit works as a total for all users, not per user (docs/security-design.md §16.5.4).
+        // Behind the load balancer every request arrives over plain HTTP from nginx. Absolute URLs must still
+        // say https, as APP_URL does (docs/security-design.md §22 A-1).
+        if (str_starts_with(config()->string('app.url'), 'https://')) {
+            URL::forceScheme('https');
+        }
+
+        // $request->ip() does not trust X-Forwarded-For, because no proxy is configured as trusted (AUTH-RATE-01).
+        // In development every client through the published port has the same address, so the address limit works
+        // as a total for all users, not per user (docs/security-design.md §16.5.4). In the public environment nginx
+        // replaces the address with the load balancer's X-Forwarded-For before it reaches PHP, and only when the
+        // connection comes from the load balancer (docker/nginx/prod, docs/security-design.md §22 A-2).
         RateLimiter::for('login', function (Request $request): array {
             $email = $request->input('email');
             $ip = (string) $request->ip();

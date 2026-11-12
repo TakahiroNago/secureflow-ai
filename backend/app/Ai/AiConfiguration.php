@@ -9,9 +9,11 @@ use App\Support\Database\DatabaseCommandPolicy;
 use RuntimeException;
 
 /**
- * Which provider may run where (docs/architecture.md §11). The mock is for development and tests, and the real
- * provider needs its key, a reviewed model and the reviewed address. Production has no provider yet and refuses to start.
- * The configured value is not repeated in a message: a misplaced secret must not reach the logs.
+ * Which provider may run where (docs/architecture.md §11). The mock runs anywhere, the public environment included
+ * (docs/security-design.md §22, step 5-1). The real provider needs its key, a reviewed model and the reviewed address,
+ * and has been reviewed for development only: a production-equivalent environment refuses to start with it until the
+ * re-evaluation of §22 A-5 (step 5-5). The configured value is not repeated in a message: a misplaced secret must not
+ * reach the logs.
  */
 final class AiConfiguration
 {
@@ -27,12 +29,12 @@ final class AiConfiguration
             throw new RuntimeException('AI_PROVIDER has an unsupported value.');
         }
 
-        // Neither in a public environment yet. The real provider has been reviewed for development only (§6.1).
-        if (DatabaseCommandPolicy::isProductionEquivalent($environment)) {
-            throw new RuntimeException('AI_PROVIDER='.$provider.' is not allowed in this environment.');
-        }
-
         if ($provider === 'openai') {
+            // Reviewed for development only (§6.1 decision 4, §22 A-5). Anything not known to be safe counts as production.
+            if (DatabaseCommandPolicy::isProductionEquivalent($environment)) {
+                throw new RuntimeException('AI_PROVIDER=openai is not allowed in this environment.');
+            }
+
             self::assertOpenAiConditions();
         }
     }

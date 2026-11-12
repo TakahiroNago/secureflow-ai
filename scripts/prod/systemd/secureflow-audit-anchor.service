@@ -1,0 +1,9 @@
+# SecureFlow AI — the daily verification and anchor of the audit chains (scripts/prod/audit-anchor.sh).
+[Unit]
+Description=SecureFlow AI audit chain verification and anchor
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /opt/secureflow/scripts/prod/audit-anchor.sh
