@@ -80,8 +80,16 @@ for compose_file in ('compose.yaml', 'compose.prod.yaml'):
 # The public environment (docs/architecture.md §4.3): the same application variables, a few fixed values, no dev service.
 prod = rendered({'APP_DEBUG': 'true'}, 'compose.prod.yaml')
 dev_keys = set(rendered({})['app']['environment'])
-if set(prod['app']['environment']) != dev_keys:
-    fails.append(f"compose.prod.yaml: app's variables differ from compose.yaml's: {sorted(set(prod['app']['environment']) ^ dev_keys)}")
+# The one addition of the public environment: JSON log lines for the CloudWatch filters (infra/aws/metric-filters.json).
+PROD_ONLY = {'LOG_STDERR_FORMATTER': 'Monolog\\Formatter\\JsonFormatter'}
+if set(prod['app']['environment']) - set(PROD_ONLY) != dev_keys:
+    fails.append(f"compose.prod.yaml: app's variables differ from compose.yaml's: {sorted((set(prod['app']['environment']) - set(PROD_ONLY)) ^ dev_keys)}")
+for name, value in PROD_ONLY.items():
+    for service in SERVICES:
+        if prod[service]['environment'].get(name) != value:
+            fails.append(f'compose.prod.yaml: {name} of {service} must be {value!r} whatever .env says')
+    if name in dev_keys:
+        fails.append(f'compose.yaml: {name} is for the public environment only (the development logs stay readable)')
 if prod['app']['environment'].get('APP_DEBUG') != 'false':
     fails.append('compose.prod.yaml: APP_DEBUG must be false whatever .env says')
 if prod['app']['environment'].get('SANCTUM_STATEFUL_DOMAINS') != PROD_EXTRA['PUBLIC_HOST']:

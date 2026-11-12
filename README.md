@@ -6,7 +6,7 @@ AI業務自動化・セキュリティ管理プラットフォーム（AI Automa
 
 AI が業務内容を分析・提案し、セキュリティレイヤーが処理内容と権限を検証し、重要な操作は人間の承認を経て実行する Web アプリケーションです。
 
-**現在の状態：MVP 完成（Phase 0〜3 の全工程を完了。要件10 の 15 項目の根拠は [docs/mvp-completion.md](docs/mvp-completion.md)）。** 認証、監査ログ（ハッシュチェーン）、業務内容の入力からワークフローの生成、編集、保存まで、入力と AI 出力の検査とマスキング、提出と承認・却下、承認された計画の模擬実行、監査ログの閲覧と検証、検出の一覧と対策状況、設定（AI の設定の参照、利用上限、パスワードの変更）、アプリ内のセキュリティ自己診断（セキュリティ管理画面から実行。26 ケース）、およびダッシュボードが動作します。AI は既定でモックです。`AI_PROVIDER=openai` は開発環境でのみ、条件を満たしたときに使えます（[security-design.md §6.1](docs/security-design.md)）。実行は模擬のみで、外部への操作は行いません。公開環境への移行の前提条件（[security-design.md §22](docs/security-design.md)）を満たすまで、公開環境では起動しません。**Phase 5（AWS デプロイと監視）を 2026-11-12 に着手し、工程5-1（本番用イメージ、`compose.prod.yaml`、配備スクリプト、CI）まで実装しています（[docs/operations.md](docs/operations.md)、[development-roadmap.md §8](docs/development-roadmap.md)）。**
+**現在の状態：MVP 完成（Phase 0〜3 の全工程を完了。要件10 の 15 項目の根拠は [docs/mvp-completion.md](docs/mvp-completion.md)）。** 認証、監査ログ（ハッシュチェーン）、業務内容の入力からワークフローの生成、編集、保存まで、入力と AI 出力の検査とマスキング、提出と承認・却下、承認された計画の模擬実行、監査ログの閲覧と検証、検出の一覧と対策状況、設定（AI の設定の参照、利用上限、パスワードの変更）、アプリ内のセキュリティ自己診断（セキュリティ管理画面から実行。26 ケース）、およびダッシュボードが動作します。AI は既定でモックです。`AI_PROVIDER=openai` は開発環境でのみ、条件を満たしたときに使えます（[security-design.md §6.1](docs/security-design.md)）。実行は模擬のみで、外部への操作は行いません。公開環境への移行の前提条件（[security-design.md §22](docs/security-design.md)）を満たすまで、公開環境では起動しません。**Phase 5（AWS デプロイと監視）を 2026-11-12 に着手し、工程5-2（本番用イメージと `compose.prod.yaml`、配備スクリプト、CI、`infra/aws/` の Terraform）まで実装しています（apply は運用者が行います）（[docs/operations.md](docs/operations.md)、[development-roadmap.md §8](docs/development-roadmap.md)）。**
 
 > **入力検査の検出は完全ではありません。機密情報や個人情報を入力しないでください。** 検出できない個人情報や秘密情報はそのまま保存されます。また、言い回しを変えた攻撃の多くは検出できません（[test-strategy.md §22](docs/test-strategy.md)）。
 
@@ -46,6 +46,7 @@ backend/    Laravel API（app/, config/, routes/, tests/）
 frontend/   React + TypeScript + Vite + Tailwind CSS
 docker/     nginx / php / postgres の設定と初期化スクリプト。本番用イメージ（php の prod ターゲット、nginx/Dockerfile、nginx/prod の HSTS と real_ip）
 scripts/    init-env.sh（.env 生成）、add-test-roles.sh（既存環境の更新）、verify-infra.sh（基盤検証）、check-published-ports.sh（公開ポート検査）、test-*.sh（検査の負のテストと認証の通し確認）、test-e2e.sh（`e2e/` の Playwright を実ブラウザで。使い捨ての環境でのみ）、evaluate-ai.sh（評価集合を実プロバイダで。使い捨ての環境でのみ）、test-audit-load.py（負荷と障害の測定。使い捨ての環境でのみ）、build-password-list.sh（漏洩パスワード辞書の再作成）、test-prod-stack.sh（本番の形のスタックの検査。使い捨ての環境でのみ）、prod/（公開環境のホストで使う配備・バックアップ・復元・監査アンカー・確認のスクリプトと systemd のタイマー）
+infra/aws/  Terraform（公開環境の基盤：VPC、ALB + ACM、EC2、S3、KMS、Parameter Store、CloudWatch、SNS、Budgets。運用者が apply。docs/operations.md §6）
 docs/       要件定義・設計書・運用手順（operations.md）
 .github/    GitHub Actions（CI と Release）
 compose.yaml       開発環境／ compose.prod.yaml  公開環境（CI がビルドしたイメージ、バインドマウントなし）
@@ -298,7 +299,8 @@ docker compose run --rm --no-deps frontend npm audit
 | frontend | ESLint、型チェック、Vitest（カバレッジ付き。行 70% 未満で失敗）、ビルド、npm audit |
 | stack | 全サービス起動、マイグレーション、`verify-infra.sh`、認証の通し確認、公開ポート検査と healthcheck の負のテスト |
 | e2e | 全サービス起動のうえ `scripts/test-e2e.sh`（`e2e/` の Playwright を Chromium / Firefox / WebKit で。画面の保存と失敗時のトレースは artifact `e2e-output`） |
-| prod-stack | 本番用の 2 つのイメージをビルドし、`compose.prod.yaml` で起動して `scripts/test-prod-stack.sh`（イメージの中身、HSTS、接続元 IP の信頼範囲、外への経路がないこと、php-fpm の設定、スタックの形） |
+| prod-stack | 本番用の 2 つのイメージをビルドし、`compose.prod.yaml` で起動して `scripts/test-prod-stack.sh`（イメージの中身、HSTS、接続元 IP の信頼範囲、外への経路がないこと、php-fpm の設定、スタックの形、初回の組織と管理者、ログの形式） |
+| infra | `infra/aws/` の `terraform fmt -check` と `validate`（資格情報なし。plan も apply もしない）、`scripts/check-metric-filters.py`（CloudWatch のフィルタの試料とコードの整合） |
 
 ワークフローの権限は `contents: read` のみ。CI の `.env` は実行ごとに使い捨ての値を生成し、実際の AI API キーは使用しません。
 
@@ -316,6 +318,8 @@ printf 'SECUREFLOW_PHP_IMAGE=secureflow-check-php:prod\nSECUREFLOW_WEB_IMAGE=sec
 docker compose -f compose.prod.yaml up -d --wait && docker compose -f compose.prod.yaml run --rm migrate
 bash scripts/test-prod-stack.sh
 ```
+
+基盤（VPC、ALB + ACM、EC2、S3、KMS、Parameter Store、CloudWatch、SNS、Budgets）は `infra/aws/` の Terraform で定義し、運用者が自分の端末で apply します（[docs/operations.md §6](docs/operations.md)）。秘密情報は `infra/aws/put-secrets.sh` が運用者の端末で生成して Parameter Store に登録し、Terraform の状態ファイルには入りません。CI は `terraform fmt` と `validate`、Trivy の設定走査のみを行い、AWS の資格情報を持ちません。
 
 ## セキュリティ上の注意
 

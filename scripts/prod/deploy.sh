@@ -6,7 +6,7 @@
 #
 # In order: the environment from the parameter store, the repository at the tag (compose file and scripts), the two
 # images pulled by tag and pinned by digest, a backup, the migrations with the owner role, the services replaced,
-# then scripts/prod/check.sh. Each step stops the deploy when it fails, and nothing is replaced before the migration
+# then scripts/prod/check.sh, and the timers of scripts/prod/systemd are installed and enabled. Each step stops the deploy when it fails, and nothing is replaced before the migration
 # succeeded. A rollback replaces the images with the previous digests and does not touch the database: migrations
 # are forward-only, and a restore (scripts/prod/restore.sh) is a separate decision.
 . "$(dirname "$0")/lib.sh"
@@ -27,14 +27,14 @@ if [ "$rollback" = true ]; then
   log "rolling back to $tag"
 fi
 
-log "1/7 the environment"
+log "1/8 the environment"
 bash "$SECUREFLOW_HOME/scripts/prod/fetch-env.sh" > /dev/null
 
-log "2/7 the repository at $tag"
+log "2/8 the repository at $tag"
 git -C "$SECUREFLOW_HOME" fetch --quiet --tags origin
 git -C "$SECUREFLOW_HOME" -c advice.detachedHead=false checkout --quiet "$tag"
 
-log "3/7 the images"
+log "3/8 the images"
 umask 077
 if [ "$rollback" = true ]; then
   php_image=$(sed -n 's/^SECUREFLOW_PHP_IMAGE=//p' "$SECUREFLOW_ETC/deployed.previous")
@@ -52,28 +52,33 @@ log "    php $php_image"
 log "    web $web_image"
 
 if [ -f "$SECUREFLOW_ETC/deployed" ]; then
-  log "4/7 a backup before anything changes"
+  log "4/8 a backup before anything changes"
   bash "$SECUREFLOW_HOME/scripts/prod/backup.sh" --label pre-deploy
 else
-  log "4/7 first deploy: nothing to back up yet"
+  log "4/8 first deploy: nothing to back up yet"
 fi
 
 mv "$IMAGES_FILE.next" "$IMAGES_FILE"
 if [ "$rollback" = true ]; then
-  log "5/7 rollback: the database is left as it is"
+  log "5/8 rollback: the database is left as it is"
 else
-  log "5/7 postgres and redis, then the migrations (owner role)"
+  log "5/8 postgres and redis, then the migrations (owner role)"
   compose up -d --wait postgres redis
   compose run --rm -T migrate
 fi
 
-log "6/7 the services"
+log "6/8 the services"
 compose up -d --wait --remove-orphans
 
 if [ -f "$SECUREFLOW_ETC/deployed" ] && [ "$rollback" = false ]; then cp "$SECUREFLOW_ETC/deployed" "$SECUREFLOW_ETC/deployed.previous"; fi
 printf 'TAG=%s\nSECUREFLOW_PHP_IMAGE=%s\nSECUREFLOW_WEB_IMAGE=%s\nDEPLOYED_AT=%s\n' "$tag" "$php_image" "$web_image" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$SECUREFLOW_ETC/deployed"
 
-log "7/7 the checks"
+log "7/8 the timers (scripts/prod/systemd)"
+install -m 644 "$SECUREFLOW_HOME"/scripts/prod/systemd/secureflow-*.service "$SECUREFLOW_HOME"/scripts/prod/systemd/secureflow-*.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now --quiet secureflow-backup.timer secureflow-audit-anchor.timer
+
+log "8/8 the checks"
 bash "$SECUREFLOW_HOME/scripts/prod/check.sh"
 docker image prune -f > /dev/null
 log "deployed $tag"

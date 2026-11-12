@@ -16,16 +16,16 @@ bucket=$(env_value BACKUP_BUCKET)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
+verify_rc=0
 newest=$(aws s3api list-objects-v2 --bucket "$bucket" --prefix audit-heads/ --query 'sort_by(Contents, &LastModified)[-1].Key' --output text 2> /dev/null || true)
 if [ -n "$newest" ] && [ "$newest" != None ]; then
   aws s3 cp --only-show-errors "s3://$bucket/$newest" "$work/anchor.jsonl"
   log "verifying against $newest"
-  compose exec -T app php artisan audit:verify --all --anchor=/dev/stdin < "$work/anchor.jsonl"
+  compose exec -T app php artisan audit:verify --all --anchor=/dev/stdin < "$work/anchor.jsonl" || verify_rc=$?
 else
   log "no anchor stored yet: verifying without one"
-  compose exec -T app php artisan audit:verify --all
+  compose exec -T app php artisan audit:verify --all || verify_rc=$?
 fi
-verify_rc=$?
 if [ "$verify_rc" -eq 0 ]; then put_metric AuditVerifyFailed 0; else log "audit:verify exited $verify_rc"; put_metric AuditVerifyFailed 1; fi
 
 stamp=$(date -u +%Y%m%dT%H%M%SZ)

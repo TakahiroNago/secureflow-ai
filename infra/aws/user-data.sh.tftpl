@@ -1,0 +1,93 @@
+#!/bin/bash
+# SecureFlow AI — the host's first boot (rendered by Terraform from infra/aws/ec2.tf; runs once, as root).
+# What it leaves behind: the data volume at /var/lib/docker, Docker with the awslogs driver, the AWS CLI, the
+# CloudWatch agent (disk and memory), the repository at /opt/secureflow, no SSH. The first deploy is the operator's
+# (docs/operations.md §4.2): scripts/prod/deploy.sh writes the environment and installs the timers.
+set -euxo pipefail
+exec > >(tee -a /var/log/secureflow-first-boot.log | logger -t secureflow-first-boot) 2>&1
+export DEBIAN_FRONTEND=noninteractive
+
+# 1. The data volume (attached by Terraform after the instance exists: wait for it). A volume that already carries a
+#    file system is reattached as it is; an empty one is formatted. Mounted before Docker is installed.
+#    The data disk is the one with no partition and nothing mounted; the root disk has both.
+data_disk=""
+for _ in $(seq 1 60); do
+  for disk in $(lsblk -dpno NAME,TYPE | awk '$2 == "disk" { print $1 }'); do
+    if [ "$(lsblk -no TYPE "$disk" | grep -c part)" -eq 0 ] && [ -z "$(lsblk -no MOUNTPOINTS "$disk" | tr -d '[:space:]')" ]; then
+      data_disk=$disk
+      break
+    fi
+  done
+  [ -n "$data_disk" ] && break
+  sleep 5
+done
+[ -n "$data_disk" ] || { echo "no data volume attached"; exit 1; }
+if [ -z "$(blkid -o value -s TYPE "$data_disk")" ]; then
+  mkfs.ext4 -q -L secureflow-data "$data_disk"
+fi
+mkdir -p /var/lib/docker
+grep -q 'LABEL=secureflow-data' /etc/fstab || echo 'LABEL=secureflow-data /var/lib/docker ext4 defaults,nofail 0 2' >> /etc/fstab
+mount /var/lib/docker
+chmod 710 /var/lib/docker
+
+# 2. Packages: Docker from its own repository, the AWS CLI and git from Ubuntu's, security updates by themselves.
+apt-get update
+apt-get install -y ca-certificates curl gnupg git awscli unattended-upgrades
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" > /etc/apt/sources.list.d/docker.list
+
+# The daemon's configuration before the daemon exists, so that the first start already logs to CloudWatch: one stream
+# per container name in the group, and a non-blocking buffer so that an unreachable CloudWatch never stalls a
+# container (lines beyond the buffer are dropped; the alarms on "no data" notice a dead pipeline).
+install -d -m 755 /etc/docker
+cat > /etc/docker/daemon.json <<'JSON'
+{
+  "log-driver": "awslogs",
+  "log-opts": {
+    "awslogs-region": "${region}",
+    "awslogs-group": "${log_group}",
+    "tag": "{{.Name}}",
+    "mode": "non-blocking",
+    "max-buffer-size": "16m"
+  },
+  "live-restore": true
+}
+JSON
+apt-get update
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+systemctl enable --now docker
+
+# 3. The CloudWatch agent: disk use of the two volumes and memory, by instance (the alarms of alarms.tf).
+curl -fsSL https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb -o /tmp/amazon-cloudwatch-agent.deb
+dpkg -i /tmp/amazon-cloudwatch-agent.deb
+rm -f /tmp/amazon-cloudwatch-agent.deb
+cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'JSON'
+{
+  "agent": { "metrics_collection_interval": 60, "run_as_user": "root" },
+  "metrics": {
+    "namespace": "CWAgent",
+    "append_dimensions": { "InstanceId": "$${aws:InstanceId}" },
+    "aggregation_dimensions": [["InstanceId"], ["InstanceId", "path"]],
+    "metrics_collected": {
+      "disk": { "resources": ["/", "/var/lib/docker"], "measurement": ["used_percent"], "drop_device": true },
+      "mem": { "measurement": ["used_percent"] }
+    }
+  }
+}
+JSON
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+# 4. Time from the instance's link-local service; no SSH daemon (Session Manager is the way in).
+install -d /etc/systemd/timesyncd.conf.d
+printf '[Time]\nNTP=169.254.169.123\n' > /etc/systemd/timesyncd.conf.d/aws.conf
+systemctl restart systemd-timesyncd
+systemctl disable --now ssh.service ssh.socket 2> /dev/null || true
+
+# 5. The repository and the places the scripts use (docs/operations.md §3). The deploy checks out the release tag.
+git clone --quiet "${repository_url}" /opt/secureflow
+install -d -m 700 /etc/secureflow /var/backups/secureflow
+
+echo "secureflow first boot done"

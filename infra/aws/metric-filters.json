@@ -1,0 +1,47 @@
+{
+  "_comment": "The log filters of logs.tf and the sample lines test-metric-filters.sh runs through CloudWatch's parser. A filter lists the samples it must match; it must match no other. The samples are what the application writes with LOG_STDERR_FORMATTER=Monolog\\Formatter\\JsonFormatter (compose.prod.yaml); scripts/test-prod-stack.sh PROD-08 checks the application still writes these fields.",
+  "samples": {
+    "gauge_ok": "{\"message\":\"audit.unavailable\",\"context\":{\"metric\":\"audit.unavailable\",\"value\":0,\"failure_class\":null,\"storage_scope\":null,\"outage_id\":null,\"duration_seconds\":null},\"level\":200,\"level_name\":\"INFO\",\"channel\":\"production\",\"datetime\":\"2026-11-12T00:00:00.000000+00:00\",\"extra\":{}}",
+    "gauge_unavailable": "{\"message\":\"audit.unavailable\",\"context\":{\"metric\":\"audit.unavailable\",\"value\":1,\"failure_class\":\"write\",\"storage_scope\":\"db_suspected\",\"outage_id\":\"01KA0000000000000000000000\",\"duration_seconds\":30},\"level\":200,\"level_name\":\"INFO\",\"channel\":\"production\",\"datetime\":\"2026-11-12T00:00:00.000000+00:00\",\"extra\":{}}",
+    "gauge_unknown": "{\"message\":\"audit.unavailable\",\"context\":{\"metric\":\"audit.unavailable\",\"value\":\"unknown\",\"exception\":\"RedisException\"},\"level\":500,\"level_name\":\"CRITICAL\",\"channel\":\"production\",\"datetime\":\"2026-11-12T00:00:00.000000+00:00\",\"extra\":{}}",
+    "outage_started": "{\"message\":\"db.outage_started\",\"context\":{\"metric\":\"db.outage_started\",\"instance\":\"a1b2c3\",\"sqlstate\":\"08006\",\"cause\":\"connection\",\"started_at\":1794450000},\"level\":500,\"level_name\":\"CRITICAL\",\"channel\":\"production\",\"datetime\":\"2026-11-12T00:00:00.000000+00:00\",\"extra\":{}}",
+    "outage_continuing": "{\"message\":\"audit.outage_continuing\",\"context\":{\"metric\":\"audit.outage_continuing\",\"instance\":\"a1b2c3\",\"cause\":\"write\",\"started_at\":1794450000,\"duration_seconds\":120,\"suppressed_count\":4},\"level\":500,\"level_name\":\"CRITICAL\",\"channel\":\"production\",\"datetime\":\"2026-11-12T00:00:00.000000+00:00\",\"extra\":{}}",
+    "write_failed": "{\"message\":\"audit.write_failed\",\"context\":{\"metric\":\"audit.write_failed\",\"instance\":\"a1b2c3\",\"event_type\":\"auth.login_failed\",\"outcome\":\"login_failed_unrecorded\",\"failure_class\":\"write\",\"chain\":\"system\",\"sqlstate\":\"42501\",\"cause\":\"permission\",\"exception\":\"Illuminate\\\\Database\\\\QueryException\",\"request_id\":\"r1\"},\"level\":500,\"level_name\":\"CRITICAL\",\"channel\":\"production\",\"datetime\":\"2026-11-12T00:00:00.000000+00:00\",\"extra\":{}}",
+    "usage_not_recorded": "{\"message\":\"ai.usage_not_recorded\",\"context\":{\"metric\":\"ai.usage_not_recorded\",\"status\":\"ok\",\"tokens\":120,\"exception\":\"RuntimeException\"},\"level\":500,\"level_name\":\"CRITICAL\",\"channel\":\"production\",\"datetime\":\"2026-11-12T00:00:00.000000+00:00\",\"extra\":{}}",
+    "canary_leak": "{\"message\":\"security.canary_leak\",\"context\":{\"metric\":\"security.canary_leak\",\"analysis_id\":\"01KA0000000000000000000001\"},\"level\":400,\"level_name\":\"ERROR\",\"channel\":\"production\",\"datetime\":\"2026-11-12T00:00:00.000000+00:00\",\"extra\":{}}",
+    "refusal_aggregated": "{\"message\":\"audit.refusal_aggregated\",\"context\":{\"metric\":\"audit.refusal_aggregated\",\"event_type\":\"authz.denied\",\"route\":\"api/v1/workflows\",\"count\":3},\"level\":200,\"level_name\":\"INFO\",\"channel\":\"production\",\"datetime\":\"2026-11-12T00:00:00.000000+00:00\",\"extra\":{}}",
+    "plain_error": "{\"message\":\"Something failed\",\"context\":{\"exception\":\"RuntimeException\"},\"level\":400,\"level_name\":\"ERROR\",\"channel\":\"production\",\"datetime\":\"2026-11-12T00:00:00.000000+00:00\",\"extra\":{}}",
+    "fpm_notice": "[12-Nov-2026 08:30:22] NOTICE: ready to handle connections",
+    "nginx_access": "10.0.0.5 - - [12/Nov/2026:08:30:22 +0000] \"GET /api/health/live HTTP/1.1\" 200 15 \"-\" \"ELB-HealthChecker/2.0\" \"-\""
+  },
+  "filters": {
+    "AuditUnavailable": {
+      "pattern": "{ ($.context.metric = \"audit.unavailable\") && (($.context.value = 1) || ($.context.value = \"unknown\")) }",
+      "matches": ["gauge_unavailable", "gauge_unknown"]
+    },
+    "AuditGauge": {
+      "pattern": "{ $.context.metric = \"audit.unavailable\" }",
+      "matches": ["gauge_ok", "gauge_unavailable", "gauge_unknown"]
+    },
+    "DbSuspected": {
+      "pattern": "{ $.context.storage_scope = \"db_suspected\" }",
+      "matches": ["gauge_unavailable"]
+    },
+    "OutageStarted": {
+      "pattern": "{ $.context.metric = %\\.outage_started$% }",
+      "matches": ["outage_started"]
+    },
+    "RecordingFailed": {
+      "pattern": "{ ($.context.metric = \"audit.write_failed\") || ($.context.metric = \"audit.events_suppressed_write_failed\") || ($.context.metric = \"audit.system_chain.suppressed\") || ($.context.metric = \"audit.system_chain.suppressed_total\") || ($.context.metric = \"audit.verification_failed\") || ($.context.metric = \"audit.state_update_failed\") || ($.context.metric = \"audit.recovery_check_conflict\") || ($.context.metric = \"security.canary_leak\") || ($.context.metric = \"auth.session_rotation_not_released\") || ($.context.metric = \"auth.old_session_not_removed\") || ($.context.metric = %_not_recorded$%) || ($.context.metric = %_unrecorded$%) }",
+      "matches": ["write_failed", "usage_not_recorded", "canary_leak"]
+    },
+    "LogCritical": {
+      "pattern": "{ $.level >= 500 }",
+      "matches": ["gauge_unknown", "outage_started", "outage_continuing", "write_failed", "usage_not_recorded"]
+    },
+    "LogError": {
+      "pattern": "{ $.level = 400 }",
+      "matches": ["canary_leak", "plain_error"]
+    }
+  }
+}

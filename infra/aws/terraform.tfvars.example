@@ -1,0 +1,16 @@
+# SecureFlow AI — copy to terraform.tfvars (ignored by git) and fill in. Everything else has a default (variables.tf).
+
+# The AWS CLI profile with administrator access that applies this (`aws configure --profile terraform`).
+aws_profile = "terraform"
+
+# The public host name: the certificate's name and the CNAME the operator creates at the DNS provider.
+public_host = "secureflow.example.com"
+
+# Where the alarms and the budget notifications go. Not in the repository.
+alert_email = "operator@example.com"
+
+# False on the first apply. True once the ACM validation CNAME exists (docs/operations.md §6.2).
+enable_https = false
+
+# instance_type      = "t3.small"
+# monthly_budget_usd = 60

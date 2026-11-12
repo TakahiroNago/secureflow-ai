@@ -43,3 +43,10 @@ desktop.ini
 
 # ---- E2E (Playwright) ----
 e2e/output/
+
+# ---- Terraform (infra/aws): the state and the operator's variables stay on their machine ----
+infra/aws/.terraform/
+*.tfstate
+*.tfstate.*
+infra/aws/terraform.tfvars
+infra/aws/*.auto.tfvars
