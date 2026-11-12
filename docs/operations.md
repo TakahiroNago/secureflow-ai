@@ -154,6 +154,7 @@ sudo bash /opt/secureflow/scripts/prod/check.sh
 ### 6.1 前提（運用者の端末）
 
 - AWS アカウント、管理者権限の IAM ユーザーとその CLI プロファイル（`aws configure --profile terraform`）、AWS CLI v2、Terraform 1.10 以上（CI は 1.17.1）、Session Manager プラグイン。
+- `put-secrets.sh` と `test-metric-filters.sh` は bash、python（3.x）、AWS CLI、openssl が要る。Windows では Git Bash から実行できる（`python` と `aws` が PATH にあればよい。引数のパス変換と `file://` の扱いはスクリプトが吸収する）。WSL から実行するなら WSL 側にも AWS CLI とプロファイルが要る。リージョンは両スクリプトの `--region`（既定 `ap-northeast-1`）で渡す（プロファイルに `region` がなくてもよい）。
 - ドメインの DNS（Cloudflare）に CNAME を追加できること。レコードは「DNS only」（プロキシなし）にする：プロキシを通すと接続元が Cloudflare になり、A-2 の前提が崩れる。
 - 資格情報はリポジトリにも CI にも置かない。状態ファイル（`infra/aws/*.tfstate`）と `terraform.tfvars` は gitignore 済み。状態ファイルには資源の識別子と `alert_email` が入り、秘密情報は入らない（`put-secrets.sh` が Terraform を通さずに登録する）。状態ファイルは端末の外に出さない。
 
