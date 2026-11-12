@@ -1,7 +1,7 @@
 # SecureFlow AI — アーキテクチャ設計書
 
-- 版：v1.14（2026-11-12）
-- 状態：確定（v1.14：工程5-1。公開環境のコンテナ構成 §4.3、その変数、§12 の構成の決定（EC2 + Compose）、D33〜D35 を反映。v1.13：MVP 完了時点（工程3-6）。内容の変更なし。完成条件は [mvp-completion.md](mvp-completion.md)、公開環境の前提は [security-design.md §22](security-design.md)。v1.12：工程3-3 の自己診断のキューを反映。v1.11：工程2-8 の実接続の条件を反映。v1.10：工程2-6 の実行ジョブと worker のキューを反映。v1.9：工程2-4 の出力検証とプロンプト構築を反映。v1.8：工程2-3 の入力検査の組み込みを反映。v1.7：工程1-6 のキューの方式、時間制限、停滞回収を反映。v1.6：環境変数を Compose からコンテナへ渡す条件を明記。v1.5：工程1-4 の AI の起動条件と再試行を反映。v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.15（2026-11-12）
+- 状態：確定（v1.15：工程5-2。§4.3 にログの形式と基盤、§5 に `infra/aws/`、§11 に `LOG_STDERR_FORMATTER`、§14 に D36 を追加。v1.14：工程5-1。公開環境のコンテナ構成 §4.3、その変数、§12 の構成の決定（EC2 + Compose）、D33〜D35 を反映。v1.13：MVP 完了時点（工程3-6）。内容の変更なし。完成条件は [mvp-completion.md](mvp-completion.md)、公開環境の前提は [security-design.md §22](security-design.md)。v1.12：工程3-3 の自己診断のキューを反映。v1.11：工程2-8 の実接続の条件を反映。v1.10：工程2-6 の実行ジョブと worker のキューを反映。v1.9：工程2-4 の出力検証とプロンプト構築を反映。v1.8：工程2-3 の入力検査の組み込みを反映。v1.7：工程1-6 のキューの方式、時間制限、停滞回収を反映。v1.6：環境変数を Compose からコンテナへ渡す条件を明記。v1.5：工程1-4 の AI の起動条件と再試行を反映。v1.4：工程1-3 の監査ログの判断を反映。v1.3：環境変数と工程1-2 の判断を反映。v1.2：owner 認証情報の範囲と healthcheck を反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 - 関連：[database-design.md](database-design.md) / [api-design.md](api-design.md) / [security-design.md](security-design.md) / [threat-model.md](threat-model.md) / [test-strategy.md](test-strategy.md) / [development-roadmap.md](development-roadmap.md)
 
 ---
@@ -100,7 +100,7 @@
 
 応答にはバージョン・ホスト名・接続先・接続文字列・エラー詳細・例外メッセージを含めない。通常の API エラーは RFC 9457 形式だが、ヘルスチェックはこの形式を維持し、監視側は HTTP ステータスコードと `status` で判定する。**liveness と readiness を混同しない：** readiness はトラフィックの制御のみ、liveness は再起動の判断のみに使い、readiness の 503 を理由にコンテナを自動で再起動しない。readiness は DB と Redis の到達性に加えて、ストレージの障害の疑い（`storage_scope=db_suspected`）でも 503 とする（[security-design.md §16.5.1](security-design.md)）。失敗の詳細はアプリケーションログにのみ記録する。Docker の healthcheck は nginx・app・worker・scheduler が liveness（DB・Redis に接続しない）、起動順序の制御には postgres・redis 自身の healthcheck を使う。app はソースの存在、php-fpm の応答、Laravel の起動を確認する。worker・scheduler はソースの存在、Laravel の起動、`queue:work` / `schedule:work` の実プロセスを確認し、処理するジョブがないだけでは unhealthy にしない。公開環境の app は、これに加えて php-fpm の状態ページ（`pm.status_listen`、別プロセスが応答する）で待ち行列が空であること、すなわち空きワーカーがあることを確認する（§4.3、[security-design.md §22 A-3](security-design.md)）。unhealthy でも自動で再起動しない。
 
-### 4.3 公開環境（Phase 5、工程5-1）
+### 4.3 公開環境（Phase 5、工程5-1・5-2）
 
 公開環境は `compose.prod.yaml` で動かす。開発環境との違いは、イメージを CI がビルドして GHCR に置き、コードをバインドマウントしないこと、`web` ネットワークも internal で `app` にホストの外への経路がないこと、nginx だけが `edge` ネットワークでホストの 80 番に出ることである。TLS は前段の ALB が終端する（[operations.md](operations.md)、[security-design.md §22](security-design.md)）。
 
@@ -115,6 +115,8 @@
 - `frontend`（Vite）と `test` はない。`APP_DEBUG` は `.env` の値に関わらず `false`、`SANCTUM_STATEFUL_DOMAINS` は `PUBLIC_HOST` のみ。
 - アプリはプロキシを信頼しない（`$request->ip()` は `REMOTE_ADDR`）。接続元の判定は nginx が一箇所で行い、`X-Forwarded-For` の信頼範囲は `TRUSTED_PROXY_CIDR` だけである。値がなければ nginx は起動しない。絶対 URL は `APP_URL` が https のとき https で生成する。
 - `scripts/test-prod-stack.sh`（CI の `prod-stack` ジョブ）がこの形を検査する（[test-strategy.md §36](test-strategy.md)）。
+- アプリのログは 1 行 1 JSON（`LOG_STDERR_FORMATTER=Monolog\Formatter\JsonFormatter`。開発環境は行形式のまま）。ホストの Docker デーモンが `awslogs` で CloudWatch Logs に送り、フィルタは `context.metric` などの項目で選ぶ（[operations.md §4.7](operations.md)、PROD-08）。
+- 基盤は `infra/aws/`（Terraform、工程5-2）：VPC とパブリックサブネット 2 つ、ALB + ACM、EC2 1 台（SSM のみ、IMDSv2 ホップ数 1、データ用ボリュームを `/var/lib/docker` に）、S3、KMS、Parameter Store、CloudWatch、SNS、Budgets（[operations.md §6](operations.md)、D36）。
 
 ## 5. ディレクトリ構成
 
@@ -145,6 +147,7 @@
 │  └─ src/ api/ components/ features/{auth,dashboard,workflows,approvals,security,audit,settings}/ routes/ lib/
 ├─ docker/  nginx/ php/ postgres/initdb/
 ├─ e2e/     Playwright
+├─ infra/aws/  Terraform（公開環境の基盤。運用者が apply）
 ├─ docs/
 └─ .github/workflows/
 ```
@@ -322,6 +325,7 @@ Draft ──submit──▶ Pending ──approve──▶ Approved ──execut
 | `OPENAI_MODEL` | 使用モデル名。確認済みの `gpt-6-luna` のみ（[security-design.md §6.1](security-design.md)） | 空 |
 | `OPENAI_BASE_URL` | 送信先の確認用。確認済みの値と一致しなければ起動しない。要求は定数を使う | `https://api.openai.com/v1` |
 | `AI_TIMEOUT_SECONDS` / `AI_MAX_OUTPUT_TOKENS` | 呼び出し制限 | 30 / 2000 |
+| `LOG_STDERR_FORMATTER` | stderr チャネルの整形。公開環境は `compose.prod.yaml` が `Monolog\Formatter\JsonFormatter` に固定する（CloudWatch のフィルタが項目で選ぶため。`.env` からは変えられない）。開発環境は未設定で行形式 | 未設定 |
 | `SESSION_IDLE_MINUTES` / `SESSION_ABSOLUTE_HOURS` | セッション期限。`SESSION_IDLE_MINUTES` は `config/session.php` の `lifetime` に対応付ける（Laravel 標準の `SESSION_LIFETIME` は使わない）。`SESSION_ABSOLUTE_HOURS` は絶対期限のミドルウェアが参照する | 30 / 12 |
 | `SANCTUM_STATEFUL_DOMAINS` | SPA認証を許可する `ホスト:ポート`（カンマ区切り、ワイルドカードなし）。開発環境では Compose が `localhost:${NGINX_PORT}`、`127.0.0.1:${NGINX_PORT}`、`localhost:${FRONTEND_PORT}`、`127.0.0.1:${FRONTEND_PORT}` を設定する | 上記 |
 | `AUDIT_LOGIN_IP_LIMIT_PER_MINUTE` | `POST /auth/login` の IP 単位の制限（工程1-3。**実測に基づかない暫定値**。[security-design.md §16.5.4](security-design.md)） | 30 |
@@ -407,6 +411,7 @@ Draft ──submit──▶ Pending ──approve──▶ Approved ──execut
 | D30 | 障害中のログは Redis に依存しないローカルの状態で、発生・継続・復旧に集約する。MVP の集約はコンテナの中に限定し、コンテナ間で共有しない（[security-design.md §16.5.7](security-design.md)） | 2026-11-04 |
 | D31 | `permanent_config` の Audit unavailable の間は readiness を 200 とする。`storage_scope=db_suspected` の間は readiness を 503、liveness を 200 とし、readiness の 503 で自動再起動しない。監査の障害は `audit.unavailable` のゲージ、状態の変化のログ、`audit:status` で検知し、ログの基盤とアラートの接続を公開環境の前提条件とする（[security-design.md §16.5.1・§16.5.3](security-design.md)） | 2026-11-04 |
 | D32 | 行ロックの中の Redis の書き込みは、生のクライアント（`command()` の禁止）、`max_retries=0`、`read_timeout=0.9秒`、ロックの前の `PING` と同一接続の再利用、単調増加時計による全体の期限（1秒）を条件とする。超過は成功扱いにせずロールバックして 503 とする。DB を正とする。WAL 領域の枯渇は `server_panic` として DB unavailable の経路で扱う（[security-design.md §16.5.1・§16.5.5](security-design.md)） | 2026-11-04 |
-| D33 | 公開環境は AWS 東京の EC2 1 台 + `compose.prod.yaml`（CI がビルドした 2 つのイメージ、バインドマウントなし）、ALB + ACM で TLS 終端、EC2 に公開ポートなし（SSM Session Manager のみ）、PostgreSQL と Redis はコンテナのまま、Terraform（`infra/aws/`）は運用者が自分の端末で apply、イメージは GHCR（公開）にタグで push しダイジェストで配備、秘密情報は SSM Parameter Store、ログは CloudWatch Logs（既存の `metric=` 文字列のフィルタ）、通知は SNS のメール（[operations.md](operations.md)） | 2026-11-12 |
+| D33 | 公開環境は AWS 東京の EC2 1 台 + `compose.prod.yaml`（CI がビルドした 2 つのイメージ、バインドマウントなし）、ALB + ACM で TLS 終端、EC2 に公開ポートなし（SSM Session Manager のみ）、PostgreSQL と Redis はコンテナのまま、Terraform（`infra/aws/`）は運用者が自分の端末で apply、イメージは GHCR（公開）にタグで push しダイジェストで配備、秘密情報は SSM Parameter Store、ログは CloudWatch Logs（JSON 行の `context.metric` などのフィルタ。D36）、通知は SNS のメール（[operations.md](operations.md)） | 2026-11-12 |
 | D34 | 接続元 IP の信頼境界は nginx とする：`TRUSTED_PROXY_CIDR` からの接続に限り `X-Forwarded-For` を接続元とし（`real_ip`）、アプリはプロキシを信頼しない（AUTH-RATE-01 の挙動を維持）。ワーカーの枯渇は php-fpm の `request_terminate_timeout=30s` と空きワーカーを見る healthcheck で対策し、unhealthy で自動再起動しない。`mock` は本番相当の環境でも起動でき、`openai` は A-5 の再評価（工程5-5）まで拒否する | 2026-11-12 |
 | D35 | 監査ログのアンカーは日次に `audit:head` を S3 へ保管し、前回のヘッドで `audit:verify --anchor` を実行する。バックアップは日次の `pg_dump` を S3 へ。いずれも失敗をメトリクスにしてアラームにする。配備は運用者がホストで `scripts/prod/deploy.sh` を実行し、戻しは前回のダイジェストへ（DB は前進のみ） | 2026-11-12 |
+| D36 | 公開環境の基盤（工程5-2、`infra/aws/`）：NAT ゲートウェイと VPC エンドポイントは置かず、EC2 はパブリックサブネットで受信ポートなし（送信は 80/443 と DNS のみ）。データ用ボリュームをルートと分けて `/var/lib/docker` に置き、インスタンスの入れ替えで DB が残るようにする。IMDSv2 のホップ数 1 でコンテナからインスタンスの資格情報に届かせない。ALB は公開ホスト名以外に 421 を返す。秘密情報は Terraform を通さず `put-secrets.sh` で登録し、状態ファイルに残さない。ホストのロールに `AmazonSSMManagedInstanceCore` を使わず必要な操作だけを許す。アプリのログは JSON 行にし、CloudWatch のフィルタが項目で選ぶ。`audit.unavailable` の行がないこと自体も発報する。鍵は 1 つの CMK | 2026-11-12 |

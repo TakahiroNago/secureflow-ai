@@ -1,7 +1,7 @@
 # SecureFlow AI — 開発ロードマップ
 
-- 版：v1.18（2026-11-12）
-- 状態：確定（v1.18：Phase 5（AWS デプロイと監視）の工程を §8 に追加し、工程5-1 の完了を反映。v1.17：工程3-6 の完了（MVP 完成）を反映。v1.16：工程3-2 の範囲を反映。v1.15：工程3-4 の範囲を反映。v1.14：工程3-3 の範囲を反映。v1.13：工程3-1・3-5 の範囲を反映。v1.12：工程2-10 の範囲を反映。v1.11：工程2-9 の範囲を反映。v1.10：D11 の確認の完了を反映。v1.9：工程2-7 の範囲を反映。v1.8：工程2-6 の範囲を反映。v1.7：工程2-5 の完了条件に未検査の拒否の応答と計画の照合を反映。v1.6：R-19 の対策を公開環境の前提に追加。工程1-5 の範囲、トリガーと監査の時期、未検査の扱い、工程1-6 の決定と要件の期間限定の例外を反映。v1.5：工程1-4 の決定と工程1-6 の条件を反映。v1.4：工程1-3 の範囲を反映。v1.3：工程1-2 の範囲を反映。v1.2：工程1-1 の設計レビューを反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
+- 版：v1.19（2026-11-12）
+- 状態：確定（v1.19：工程5-2 の実装を反映。v1.18：Phase 5（AWS デプロイと監視）の工程を §8 に追加し、工程5-1 の完了を反映。v1.17：工程3-6 の完了（MVP 完成）を反映。v1.16：工程3-2 の範囲を反映。v1.15：工程3-4 の範囲を反映。v1.14：工程3-3 の範囲を反映。v1.13：工程3-1・3-5 の範囲を反映。v1.12：工程2-10 の範囲を反映。v1.11：工程2-9 の範囲を反映。v1.10：D11 の確認の完了を反映。v1.9：工程2-7 の範囲を反映。v1.8：工程2-6 の範囲を反映。v1.7：工程2-5 の完了条件に未検査の拒否の応答と計画の照合を反映。v1.6：R-19 の対策を公開環境の前提に追加。工程1-5 の範囲、トリガーと監査の時期、未検査の扱い、工程1-6 の決定と要件の期間限定の例外を反映。v1.5：工程1-4 の決定と工程1-6 の条件を反映。v1.4：工程1-3 の範囲を反映。v1.3：工程1-2 の範囲を反映。v1.2：工程1-1 の設計レビューを反映。v1.1：Q-D13・Q-PII・D11・Phase 0 追加条件を反映）
 
 ---
 
@@ -109,7 +109,7 @@
 | 工程 | 内容 | 完了条件 | テスト方法 |
 |---|---|---|---|
 | 5-1 | 本番用イメージ（`docker/php/Dockerfile` の `prod`、`docker/nginx/Dockerfile`）、`compose.prod.yaml`（バインドマウントなし、`web` も internal、nginx のみ `edge`）、nginx の `real_ip` と HSTS、php-fpm の `request_terminate_timeout` と空きワーカーの healthcheck、`mock` の本番相当の環境での起動、`organization:create`（本番では `db:seed` を使えないため）、`scripts/prod/`（deploy、fetch-env、backup、restore、audit-anchor、check、systemd のタイマー）、`scripts/test-prod-stack.sh`、CI の `prod-stack` ジョブと `Release` ワークフロー、[operations.md](operations.md) | CI 全緑。本番の形のスタックが CI で起動し PROD-01〜06 に合格する（**2026-11-12 実装**） | CI prod-stack ジョブ（[test-strategy.md §36](test-strategy.md)） |
-| 5-2 | Terraform（`infra/aws/`）：VPC、セキュリティグループ、EC2（SSM、初回起動で Docker と awslogs、リポジトリとタイマー）、ALB + ACM（HTTP→HTTPS）、S3（バージョニング、暗号化、ホストのロールは put/get のみ）、Parameter Store、CloudWatch Logs のフィルタとアラーム、SNS、Budget。apply は運用者 | 運用者の apply が成功し、ALB が `/api/health/live` を 200 で見る | 手動（apply の結果と `scripts/prod/check.sh`） |
+| 5-2 | Terraform（`infra/aws/`）：VPC、セキュリティグループ、EC2（SSM、初回起動で Docker と awslogs、リポジトリとタイマー）、ALB + ACM（HTTP→HTTPS）、S3（バージョニング、暗号化、ホストのロールは put/get のみ）、Parameter Store、CloudWatch Logs のフィルタとアラーム、SNS、Budget。apply は運用者 | 運用者の apply が成功し、ALB が `/api/health/live` を 200 で見る（**2026-11-12 実装**。apply は運用者が [operations.md §6](operations.md) の手順で行い、その結果で完了とする） | CI infra ジョブ（[test-strategy.md §37](test-strategy.md)）と手動（apply の結果と `scripts/prod/check.sh`） |
 | 5-3 | DNS 切替前の検証と §22 B の再測定：別の 2 つの接続元での IP 単位の制限（A-2）、実際の DB の無応答（A-3）、復元試験、負荷の再測定、アラートの実発報 | 結果を [security-design.md §22](security-design.md) と [test-strategy.md](test-strategy.md) に記録し、A-1〜A-4 を「満たした」に更新する | 手動（[operations.md §5](operations.md)） |
 | 5-4 | 公開：DNS の切替、admin 2 名の作成、画面の自己診断、`audit:verify`、README とポートフォリオの更新 | 公開環境で自己診断が全件合格し、チェーンが検証できる | 手動 |
 | 5-5 | （任意）OpenAI の有効化：A-5 の再評価（ZDR、検出率、送信先）を §6.1 に記し、`AiConfiguration` の本番相当の環境での `openai` の拒否を外す | §6.1 に結論があり、`ai:evaluate` を公開環境相当で再実施している | AI-CONF-01、AI-EVAL-01 |

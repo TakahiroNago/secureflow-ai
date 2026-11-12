@@ -18,6 +18,7 @@ env:
   GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
   TRIVY_IMAGE: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
   SEMGREP_IMAGE: semgrep/semgrep:1.183.0@sha256:2e45517a85e13a9cca14a2a00df6bb48affd66b8ebfae1b0991cd57578362fb0
+  TERRAFORM_IMAGE: hashicorp/terraform:1.17.1@sha256:a5d5a5a892c98f60fcbfa81eac2a40fc19e7b3fa7719bccae10ff6111d22524a
   NODE_IMAGE: node:24.22.2-alpine3.24
   PHP_IMAGE: secureflow-php:dev
   # The browsers of e2e/package.json's @playwright/test version (scripts/test-e2e.sh).
@@ -241,6 +242,29 @@ jobs:
         run: docker compose -f compose.prod.yaml down -v --remove-orphans
 
   # The real screens in real browsers against the whole stack (docs/test-strategy.md §10, §33).
+  infra:
+    name: Infrastructure (terraform fmt / validate / filters)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The module is formatted, parses, and its references resolve. No credentials: nothing is planned or applied
+      # (docs/test-strategy.md §37, INFRA-03). The misconfiguration scan of infra/aws is in the sast-sca job.
+      - name: terraform fmt
+        run: docker run --rm -v "$PWD/infra/aws":/work -w /work "$TERRAFORM_IMAGE" fmt -check -diff -recursive
+
+      - name: terraform validate
+        run: |
+          docker run --rm -v "$PWD/infra/aws":/work -w /work "$TERRAFORM_IMAGE" init -backend=false -input=false -no-color
+          docker run --rm -v "$PWD/infra/aws":/work -w /work "$TERRAFORM_IMAGE" validate -no-color
+
+      # The log filters' samples, patterns and the code that writes the lines agree (INFRA-01).
+      - name: metric-filters.json against the code
+        run: python3 scripts/check-metric-filters.py
+
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-24.04

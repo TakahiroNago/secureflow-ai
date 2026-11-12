@@ -1,4 +1,4 @@
-# SecureFlow AI — the daily dump (scripts/prod/backup.sh). Installed by the host's first-boot script (infra/aws, step 5-2).
+# SecureFlow AI — the daily dump (scripts/prod/backup.sh). Installed and enabled by scripts/prod/deploy.sh on every deploy.
 [Unit]
 Description=SecureFlow AI database backup
 After=docker.service

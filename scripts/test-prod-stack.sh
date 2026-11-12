@@ -14,6 +14,7 @@
 #   PROD-06  the stack's shape: no bind mount of code, internal networks, nginx the only publisher, no dev service
 #   PROD-07  the first organization and admin come from organization:create and user:create (db:seed is refused),
 #            and that admin logs in through nginx
+#   PROD-08  the application writes its log lines as the JSON the CloudWatch filters select on (infra/aws/metric-filters.json)
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -197,6 +198,19 @@ STATUS=$(curl -s -o "$work/b" -b "$work/jar" --max-time 20 -w '%{http_code}' -H 
 is "and the session works" "$STATUS" 200
 is "as admin" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["data"]["role"])' "$work/b" 2>/dev/null)" admin
 is "the login is in the audit log with the connection's address" "$(sql "SELECT host(ip_address) FROM audit_logs WHERE event_type = 'auth.login' ORDER BY id DESC LIMIT 1")" "$conn_ip"
+
+echo "== PROD-08: the log lines the CloudWatch filters select on (infra/aws/metric-filters.json) =="
+in_app 'php artisan audit:housekeeping' > "$work/log" 2>&1 || true
+line=$(grep '"metric":"audit.unavailable"' "$work/log" | tail -1)
+is "audit:housekeeping writes its gauge as one JSON line with the filters' fields" \
+  "$(printf '%s' "$line" | python3 -c 'import json, sys; r = json.loads(sys.stdin.read()); c = r["context"]; print(c["metric"], c["value"], r["level"], r["level_name"], "storage_scope" in c)' 2>/dev/null)" \
+  "audit.unavailable 0 200 INFO True"
+is "and with the same fields as the sample the filters are tested with" \
+  "$(printf '%s' "$line" | python3 -c '
+import json, sys
+real = json.loads(sys.stdin.read())
+sample = json.loads(json.load(open("infra/aws/metric-filters.json"))["samples"]["gauge_ok"])
+print(sorted(real) == sorted(sample) and sorted(real["context"]) == sorted(sample["context"]))' 2>/dev/null)" True
 
 echo
 echo "Result: $pass passed, $fail failed"

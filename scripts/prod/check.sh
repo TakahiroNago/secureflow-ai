@@ -8,6 +8,7 @@
 #   PROD-C3  nginx is the only published port, on NGINX_BIND:NGINX_PORT, and postgres / redis are not published
 #   PROD-C4  the audit log can be written to, and the chains verify
 #   PROD-C5  the scheduler lists its commands and the worker is on its queues
+#   PROD-C6  the host: the Docker daemon logs to CloudWatch, the timers are active, the data volume is mounted
 . "$(dirname "$0")/lib.sh"
 require_root
 
@@ -58,6 +59,11 @@ echo "== PROD-C5: worker and scheduler =="
 check "the scheduler lists audit:housekeeping, analysis:recover, executions:reap-stale and selftest:recover" \
   "compose exec -T scheduler php artisan schedule:list | grep -q audit:housekeeping && compose exec -T scheduler php artisan schedule:list | grep -q selftest:recover"
 check "the worker is on the ai, execution and selftest queues" "docker inspect --format '{{join .Config.Cmd \" \"}}' \"\$(compose ps -q worker)\" | grep -q -- '--queue=ai,execution,selftest'"
+
+echo "== PROD-C6: the host (infra/aws) =="
+is "the Docker daemon logs to CloudWatch (awslogs)" "$(docker info --format '{{.LoggingDriver}}' 2> /dev/null)" awslogs
+check "the backup and audit-anchor timers are active" "systemctl is-active --quiet secureflow-backup.timer && systemctl is-active --quiet secureflow-audit-anchor.timer"
+check "the data volume is mounted at /var/lib/docker" "findmnt -no SOURCE /var/lib/docker"
 
 echo
 echo "Result: $pass passed, $fail failed"

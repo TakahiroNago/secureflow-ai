@@ -13,6 +13,8 @@
 #   - APP_DEBUG is false whatever .env says, and SANCTUM_STATEFUL_DOMAINS is PUBLIC_HOST alone.
 #   - no frontend (Vite) and no test service. migrate (profile "tools") and ai-egress (profile "openai") stay.
 #   - the app healthcheck also wants a free php-fpm worker (docker/php/healthcheck-prod.sh, §22 A-3).
+#   - the application's log lines are JSON (LOG_STDERR_FORMATTER): the host's Docker daemon sends every container's
+#     output to CloudWatch Logs, where the filters of infra/aws select on the fields (docs/operations.md §4.7).
 # scripts/test-compose-env.sh keeps the tuning variables and their defaults equal to compose.yaml's.
 #
 # Networks:
@@ -40,6 +42,9 @@ x-laravel-env: &laravel-env
   APP_URL: ${APP_URL:?set APP_URL in .env (https followed by PUBLIC_HOST)}
   LOG_CHANNEL: stderr
   LOG_LEVEL: ${LOG_LEVEL:-info}
+  # One JSON object per line, so that the CloudWatch filters (infra/aws/metric-filters.json) select on the fields
+  # the code writes. Fixed: the alarms depend on it (scripts/test-prod-stack.sh PROD-08).
+  LOG_STDERR_FORMATTER: Monolog\Formatter\JsonFormatter
   DB_CONNECTION: pgsql
   DB_HOST: postgres
   DB_PORT: "5432"

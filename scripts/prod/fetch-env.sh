@@ -40,8 +40,9 @@ for p in json.load(sys.stdin)["Parameters"]:
 print("\n".join(sorted(out)))
 ' > "$tmp"
 
+# DB_TEST_*: docker/postgres/initdb creates the test roles on the first start and refuses an empty password.
 for required in APP_KEY APP_URL PUBLIC_HOST TRUSTED_PROXY_CIDR POSTGRES_PASSWORD DB_DATABASE DB_TEST_DATABASE DB_USERNAME DB_PASSWORD \
-                DB_MIGRATOR_USERNAME DB_MIGRATOR_PASSWORD REDIS_PASSWORD; do
+                DB_MIGRATOR_USERNAME DB_MIGRATOR_PASSWORD DB_TEST_PASSWORD DB_TEST_MIGRATOR_PASSWORD REDIS_PASSWORD BACKUP_BUCKET; do
   grep -q "^$required=." "$tmp" || { echo "missing in the parameter store: $required" >&2; exit 1; }
 done
 if grep -qE '^[A-Z_]+=change-me' "$tmp"; then
