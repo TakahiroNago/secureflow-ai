@@ -17,10 +17,13 @@ COPY docker/nginx/snippets/ /etc/nginx/snippets/
 COPY docker/nginx/prod/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY docker/nginx/prod/templates/ /etc/nginx/templates/
 COPY --from=build /app/dist/ /usr/share/nginx/html/
-# As the relay (docker/ai-egress): the whole process runs as the nginx user, not only the workers. The image's entrypoint
-# renders the template into conf.d and nginx writes its pid and cache, so those are the user's; port 80 needs the
-# ip_unprivileged_port_start sysctl of compose.prod.yaml. The "user" directive would only be ignored with a warning.
+# The base image's Alpine packages at the state of its tag, with the fixes Alpine has published since (SCA-01: no HIGH
+# with a fix ships in an image we build). Then, as the relay (docker/ai-egress): the whole process runs as the nginx
+# user, not only the workers. The image's entrypoint renders the template into conf.d and nginx writes its pid and
+# cache, so those are the user's; port 80 needs the ip_unprivileged_port_start sysctl of compose.prod.yaml. The "user"
+# directive would only be ignored with a warning.
 RUN set -eux; \
+    apk upgrade --no-cache; \
     sed -i '/^user /d' /etc/nginx/nginx.conf; \
     touch /var/run/nginx.pid; \
     chown -R nginx:nginx /var/run/nginx.pid /var/cache/nginx /etc/nginx/conf.d

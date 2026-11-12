@@ -1,7 +1,8 @@
 # SecureFlow AI — Trivy exceptions (docs/test-strategy.md §31, SCA-01).
 #
 # CI fails on any HIGH or CRITICAL vulnerability that has a fix, in the dependencies, the PHP image and every image
-# compose uses. An entry here needs the id, the paths it applies to, a statement of why it cannot be fixed now, and
+# compose uses. An entry here needs the id, the paths it applies to (an OS package has none: Trivy reports it against
+# the image), a statement of why it cannot be fixed now, and
 # an expiry date: after that date Trivy reports it again, so the review cannot be forgotten. An entry without a
 # statement and an expiry is refused in review. Vulnerabilities with no fix are not failures (--ignore-unfixed)
 # and need no entry.
@@ -172,4 +173,85 @@ vulnerabilities:
     paths:
       - "usr/local/bin/gosu"
     statement: "Go standard library inside /usr/local/bin/gosu of the official postgres image, used once at container start to drop privileges before exec'ing postgres; it opens no network connection and parses no input. postgres:18.6-alpine3.24 is the newest tag (2026-11-06); update when the image ships a gosu built with a fixed Go."
+    expired_at: 2026-12-07
+
+  # Alpine packages of the pulled base images nginx:1.30.6-alpine3.24 (pushed 2026-11-06) and postgres:18.6-alpine3.24
+  # (re-pushed 2026-11-11), both still on Alpine 3.24.3 packages while Alpine has published the fixes. Reviewed 2026-11-12:
+  # no newer tag exists for either. The images this project builds (docker/nginx/Dockerfile, docker/php/Dockerfile) run
+  # `apk upgrade` and do not carry them. Before the expiry: check for new tags, or build thin images with `apk upgrade`
+  # for postgres and the development nginx (a decision for step 5-2 or later).
+  - id: CVE-2026-111497
+    statement: "brotli-libs in the pulled nginx and postgres images; nginx uses brotli to compress its own answers and decodes nothing from the network; postgres does not use it. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-92392
+    statement: "curl and libcurl in the pulled nginx and postgres images; neither nginx nor postgres runs curl; the healthchecks use wget and pg_isready. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-113351
+    statement: "libexpat in the pulled nginx and postgres images; no XML is parsed at runtime by nginx or postgres in this stack. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-115506
+    statement: "libexpat in the pulled nginx and postgres images; no XML is parsed at runtime by nginx or postgres in this stack. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-117610
+    statement: "libexpat in the pulled nginx and postgres images; no XML is parsed at runtime by nginx or postgres in this stack. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-118370
+    statement: "libexpat in the pulled nginx and postgres images; no XML is parsed at runtime by nginx or postgres in this stack. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-125350
+    statement: "libxslt in the pulled nginx and postgres images; the xslt module of nginx is not used by docker/nginx/default.conf. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-87636
+    statement: "libxslt in the pulled nginx and postgres images; the xslt module of nginx is not used by docker/nginx/default.conf. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-9947
+    statement: "libxslt in the pulled nginx and postgres images; the xslt module of nginx is not used by docker/nginx/default.conf. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-107364
+    statement: "krb5-libs in the pulled nginx and postgres images; linked into postgres for GSSAPI, which is not configured: the vulnerabilities are in the KDC and kadmind, which do not run here. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-112315
+    statement: "krb5-libs in the pulled nginx and postgres images; linked into postgres for GSSAPI, which is not configured: the vulnerabilities are in the KDC and kadmind, which do not run here. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-112316
+    statement: "krb5-libs in the pulled nginx and postgres images; linked into postgres for GSSAPI, which is not configured: the vulnerabilities are in the KDC and kadmind, which do not run here. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-112317
+    statement: "krb5-libs in the pulled nginx and postgres images; linked into postgres for GSSAPI, which is not configured: the vulnerabilities are in the KDC and kadmind, which do not run here. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-112318
+    statement: "krb5-libs in the pulled nginx and postgres images; linked into postgres for GSSAPI, which is not configured: the vulnerabilities are in the KDC and kadmind, which do not run here. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-112319
+    statement: "krb5-libs in the pulled nginx and postgres images; linked into postgres for GSSAPI, which is not configured: the vulnerabilities are in the KDC and kadmind, which do not run here. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-112320
+    statement: "krb5-libs in the pulled nginx and postgres images; linked into postgres for GSSAPI, which is not configured: the vulnerabilities are in the KDC and kadmind, which do not run here. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-112321
+    statement: "krb5-libs in the pulled nginx and postgres images; linked into postgres for GSSAPI, which is not configured: the vulnerabilities are in the KDC and kadmind, which do not run here. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-112322
+    statement: "krb5-libs in the pulled nginx and postgres images; linked into postgres for GSSAPI, which is not configured: the vulnerabilities are in the KDC and kadmind, which do not run here. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-112323
+    statement: "krb5-libs in the pulled nginx and postgres images; linked into postgres for GSSAPI, which is not configured: the vulnerabilities are in the KDC and kadmind, which do not run here. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-118380
+    statement: "krb5-libs in the pulled nginx and postgres images; linked into postgres for GSSAPI, which is not configured: the vulnerabilities are in the KDC and kadmind, which do not run here. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-119079
+    statement: "krb5-libs in the pulled nginx and postgres images; linked into postgres for GSSAPI, which is not configured: the vulnerabilities are in the KDC and kadmind, which do not run here. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-40355
+    statement: "krb5-libs in the pulled nginx and postgres images; linked into postgres for GSSAPI, which is not configured: the vulnerabilities are in the KDC and kadmind, which do not run here. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-40356
+    statement: "krb5-libs in the pulled nginx and postgres images; linked into postgres for GSSAPI, which is not configured: the vulnerabilities are in the KDC and kadmind, which do not run here. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-71199
+    statement: "krb5-libs in the pulled nginx and postgres images; linked into postgres for GSSAPI, which is not configured: the vulnerabilities are in the KDC and kadmind, which do not run here. Update the image tag when one with the fix exists."
+    expired_at: 2026-12-07
+  - id: CVE-2026-71200
+    statement: "krb5-libs in the pulled nginx and postgres images; linked into postgres for GSSAPI, which is not configured: the vulnerabilities are in the KDC and kadmind, which do not run here. Update the image tag when one with the fix exists."
     expired_at: 2026-12-07

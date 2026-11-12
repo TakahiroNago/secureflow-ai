@@ -1508,4 +1508,5 @@ MVP は開発環境（ローカルの Docker Compose、`127.0.0.1` のみ、HTTP
 ### C. 期限のある項目
 
 - `.trivyignore.yaml` の例外（node イメージ同梱の npm、postgres イメージの gosu）は 2026-12-07 に期限が切れる。それまでに新しいイメージのタグを確認して更新する（[test-strategy.md §31](test-strategy.md)）。
+- **工程5-1（2026-11-12）で追加した例外：** pull したまま使う `nginx:1.30.6-alpine3.24` と `postgres:18.6-alpine3.24` の Alpine パッケージ（brotli、curl、expat、libxslt、krb5。いずれも新しいタグがなく、この構成では使われない経路）。期限は同じ 2026-12-07。自前でビルドする web と php のイメージは `apk upgrade` で修正済みの版を持ち、検出 0 である。期限までに新しいタグを確認するか、postgres と開発環境の nginx も `apk upgrade` する薄い Dockerfile にするかを決める（工程5-2 以降の判断）。
 - 実モデルの挙動は予告なく変わりうるため、モデルやプロンプトを変えたら `ai:evaluate` で再評価する（R-26、[test-strategy.md §34](test-strategy.md)）。
