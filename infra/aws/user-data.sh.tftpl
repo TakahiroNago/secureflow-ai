@@ -87,7 +87,9 @@ systemctl restart systemd-timesyncd
 systemctl disable --now ssh.service ssh.socket 2> /dev/null || true
 
 # 5. The repository and the places the scripts use (docs/operations.md §3). The deploy checks out the release tag.
+#    The AWS CLI on the host runs as root from scripts/prod (no credentials: the instance role), and needs a region.
 git clone --quiet "${repository_url}" /opt/secureflow
-install -d -m 700 /etc/secureflow /var/backups/secureflow
+install -d -m 700 /etc/secureflow /var/backups/secureflow /root/.aws
+printf '[default]\nregion = %s\n' "${region}" > /root/.aws/config
 
 echo "secureflow first boot done"
