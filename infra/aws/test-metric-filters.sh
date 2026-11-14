@@ -3,19 +3,27 @@
 # INFRA-02). `aws logs test-metric-filter` needs no resource and changes nothing; the operator runs it with the
 # Terraform profile before the first apply, and after any change to the patterns or to what the application logs.
 #
-#   test-metric-filters.sh [--profile <aws profile>]
+#   test-metric-filters.sh [--profile <aws profile>] [--region ap-northeast-1]
 set -euo pipefail
 cd "$(dirname "$0")"
 
 profile=()
+region=ap-northeast-1
 while [ $# -gt 0 ]; do
   case "$1" in
     --profile) profile=(--profile "$2"); shift 2 ;;
+    --region) region=$2; shift 2 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
 
-AWS_PROFILE_ARGS="${profile[*]:-}" python3 - <<'PY'
+# Also runs from Git Bash on Windows, where the working interpreter may be "python" ("python3" can be a store shortcut).
+PYTHON=""
+for candidate in python3 python; do
+  if "$candidate" -c pass > /dev/null 2>&1; then PYTHON=$candidate; break; fi
+done
+[ -n "$PYTHON" ] || { echo "python is required" >&2; exit 2; }
+AWS_PROFILE_ARGS="${profile[*]:-} --region $region" "$PYTHON" - <<'PY'
 import json, os, subprocess, sys
 
 spec = json.load(open("metric-filters.json", encoding="utf-8"))
